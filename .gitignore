@@ -1,0 +1,57 @@
+# Claude / agents
+.claude
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode
+.idea
+*.swp
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Env (allow examples only)
+.env
+.env.*
+!.env.example
+
+# Secrets / credentials (defensive)
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+*.jks
+id_rsa
+id_ed25519
+id_ecdsa
+id_dsa
+.npmrc
+.netrc
+credentials.json
+credentials.yml
+credentials.yaml
+secrets/
+
+# Node
+node_modules
+coverage
+
+# Build outputs
+dist
+build
+.next
+out
+*.tsbuildinfo
+next-env.d.ts
+
+# Prisma generated
+generated

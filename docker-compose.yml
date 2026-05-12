@@ -1,0 +1,11 @@
+name: patriota
+
+include:
+  - backend/docker-compose.yml
+  - frontend/docker-compose.yml
+
+services:
+  web:
+    depends_on:
+      api:
+        condition: service_started

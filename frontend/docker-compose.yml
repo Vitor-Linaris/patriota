@@ -1,0 +1,19 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+    container_name: patriota-web
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3005}:${PORT:-3005}"
+    env_file:
+      - .env
+    volumes:
+      - ./src:/usr/src/app/src
+      - ./public:/usr/src/app/public
+      - ./next.config.ts:/usr/src/app/next.config.ts
+      - ./tsconfig.json:/usr/src/app/tsconfig.json
+      - ./postcss.config.mjs:/usr/src/app/postcss.config.mjs
+      - ./eslint.config.mjs:/usr/src/app/eslint.config.mjs
