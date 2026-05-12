@@ -7,16 +7,17 @@ export type LoginState = {
   error?: string;
 };
 
+const SESSION_COOKIE = "patriota_session";
+
 /**
  * Server action: submits credentials to the backend login route and stores
- * the returned token in an httpOnly cookie so the browser never sees it.
+ * the returned JWT in an httpOnly cookie so the browser never sees it.
  *
- * Backend contract assumed (adjust the endpoint / field names below if your
- * backend uses different ones):
+ * Backend contract (NestJS — see backend/src/auth/auth.controller.ts):
  *   POST {INTERNAL_API_URL}/auth/login
  *   body: { email, password }
- *   200: { accessToken: string, ... }
- *   401: { message: string }
+ *   200: { accessToken: string, user: { id, email, name, role } }
+ *   401: { message: "Credenciais inválidas." }
  */
 export async function loginAction(
   _prev: LoginState,
@@ -53,28 +54,32 @@ export async function loginAction(
     return { error: "Falha na autenticação. Tente novamente." };
   }
 
-  // Token extraction is best-effort — adjust to your backend's payload shape.
   let token: string | undefined;
   try {
-    const data = (await res.json()) as Record<string, unknown>;
-    token =
-      (data.accessToken as string | undefined) ??
-      (data.token as string | undefined) ??
-      (data.access_token as string | undefined);
+    const data = (await res.json()) as { accessToken?: string };
+    token = data.accessToken;
   } catch {
-    /* backend may set the cookie directly instead of returning a body */
+    return { error: "Resposta inválida do servidor." };
   }
 
-  if (token) {
-    const cookieStore = await cookies();
-    cookieStore.set("patriota_session", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 8, // 8h
-    });
+  if (!token) {
+    return { error: "Resposta inválida do servidor." };
   }
 
-  redirect("/admin");
+  const cookieStore = await cookies();
+  cookieStore.set(SESSION_COOKIE, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 60 * 8, // 8h — matches backend JWT_EXPIRES_IN default
+  });
+
+  redirect("/admin/permissions");
+}
+
+export async function logoutAction() {
+  const cookieStore = await cookies();
+  cookieStore.delete(SESSION_COOKIE);
+  redirect("/admin/login");
 }
