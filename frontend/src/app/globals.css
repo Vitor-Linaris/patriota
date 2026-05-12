@@ -3,13 +3,22 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* Patriota brand tokens (from Figma) */
+  --patriota-primary-dark: #1e2c4d;
+  --patriota-primary-medium: #2a467e;
+  --patriota-accent: #ffcc66;
+  --patriota-ink: #0a1629;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-patriota-dark: var(--patriota-primary-dark);
+  --color-patriota-medium: var(--patriota-primary-medium);
+  --color-patriota-accent: var(--patriota-accent);
+  --color-patriota-ink: var(--patriota-ink);
+  --font-sans: var(--font-inter);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -22,5 +31,5 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-inter), Arial, Helvetica, sans-serif;
 }
