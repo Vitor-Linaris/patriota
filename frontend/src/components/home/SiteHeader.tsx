@@ -15,32 +15,14 @@ export function SiteHeader() {
   return (
     <header className="border-b border-slate-200 bg-white">
       <Container className="flex h-[82px] items-center justify-between">
-        <a href="/" className="flex items-end gap-[3px]" aria-label="O Patriota">
+        <a href="/" aria-label="O Patriota" className="inline-flex">
           <Image
-            src="/brand/patriota-o.svg"
-            alt=""
-            width={18}
-            height={18}
-            className="mb-[10px]"
+            src="/brand/Logo-header.svg"
+            alt="O Patriota"
+            width={132}
+            height={54}
             priority
           />
-          <div className="flex flex-col">
-            <Image
-              src="/brand/patriota.svg"
-              alt="O Patriota"
-              width={120}
-              height={40}
-              priority
-            />
-            <Image
-              src="/brand/patriota-noticias.svg"
-              alt=""
-              width={42}
-              height={9}
-              className="ml-[48px] mt-[2px]"
-              priority
-            />
-          </div>
         </a>
         <nav className="hidden items-center gap-7 text-[14px] lg:flex">
           {NAV.map((n) => (

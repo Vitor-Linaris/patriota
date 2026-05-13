@@ -15,32 +15,14 @@ export default function AdminLoginPage() {
       {/* Left panel — institutional */}
       <aside className="relative flex w-full flex-col justify-between border-b border-white/5 bg-patriota-dark px-12 py-12 lg:w-[460px] lg:border-b-0 lg:border-r">
         {/* Logo */}
-        <div className="flex items-end gap-[2px]">
+        <div>
           <Image
-            src="/brand/patriota-o.svg"
-            alt=""
-            width={14}
-            height={14}
-            className="mb-[8px]"
+            src="/brand/Logo-header.svg"
+            alt="O Patriota"
+            width={132}
+            height={54}
             priority
           />
-          <div className="flex flex-col">
-            <Image
-              src="/brand/patriota.svg"
-              alt="O Patriota"
-              width={91}
-              height={30}
-              priority
-            />
-            <Image
-              src="/brand/patriota-noticias.svg"
-              alt=""
-              width={31}
-              height={7}
-              className="ml-[37px] mt-[1px]"
-              priority
-            />
-          </div>
         </div>
 
         {/* Headline + features */}

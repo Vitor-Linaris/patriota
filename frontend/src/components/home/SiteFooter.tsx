@@ -25,30 +25,13 @@ export function SiteFooter() {
     <footer className="bg-patriota-dark text-white">
       <Container className="py-12">
         <div className="flex flex-col gap-10 md:flex-row md:items-start md:justify-between">
-          <a href="/" className="flex items-end gap-[3px]" aria-label="O Patriota">
+          <a href="/" aria-label="O Patriota" className="inline-flex">
             <Image
-              src="/brand/patriota-o.svg"
-              alt=""
-              width={12}
-              height={12}
-              className="mb-[8px] brightness-200"
+              src="/brand/Logo-footer.svg"
+              alt="O Patriota"
+              width={89}
+              height={37}
             />
-            <div className="flex flex-col">
-              <Image
-                src="/brand/patriota.svg"
-                alt="O Patriota"
-                width={80}
-                height={26}
-                className="brightness-200"
-              />
-              <Image
-                src="/brand/patriota-noticias.svg"
-                alt=""
-                width={28}
-                height={6}
-                className="ml-[33px] mt-[1px] brightness-200"
-              />
-            </div>
           </a>
           <div className="grid grid-cols-2 gap-8 md:grid-cols-4 md:gap-12">
             {COLUMNS.map((col) => (

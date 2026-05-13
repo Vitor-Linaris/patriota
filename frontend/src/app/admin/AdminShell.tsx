@@ -46,29 +46,14 @@ export async function AdminShell({
       {/* Sidebar */}
       <aside className="flex w-[240px] flex-col justify-between bg-patriota-dark text-white">
         <div>
-          <div className="flex items-end gap-[2px] px-6 py-7">
+          <div className="px-6 py-7">
             <Image
-              src="/brand/patriota-o.svg"
-              alt=""
-              width={12}
-              height={12}
-              className="mb-[7px]"
+              src="/brand/Logo-header.svg"
+              alt="O Patriota"
+              width={132}
+              height={54}
+              priority
             />
-            <div className="flex flex-col">
-              <Image
-                src="/brand/patriota.svg"
-                alt="O Patriota"
-                width={80}
-                height={26}
-              />
-              <Image
-                src="/brand/patriota-noticias.svg"
-                alt=""
-                width={28}
-                height={6}
-                className="ml-[33px] mt-[1px]"
-              />
-            </div>
           </div>
           <nav className="mt-2 flex flex-col gap-1 px-3">
             {NAV.map((item) => {
