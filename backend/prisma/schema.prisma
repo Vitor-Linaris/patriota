@@ -10,10 +10,32 @@ datasource db {
   provider = "postgresql"
 }
 
+enum Role {
+  SUPER_ADMIN
+  EDITOR_CHEFE
+  EDITOR
+  JORNALISTA
+  REVISOR
+  MODERADOR
+  ANALISTA
+}
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
   name      String?
+  password  String
+  role      Role     @default(JORNALISTA)
+  isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+/// Per-role permission overrides. SUPER_ADMIN is always implicitly all.
+/// `permissions` is the full set of permission keys granted to the role
+/// (e.g. ["artigos.ler", "artigos.criar", ...]).
+model RolePermissions {
+  role        Role     @id
+  permissions String[]
+  updatedAt   DateTime @updatedAt
 }

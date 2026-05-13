@@ -1,0 +1,9 @@
+/* Patriota brand tokens — scoped to /admin pages.
+   Kept out of globals.css so the public site can evolve independently. */
+
+@theme inline {
+  --color-patriota-dark: #1e2c4d;
+  --color-patriota-medium: #2a467e;
+  --color-patriota-accent: #ffcc66;
+  --color-patriota-ink: #0a1629;
+}
