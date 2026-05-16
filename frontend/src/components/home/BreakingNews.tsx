@@ -8,7 +8,11 @@ const HEADLINES = [
 
 export function BreakingNews() {
   return (
-    <div className="bg-gradient-to-b from-patriota-dark via-patriota-medium to-patriota-dark">
+    <div
+      style={{
+        background: "linear-gradient(180deg, #36C -71.25%, #1E2C4D 212.5%)",
+      }}
+    >
       <Container className="flex h-10 items-center gap-6">
         <span className="rounded bg-patriota-accent px-1.5 py-0.5 text-[12px] font-semibold uppercase tracking-wide text-patriota-medium">
           Última hora
