@@ -8,18 +8,18 @@ const HEADLINES = [
 
 export function BreakingNews() {
   return (
-    <div className="bg-white border-b border-slate-200">
+    <div className="bg-gradient-to-b from-patriota-dark via-patriota-medium to-patriota-dark">
       <Container className="flex h-10 items-center gap-6">
-        <span className="rounded bg-red-600 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-white">
+        <span className="rounded bg-patriota-accent px-1.5 py-0.5 text-[12px] font-semibold uppercase tracking-wide text-patriota-medium">
           Última hora
         </span>
-        <div className="flex flex-1 items-center gap-8 overflow-hidden text-[13px] text-slate-700">
+        <div className="flex flex-1 items-center gap-7 overflow-hidden text-[14px]">
           {HEADLINES.map((h, i) => (
             <a
               key={i}
               href="#"
-              className={`whitespace-nowrap hover:text-slate-900 ${
-                i > 0 ? "hidden lg:inline" : ""
+              className={`whitespace-nowrap transition hover:text-white ${
+                i === 0 ? "text-white" : "text-white/60 hidden lg:inline"
               }`}
             >
               {h}
@@ -27,9 +27,9 @@ export function BreakingNews() {
           ))}
         </div>
         <div className="hidden items-center gap-1.5 md:flex">
-          <span className="h-1.5 w-5 rounded-full bg-slate-900" />
-          <span className="h-1.5 w-1.5 rounded-full bg-slate-300" />
-          <span className="h-1.5 w-1.5 rounded-full bg-slate-300" />
+          <span className="h-2 w-5 rounded-full bg-patriota-accent" />
+          <span className="h-2 w-2 rounded-full bg-white/30" />
+          <span className="h-2 w-2 rounded-full bg-white/30" />
         </div>
       </Container>
     </div>
