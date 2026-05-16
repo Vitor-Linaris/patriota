@@ -12,7 +12,7 @@ export function AuthorBio({
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-6">
       <div className="flex gap-4">
-        <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-patriota-medium text-[18px] font-bold text-white">
+        <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-patriota-pure text-[18px] font-bold text-patriota-accent">
           {initials}
         </span>
         <div className="min-w-0">

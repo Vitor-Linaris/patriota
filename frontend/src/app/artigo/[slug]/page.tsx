@@ -63,11 +63,11 @@ export default async function ArticlePage({
 
               {/* Category + topic */}
               <div className="mt-5 flex flex-wrap items-center gap-3">
-                <span className="inline-flex rounded bg-red-600 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-white">
+                <span className="inline-flex rounded-[4px] bg-patriota-medium px-3 py-1 text-[12px] font-bold uppercase tracking-wide text-white">
                   Política
                 </span>
-                <span aria-hidden className="text-slate-400">·</span>
-                <span className="text-[13px] font-semibold text-slate-700">
+                <span aria-hidden className="text-[#d1d5dc]">·</span>
+                <span className="text-[13px] font-semibold text-[#6a7282]">
                   Orçamento do Estado 2026
                 </span>
               </div>
@@ -87,7 +87,7 @@ export default async function ArticlePage({
 
               {/* Author + share */}
               <div className="mt-8 flex flex-wrap items-center gap-4 border-y border-slate-200 py-4">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-patriota-medium text-[13px] font-bold text-white">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-patriota-pure text-[13px] font-bold text-patriota-accent">
                   AF
                 </span>
                 <div className="flex-1">
@@ -192,27 +192,29 @@ export default async function ArticlePage({
               </div>
 
               {/* Inline ad (Renault) */}
-              <div className="mt-8 flex items-center gap-5 rounded-lg border border-rose-100 bg-gradient-to-r from-rose-50 to-amber-50 px-5 py-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-white text-2xl font-black text-rose-600 shadow-sm">
-                  R
+              <div className="mt-8">
+                <div className="flex items-center gap-5 rounded-lg border border-rose-100 bg-gradient-to-r from-rose-50 to-amber-50 px-5 py-4">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-white text-2xl font-black text-rose-600 shadow-sm">
+                    R
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[14px] font-bold text-slate-900">
+                      Renault — Novo Mégane E-Tech Eléctrico
+                    </p>
+                    <p className="truncate text-[12px] text-slate-600">
+                      Autonomia até 470 km. Test drive gratuito na sua cidade.
+                    </p>
+                  </div>
+                  <a
+                    href="#"
+                    className="hidden shrink-0 rounded-md bg-rose-600 px-4 py-2 text-[12px] font-semibold text-white hover:bg-rose-700 md:inline-flex"
+                  >
+                    Agendar test drive
+                  </a>
                 </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[14px] font-bold text-slate-900">
-                    Renault — Novo Mégane E-Tech Eléctrico
-                  </p>
-                  <p className="truncate text-[12px] text-slate-600">
-                    Autonomia até 470 km. Test drive gratuito na sua cidade.
-                  </p>
-                </div>
-                <a
-                  href="#"
-                  className="hidden shrink-0 rounded-md bg-rose-600 px-4 py-2 text-[12px] font-semibold text-white hover:bg-rose-700 md:inline-flex"
-                >
-                  Agendar test drive
-                </a>
-                <span className="absolute right-3 top-2 text-[10px] uppercase tracking-wider text-slate-400">
+                <p className="mt-2 text-center text-[10px] uppercase tracking-wider text-slate-400">
                   Publicidade
-                </span>
+                </p>
               </div>
 
               {/* Final paragraph */}

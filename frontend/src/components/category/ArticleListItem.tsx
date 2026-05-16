@@ -14,39 +14,46 @@ export function ArticleListItem({ item }: { item: ArticleListItemData }) {
   return (
     <a
       href="#"
-      className="flex gap-5 rounded-lg border border-slate-200 bg-white p-5 transition hover:shadow-md"
+      className="flex gap-5 rounded-[12px] border border-[#f3f4f6] bg-white p-5 shadow-[0px_1px_3px_0px_rgba(0,0,0,0.05)] transition hover:shadow-md"
     >
-      <span className="w-6 shrink-0 text-[20px] font-black leading-none text-slate-300">
+      <span className="w-6 shrink-0 text-[20px] font-black leading-none text-patriota-accent">
         {item.number}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2 text-[12px] text-slate-500">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-red-600">
+        <div className="flex flex-wrap items-center gap-2 text-[12px]">
+          <span className="text-[10px] font-bold uppercase tracking-[0.25px] text-patriota-ink-deep">
             {item.category}
           </span>
-          <span aria-hidden>·</span>
-          <span>{item.time}</span>
-          <span aria-hidden>·</span>
-          <span>{item.readMinutes} min leitura</span>
+          <span aria-hidden className="text-[#d1d5dc]">·</span>
+          <span className="text-[#99a1af]">{item.time}</span>
+          <span aria-hidden className="text-[#d1d5dc]">·</span>
+          <span className="text-[#99a1af]">
+            {item.readMinutes} min leitura
+          </span>
         </div>
-        <h3 className="mt-2 text-[16px] font-bold leading-snug text-slate-900">
+        <h3 className="mt-2 text-[16px] font-bold leading-[22px] text-[#101828]">
           {item.title}
         </h3>
-        <p className="mt-1 line-clamp-2 text-[13px] text-slate-600">
+        <p className="mt-1 line-clamp-2 text-[14px] leading-[20px] text-[#6a7282]">
           {item.excerpt}
         </p>
-        <div className="mt-3 flex items-center gap-2 text-[12px] text-slate-500">
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-patriota-medium text-[10px] font-bold text-white">
+        <div className="mt-3 flex items-center gap-2 text-[12px]">
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-patriota-pure text-[10px] font-bold text-patriota-accent">
             {item.authorInitials}
           </span>
-          <span className="font-semibold text-slate-700">
-            {item.authorName}
-          </span>
-          <span aria-hidden>·</span>
-          <span>{item.date}</span>
+          <span className="text-[#6a7282]">{item.authorName}</span>
+          <span aria-hidden className="text-[#d1d5dc]">·</span>
+          <span className="text-[#99a1af]">{item.date}</span>
         </div>
       </div>
-      <div className="hidden h-20 w-28 shrink-0 rounded-md bg-gradient-to-br from-slate-200 to-slate-300 sm:block" />
+      <div
+        aria-hidden
+        className="hidden h-20 w-28 shrink-0 rounded-[8px] sm:block"
+        style={{
+          background:
+            "linear-gradient(144.46deg, rgba(15,44,107,0.1) 0%, rgba(255,204,102,0.15) 100%)",
+        }}
+      />
     </a>
   );
 }

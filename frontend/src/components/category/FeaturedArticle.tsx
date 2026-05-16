@@ -18,37 +18,54 @@ export function FeaturedArticle({
   readMinutes,
 }: FeaturedArticleProps) {
   return (
-    <article className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      {/* Image / gradient hero */}
-      <div className="relative h-[224px] bg-gradient-to-br from-patriota-medium via-patriota-dark to-patriota-medium px-6 py-8 text-white">
-        <div className="flex items-center gap-3 text-[12px] text-white/80">
-          <span className="rounded bg-red-600 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-white">
-            {category}
-          </span>
-          <span>{time}</span>
-          <span aria-hidden>·</span>
-          <span>{readMinutes} min leitura</span>
+    <article className="overflow-hidden rounded-[12px] border border-[#f3f4f6] bg-white shadow-[0px_1px_3px_0px_rgba(0,0,0,0.1),0px_1px_2px_-1px_rgba(0,0,0,0.1)]">
+      {/* Hero (primary/pure blue with subtle yellow corner + dark bottom fade) */}
+      <div className="relative h-[224px] overflow-hidden bg-patriota-pure">
+        <div
+          aria-hidden
+          className="absolute inset-0"
+          style={{
+            background:
+              "linear-gradient(15.68deg, rgba(255,204,102,1) 0%, rgba(255,204,102,1) 3.54%, rgba(255,204,102,0) 3.54%, rgba(255,204,102,0) 50%)",
+            opacity: 0.2,
+          }}
+        />
+        <div
+          aria-hidden
+          className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"
+        />
+        <div className="absolute inset-x-0 bottom-0 p-6 text-white">
+          <div className="flex items-center gap-3">
+            <span className="rounded-[4px] bg-patriota-accent px-2 py-1 text-[10px] font-black uppercase tracking-[0.25px] text-patriota-ink-deep">
+              {category}
+            </span>
+            <span className="text-[12px] text-white/60">{time}</span>
+            <span aria-hidden className="text-white/40">·</span>
+            <span className="text-[12px] text-white/60">
+              {readMinutes} min leitura
+            </span>
+          </div>
+          <h3 className="mt-3 max-w-[700px] text-[20px] font-black leading-[27.5px]">
+            {title}
+          </h3>
         </div>
-        <h3 className="mt-5 max-w-[700px] text-[22px] font-black leading-tight md:text-[26px]">
-          {title}
-        </h3>
       </div>
       {/* Footer with excerpt + author */}
-      <div className="px-6 py-5">
-        <p className="text-[15px] text-slate-700">{excerpt}</p>
+      <div className="px-6 py-6">
+        <p className="text-[16px] leading-[26px] text-[#4a5565]">{excerpt}</p>
         <div className="mt-5 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-patriota-medium text-[11px] font-bold text-white">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-patriota-pure text-[12px] font-bold text-patriota-accent">
               {author.initials}
             </span>
             <div className="text-[12px] leading-tight">
-              <p className="font-semibold text-slate-800">{author.name}</p>
-              <p className="text-slate-500">{publishedAt}</p>
+              <p className="font-semibold text-[#1e2939]">{author.name}</p>
+              <p className="text-[10px] text-[#99a1af]">{publishedAt}</p>
             </div>
           </div>
           <a
             href="#"
-            className="text-[13px] font-semibold text-patriota-medium hover:text-patriota-dark"
+            className="text-[12px] font-bold text-patriota-pure hover:opacity-80"
           >
             Ler artigo →
           </a>

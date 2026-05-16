@@ -109,7 +109,7 @@ export function ArticleSidebar() {
           <button
             type="button"
             aria-label="Reproduzir áudio do artigo"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-patriota-medium text-white transition hover:bg-patriota-dark"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-patriota-pure text-patriota-accent transition hover:opacity-90"
           >
             ▶
           </button>
@@ -121,7 +121,7 @@ export function ArticleSidebar() {
           </div>
         </div>
         <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-          <span className="block h-full w-1/3 rounded-full bg-patriota-medium" />
+          <span className="block h-full w-1/3 rounded-full bg-patriota-pure" />
         </div>
       </section>
 

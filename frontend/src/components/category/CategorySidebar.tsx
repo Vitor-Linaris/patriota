@@ -79,7 +79,7 @@ export function CategorySidebar({
                 href="#"
                 className="flex gap-4 rounded-xl border border-slate-200 bg-white p-4 transition hover:shadow-md"
               >
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-patriota-medium text-[12px] font-bold text-white">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-patriota-pure text-[12px] font-bold text-patriota-accent">
                   {o.initials}
                 </span>
                 <div className="min-w-0">
