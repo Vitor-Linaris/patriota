@@ -1,21 +1,22 @@
 import Image from "next/image";
+import Link from "next/link";
 import { Container } from "../Container";
 
 const NAV = [
-  { href: "#", label: "Última Hora", strong: true },
-  { href: "#", label: "Política" },
-  { href: "#", label: "Economia" },
-  { href: "#", label: "Sociedade" },
-  { href: "#", label: "Investigação" },
-  { href: "#", label: "Opinião" },
-  { href: "#", label: "Multimédia" },
+  { href: "/categoria/ultima-hora", label: "Última Hora", strong: true },
+  { href: "/categoria/politica", label: "Política" },
+  { href: "/categoria/economia", label: "Economia" },
+  { href: "/categoria/sociedade", label: "Sociedade" },
+  { href: "/categoria/investigacao", label: "Investigação" },
+  { href: "/categoria/opiniao", label: "Opinião" },
+  { href: "/categoria/multimedia", label: "Multimédia" },
 ];
 
 export function SiteHeader() {
   return (
     <header className="border-b border-slate-200 bg-white">
       <Container className="flex h-[82px] items-center justify-between">
-        <a href="/" aria-label="O Patriota" className="inline-flex">
+        <Link href="/" aria-label="O Patriota" className="inline-flex">
           <Image
             src="/brand/Logo-header.svg"
             alt="O Patriota"
@@ -23,10 +24,10 @@ export function SiteHeader() {
             height={54}
             priority
           />
-        </a>
+        </Link>
         <nav className="hidden items-center gap-7 text-[14px] lg:flex">
           {NAV.map((n) => (
-            <a
+            <Link
               key={n.label}
               href={n.href}
               className={
@@ -37,7 +38,7 @@ export function SiteHeader() {
               }
             >
               {n.label}
-            </a>
+            </Link>
           ))}
         </nav>
       </Container>
