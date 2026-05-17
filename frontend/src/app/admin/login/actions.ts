@@ -75,7 +75,7 @@ export async function loginAction(
     maxAge: 60 * 60 * 8, // 8h — matches backend JWT_EXPIRES_IN default
   });
 
-  redirect("/admin/permissions");
+  redirect("/admin");
 }
 
 export async function logoutAction() {

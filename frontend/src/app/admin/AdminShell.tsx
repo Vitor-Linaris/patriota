@@ -11,7 +11,7 @@ interface MeResponse {
 }
 
 const NAV = [
-  { href: "/admin/dashboard", label: "Dashboard", icon: "▦" },
+  { href: "/admin", label: "Dashboard", icon: "▦" },
   { href: "/admin/articles", label: "Artigos", icon: "▤" },
   { href: "/admin/users", label: "Utilizadores", icon: "○" },
   { href: "/admin/permissions", label: "Permissões RBAC", icon: "⚿" },
