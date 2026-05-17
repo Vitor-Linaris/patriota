@@ -15,8 +15,9 @@ const NAV = [
   { href: "/admin/artigos", label: "Artigos", icon: "▤" },
   { href: "/admin/utilizadores", label: "Utilizadores", icon: "○" },
   { href: "/admin/permissions", label: "Permissões RBAC", icon: "⚿" },
-  { href: "/admin/categories", label: "Categorias", icon: "◉" },
+  { href: "/admin/categorias", label: "Categorias", icon: "◉" },
   { href: "/admin/media", label: "Media", icon: "▣" },
+  { href: "/admin/publicidade", label: "Publicidade", icon: "◈" },
   { href: "/admin/newsletter", label: "Newsletter", icon: "✉" },
   { href: "/admin/settings", label: "Configurações", icon: "⚙" },
 ];
