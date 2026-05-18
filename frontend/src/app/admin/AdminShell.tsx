@@ -19,7 +19,7 @@ const NAV = [
   { href: "/admin/media", label: "Media", icon: "▣" },
   { href: "/admin/publicidade", label: "Publicidade", icon: "◈" },
   { href: "/admin/newsletter", label: "Newsletter", icon: "✉" },
-  { href: "/admin/settings", label: "Configurações", icon: "⚙" },
+  { href: "/admin/configuracoes", label: "Configurações", icon: "⚙" },
 ];
 
 const ROLE_LABEL: Record<string, string> = {
