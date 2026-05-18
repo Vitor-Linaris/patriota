@@ -27,6 +27,99 @@ enum ArticleStatus {
   ARQUIVADO
 }
 
+model Media {
+  id           String   @id @default(cuid())
+  url          String
+  name         String
+  mimeType     String?
+  size         Int?
+  width        Int?
+  height       Int?
+  uploadedById String?
+  uploadedAt   DateTime @default(now())
+
+  @@index([uploadedAt])
+}
+
+enum AdType {
+  EMPTY
+  IMAGE
+  HTML
+}
+
+model Ad {
+  id         String   @id
+  name       String
+  page       String
+  position   String
+  size       String
+  sizeLabel  String
+  type       AdType   @default(EMPTY)
+  enabled    Boolean  @default(true)
+  imageUrl   String?
+  linkUrl    String?
+  linkTarget String?
+  altText    String?
+  htmlCode   String?
+  updatedAt  DateTime @updatedAt @default(now())
+
+  @@index([page, enabled])
+}
+
+enum CampaignStatus {
+  RASCUNHO
+  AGENDADA
+  ENVIADA
+}
+
+enum SubscriberStatus {
+  ATIVO
+  INATIVO
+  CANCELADO
+}
+
+model NewsletterCampaign {
+  id          String         @id @default(cuid())
+  subject     String
+  preview     String         @default("")
+  segment     String         @default("Todos")
+  header      String         @default("")
+  body        String         @default("")
+  ctaText     String         @default("")
+  ctaUrl      String         @default("")
+  footer      String         @default("")
+  status      CampaignStatus @default(RASCUNHO)
+  scheduledAt DateTime?
+  sentAt      DateTime?
+  recipients  Int            @default(0)
+  opens       Int            @default(0)
+  clicks      Int            @default(0)
+  openRate    Float          @default(0)
+  clickRate   Float          @default(0)
+  createdAt   DateTime       @default(now())
+
+  @@index([status, scheduledAt])
+}
+
+model NewsletterSubscriber {
+  id       String           @id @default(cuid())
+  email    String           @unique
+  name     String           @default("")
+  status   SubscriberStatus @default(ATIVO)
+  segment  String           @default("Geral")
+  opens    Int              @default(0)
+  joinedAt DateTime         @default(now())
+
+  @@index([status])
+  @@index([segment])
+}
+
+model Setting {
+  section   String   @id
+  data      Json     @default("{}")
+  updatedAt DateTime @updatedAt @default(now())
+}
+
 model User {
   id                String   @id @default(cuid())
   email             String   @unique
