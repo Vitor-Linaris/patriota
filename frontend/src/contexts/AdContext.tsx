@@ -51,31 +51,43 @@ const AdContext = createContext<AdContextValue | null>(null);
 
 const STORAGE_KEY = "patriota_ads";
 
-function load(): Ad[] {
-  if (typeof window === "undefined") return DEFAULT_ADS;
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_ADS;
-    const saved: Ad[] = JSON.parse(raw);
-    return DEFAULT_ADS.map((def) => {
-      const found = saved.find((s) => s.id === def.id);
-      return found ? { ...def, ...found } : def;
-    });
-  } catch {
-    return DEFAULT_ADS;
-  }
+function mergeWithSaved(saved: Ad[]): Ad[] {
+  return DEFAULT_ADS.map((def) => {
+    const found = saved.find((s) => s.id === def.id);
+    return found ? { ...def, ...found } : def;
+  });
 }
 
 export function AdProvider({ children }: { children: ReactNode }) {
-  const [ads, setAds] = useState<Ad[]>(load);
+  // Always start from DEFAULT_ADS on both server and client so the first
+  // render matches and hydration succeeds. After mount, hydrate from
+  // localStorage on the client.
+  const [ads, setAds] = useState<Ad[]>(DEFAULT_ADS);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const saved: Ad[] = JSON.parse(raw);
+        setAds(mergeWithSaved(saved));
+      }
+    } catch {
+      /* ignore */
+    }
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    // Only persist after we've hydrated, so we don't immediately overwrite
+    // existing localStorage with the defaults on first mount.
+    if (!hydrated) return;
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(ads));
     } catch {
       /* ignore */
     }
-  }, [ads]);
+  }, [ads, hydrated]);
 
   const updateAd = (id: string, patch: Partial<Ad>) => {
     setAds((prev) =>
