@@ -9,6 +9,7 @@ import { RbacModule } from './rbac/rbac.module';
 import { ActivityLogModule } from './activity-log/activity-log.module';
 import { CategoriesModule } from './categories/categories.module';
 import { ArticlesModule } from './articles/articles.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { ArticlesModule } from './articles/articles.module';
     ActivityLogModule,
     CategoriesModule,
     ArticlesModule,
+    UsersModule,
   ],
   controllers: [AppController],
   providers: [AppService],

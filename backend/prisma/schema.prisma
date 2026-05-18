@@ -28,14 +28,18 @@ enum ArticleStatus {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  password  String
-  role      Role     @default(JORNALISTA)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                String   @id @default(cuid())
+  email             String   @unique
+  name              String?
+  password          String
+  role              Role     @default(JORNALISTA)
+  isActive          Boolean  @default(true)
+  bio               String?
+  phone             String?
+  avatarUrl         String?
+  notificationPrefs Json     @default("{}")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   activities ActivityLog[]
   articles   Article[]
