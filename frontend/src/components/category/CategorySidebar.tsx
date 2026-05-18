@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { SectionMarker } from "./SectionMarker";
-import { CATEGORIES } from "@/lib/categories";
+import { getCategories } from "@/lib/categories";
 
 interface CategorySidebarProps {
   currentSlug: string;
@@ -32,14 +32,14 @@ const OTHER_COUNTS: Record<string, number> = {
   tecnologia: 15,
 };
 
-export function CategorySidebar({
+export async function CategorySidebar({
   currentSlug,
   newsletterTitle,
 }: CategorySidebarProps) {
-  const others = CATEGORIES.filter(
-    (c) =>
-      c.slug !== currentSlug && OTHER_COUNTS[c.slug] !== undefined,
-  ).slice(0, 5);
+  const cats = await getCategories();
+  const others = cats
+    .filter((c) => c.slug !== currentSlug && OTHER_COUNTS[c.slug] !== undefined)
+    .slice(0, 5);
 
   return (
     <aside className="flex flex-col gap-8">

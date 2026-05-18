@@ -15,11 +15,12 @@ import {
 import { Pagination } from "@/components/category/Pagination";
 import { CategorySidebar } from "@/components/category/CategorySidebar";
 import { SectionMarker } from "@/components/category/SectionMarker";
-import { getCategoryBySlug, CATEGORIES } from "@/lib/categories";
+import { getCategoryBySlug, getCategories } from "@/lib/categories";
 
 // Pre-render the category routes that we know about at build time.
 export async function generateStaticParams() {
-  return CATEGORIES.map((c) => ({ slug: c.slug }));
+  const cats = await getCategories();
+  return cats.map((c) => ({ slug: c.slug }));
 }
 
 const FILTERS = ["Mais Recentes", "Mais Lidas", "Mais Comentadas"] as const;
@@ -118,7 +119,7 @@ export default async function CategoryPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const category = getCategoryBySlug(slug);
+  const category = await getCategoryBySlug(slug);
   if (!category) notFound();
 
   const articleCount = MOCK_ARTICLES.length + 1; // featured + list

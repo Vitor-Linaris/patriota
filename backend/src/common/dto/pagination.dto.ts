@@ -28,7 +28,10 @@ export interface PageResult<T> {
 }
 
 /** Helper to convert a query into Prisma's skip/take. */
-export function toSkipTake(query: PageQueryDto): { skip: number; take: number } {
+export function toSkipTake(query: PageQueryDto): {
+  skip: number;
+  take: number;
+} {
   const page = query.page ?? 1;
   const pageSize = query.pageSize ?? 20;
   return { skip: (page - 1) * pageSize, take: pageSize };

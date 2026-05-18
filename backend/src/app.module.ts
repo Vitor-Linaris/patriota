@@ -7,6 +7,7 @@ import { RedisModule } from './redis/redis.module';
 import { AuthModule } from './auth/auth.module';
 import { RbacModule } from './rbac/rbac.module';
 import { ActivityLogModule } from './activity-log/activity-log.module';
+import { CategoriesModule } from './categories/categories.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { ActivityLogModule } from './activity-log/activity-log.module';
     RbacModule,
     AuthModule,
     ActivityLogModule,
+    CategoriesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

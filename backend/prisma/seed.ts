@@ -100,6 +100,46 @@ async function main() {
     });
   }
 
+  // Default editorial categories — idempotent via upsert by slug
+  const CATEGORIES = [
+    { slug: 'politica', name: 'Política', description: 'Parlamento, governo, partidos e eleições em Portugal.', icon: '◆', color: '#1e40af', order: 1, subtopics: ['Orçamento 2026', 'Parlamento', 'Governo', 'Partidos', 'Eleições', 'Diplomacia'] },
+    { slug: 'economia', name: 'Economia', description: 'Análise económica, mercados, empresas e finanças públicas.', icon: '◈', color: '#065f46', order: 2, subtopics: ['Mercados', 'Empresas', 'Habitação', 'Turismo', 'Trabalho'] },
+    { slug: 'sociedade', name: 'Sociedade', description: 'Habitação, trabalho, saúde e os temas do dia a dia.', icon: '◎', color: '#7c3aed', order: 3, subtopics: ['Educação', 'Saúde', 'Ambiente', 'Imigração'] },
+    { slug: 'investigacao', name: 'Investigação', description: 'Jornalismo de investigação e dados em profundidade.', icon: '◉', color: '#991b1b', order: 4, subtopics: ['Corrupção', 'Justiça', 'Contratos públicos'] },
+    { slug: 'mundo', name: 'Mundo', description: 'Política internacional, conflitos e diplomacia global.', icon: '◇', color: '#0e7490', order: 5, subtopics: ['Europa', 'EUA', 'Brasil', 'Conflitos'] },
+    { slug: 'tecnologia', name: 'Tecnologia', description: 'IA, startups, regulação digital e telecomunicações.', icon: '▣', color: '#0891b2', order: 6, subtopics: ['IA', 'Startups', 'Cibersegurança'] },
+    { slug: 'saude', name: 'Saúde', description: 'SNS, doenças, prevenção e políticas de saúde.', icon: '◑', color: '#059669', order: 7, subtopics: ['SNS', 'Medicamentos', 'Saúde Mental'] },
+    { slug: 'cultura', name: 'Cultura', description: 'Livros, cinema, música e espetáculos.', icon: '◈', color: '#b45309', order: 8, subtopics: ['Cinema', 'Literatura', 'Música', 'Teatro'] },
+    { slug: 'desporto', name: 'Desporto', description: 'Futebol, modalidades e cobertura olímpica.', icon: '◎', color: '#dc2626', order: 9, subtopics: ['Futebol', 'Modalidades', 'Olimpíadas'] },
+  ];
+
+  for (const c of CATEGORIES) {
+    const cat = await prisma.category.upsert({
+      where: { slug: c.slug },
+      update: { name: c.name, description: c.description, icon: c.icon, color: c.color, order: c.order },
+      create: {
+        slug: c.slug,
+        name: c.name,
+        description: c.description,
+        icon: c.icon,
+        color: c.color,
+        order: c.order,
+        visible: true,
+      },
+    });
+    // Only seed subtopics if the category has none yet
+    const existing = await prisma.subtopic.count({ where: { categoryId: cat.id } });
+    if (existing === 0) {
+      await prisma.subtopic.createMany({
+        data: c.subtopics.map((label, i) => ({
+          categoryId: cat.id,
+          label,
+          order: i,
+        })),
+      });
+    }
+  }
+
   console.log('Seed complete.');
   console.log(`  Super Admin → ${user.email}`);
   if (!process.env.SUPERADMIN_PASSWORD) {
