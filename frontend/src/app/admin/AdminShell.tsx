@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { logoutAction } from "./login/actions";
 import { apiFetch } from "@/lib/api";
+import { UserDropdown } from "./UserDropdown";
 
 interface MeResponse {
   id: string;
@@ -32,6 +33,18 @@ const ROLE_LABEL: Record<string, string> = {
   ANALISTA: "Analista",
 };
 
+function getInitials(name: string | null, email: string): string {
+  if (name) {
+    return name
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((n) => n[0].toUpperCase())
+      .join("");
+  }
+  return email.slice(0, 2).toUpperCase();
+}
+
 export async function AdminShell({
   active,
   children,
@@ -41,6 +54,12 @@ export async function AdminShell({
 }) {
   const res = await apiFetch("/auth/me");
   const me = (await res.json()) as MeResponse;
+  const roleLabel = ROLE_LABEL[me.role] ?? me.role;
+  const displayName = me.name ?? me.email;
+  const initials = getInitials(me.name, me.email);
+
+  const activeItem = NAV.find((n) => n.href === active);
+  const isProfile = active === "/admin/perfil";
 
   return (
     <div className="flex min-h-screen bg-[#f6f7fb] text-[#101729]">
@@ -81,20 +100,27 @@ export async function AdminShell({
         </div>
 
         <div className="border-t border-white/5 px-4 py-5">
-          <div className="flex items-center gap-3">
+          {/* User card → links to profile */}
+          <Link
+            href="/admin/perfil"
+            className="group flex items-center gap-3 rounded-[8px] bg-white/5 p-2 transition hover:bg-white/10"
+          >
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-patriota-accent/20 text-sm font-bold text-patriota-accent">
-              {(me.name ?? me.email).slice(0, 1).toUpperCase()}
+              {initials}
             </div>
-            <div className="flex flex-1 flex-col leading-tight">
-              <span className="text-sm font-semibold text-white">
-                {me.name ?? me.email}
+            <div className="flex min-w-0 flex-1 flex-col leading-tight">
+              <span className="truncate text-sm font-semibold text-white">
+                {displayName}
               </span>
               <span className="text-[10px] uppercase tracking-[0.5px] text-patriota-accent/80">
-                {ROLE_LABEL[me.role] ?? me.role}
+                {roleLabel}
               </span>
             </div>
-          </div>
-          <form action={logoutAction} className="mt-4">
+            <span className="text-white/30 transition-colors group-hover:text-white/70">
+              ›
+            </span>
+          </Link>
+          <form action={logoutAction} className="mt-3">
             <button
               type="submit"
               className="w-full rounded-[8px] border border-white/10 px-3 py-2 text-xs text-white/60 transition hover:border-white/20 hover:text-white"
@@ -106,7 +132,36 @@ export async function AdminShell({
       </aside>
 
       {/* Main */}
-      <div className="flex flex-1 flex-col">{children}</div>
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* Top bar with avatar dropdown */}
+        <header className="flex h-14 shrink-0 items-center justify-between border-b border-gray-200 bg-white px-6">
+          <div className="flex items-center gap-3 text-sm">
+            {activeItem && (
+              <>
+                <span className="text-gray-300">/</span>
+                <span className="font-bold text-[#0F2C6B]">
+                  {activeItem.label}
+                </span>
+              </>
+            )}
+            {isProfile && (
+              <>
+                <span className="text-gray-300">/</span>
+                <span className="font-bold text-[#0F2C6B]">O meu perfil</span>
+              </>
+            )}
+          </div>
+          <UserDropdown
+            name={displayName}
+            email={me.email}
+            roleLabel={roleLabel}
+            initials={initials}
+          />
+        </header>
+
+        {/* Page content */}
+        <div className="flex flex-1 flex-col">{children}</div>
+      </div>
     </div>
   );
 }
