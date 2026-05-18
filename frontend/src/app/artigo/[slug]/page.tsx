@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { Container } from "@/components/Container";
 import { TopBar } from "@/components/home/TopBar";
 import { BreakingNews } from "@/components/home/BreakingNews";
@@ -11,19 +12,22 @@ import { ContextBox } from "@/components/article/ContextBox";
 import { Blockquote } from "@/components/article/Blockquote";
 import { AuthorBio } from "@/components/article/AuthorBio";
 import { ArticleSidebar } from "@/components/article/ArticleSidebar";
+import { getArticleBySlug, timeAgo } from "@/lib/public-api";
 
-/**
- * Article detail page. Currently renders mock data so the layout matches
- * the Figma frame (15022:777). When the backend articles endpoint is in
- * place, replace the const below with a `apiFetch(`/articles/${slug}`)`.
- */
 export default async function ArticlePage({
   params,
 }: {
   params: Promise<{ slug: string }>;
 }) {
-  // The slug is accepted but not yet used — mock data below.
-  await params;
+  const { slug } = await params;
+  const article = await getArticleBySlug(slug);
+  if (!article) notFound();
+  const authorInitials = (article.author.name ?? "??")
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((n) => n[0]?.toUpperCase() ?? "")
+    .join("");
 
   return (
     <div className="flex flex-1 flex-col bg-white text-slate-900">
@@ -54,53 +58,47 @@ export default async function ArticlePage({
                   Início
                 </Link>
                 <span aria-hidden>/</span>
-                <Link href="#" className="hover:text-slate-900">
-                  Política
+                <Link
+                  href={`/categoria/${article.category.slug}`}
+                  className="hover:text-slate-900"
+                >
+                  {article.category.name}
                 </Link>
-                <span aria-hidden>/</span>
-                <span className="text-slate-700">Orçamento do Estado</span>
               </nav>
 
               {/* Category + topic */}
               <div className="mt-5 flex flex-wrap items-center gap-3">
                 <span className="inline-flex rounded-[4px] bg-patriota-medium px-3 py-1 text-[12px] font-bold uppercase tracking-wide text-white">
-                  Política
-                </span>
-                <span aria-hidden className="text-[#d1d5dc]">·</span>
-                <span className="text-[13px] font-semibold text-[#6a7282]">
-                  Orçamento do Estado 2026
+                  {article.category.name}
                 </span>
               </div>
 
               {/* Headline */}
               <h1 className="mt-4 text-[32px] font-black leading-[1.15] text-slate-900 md:text-[42px] md:leading-[1.1]">
-                Governo apresenta proposta de orçamento com aumento de 3,2% na
-                despesa pública
+                {article.title}
               </h1>
 
               {/* Lead */}
-              <p className="mt-6 border-l-4 border-patriota-accent pl-5 text-[18px] leading-relaxed text-slate-700">
-                Ministério das Finanças defende que crescimento é sustentável
-                face às projeções de crescimento do PIB para 2026, mas oposição
-                questiona sustentabilidade fiscal.
-              </p>
+              {article.summary && (
+                <p className="mt-6 border-l-4 border-patriota-accent pl-5 text-[18px] leading-relaxed text-slate-700">
+                  {article.summary}
+                </p>
+              )}
 
               {/* Author + share */}
               <div className="mt-8 flex flex-wrap items-center gap-4 border-y border-slate-200 py-4">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-patriota-pure text-[13px] font-bold text-patriota-accent">
-                  AF
+                  {authorInitials}
                 </span>
                 <div className="flex-1">
                   <p className="text-[14px] font-bold text-slate-900">
-                    Ana Ferreira
+                    {article.author.name ?? "Redação"}
                   </p>
-                  <p className="text-[12px] text-slate-500">
-                    Correspondente Parlamentar
-                  </p>
+                  <p className="text-[12px] text-slate-500">O Patriota Notícias</p>
                 </div>
                 <div className="text-right text-[12px] leading-relaxed text-slate-500">
-                  <p>12 abr 2026, 14h22</p>
-                  <p>Atualizado 16h05 · 4 min leitura</p>
+                  <p>{timeAgo(article.publishedAt)}</p>
+                  <p>{article.readMinutes} min leitura</p>
                 </div>
                 <div className="flex gap-2">
                   <ShareButton aria="Partilhar no Facebook" glyph="f" />
@@ -137,15 +135,17 @@ export default async function ArticlePage({
                 </figcaption>
               </figure>
 
-              {/* Body paragraph 1 */}
-              <p className="mt-8 text-[16px] leading-relaxed text-slate-800">
-                O Governo apresentou esta segunda-feira na Assembleia da
-                República a proposta de Orçamento do Estado para 2026, prevendo
-                um aumento de 3,2% na despesa pública em relação ao ano
-                anterior, num documento que o Ministério das Finanças descreve
-                como &ldquo;responsável e orientado para o crescimento
-                sustentável&rdquo;.
-              </p>
+              {/* Body */}
+              {article.content ? (
+                <div
+                  className="prose prose-slate mt-8 max-w-none text-[16px] leading-relaxed text-slate-800 [&_p]:mt-4"
+                  dangerouslySetInnerHTML={{ __html: article.content }}
+                />
+              ) : (
+                <p className="mt-8 text-[16px] leading-relaxed text-slate-800">
+                  {article.summary}
+                </p>
+              )}
 
               {/* Context */}
               <div className="mt-8">
@@ -237,10 +237,10 @@ export default async function ArticlePage({
               {/* Author bio */}
               <div className="mt-10">
                 <AuthorBio
-                  initials="AF"
-                  name="Ana Ferreira"
-                  role="Correspondente Parlamentar · O Patriota Notícias"
-                  bio="Jornalista com 12 anos de experiência a cobrir política nacional. Distinguida com o Prémio de Jornalismo Parlamento 2023."
+                  initials={authorInitials}
+                  name={article.author.name ?? "Redação"}
+                  role="O Patriota Notícias"
+                  bio="Jornalista da equipa editorial do O Patriota."
                 />
               </div>
             </article>

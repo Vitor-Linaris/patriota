@@ -9,8 +9,10 @@ import { LatestNews } from "@/components/home/LatestNews";
 import { InvestigationSection } from "@/components/home/InvestigationSection";
 import { Sidebar } from "@/components/home/Sidebar";
 import { SiteFooter } from "@/components/home/SiteFooter";
+import { getHomepage } from "@/lib/public-api";
 
-export default function HomePage() {
+export default async function HomePage() {
+  const home = await getHomepage();
   return (
     <div className="flex flex-1 flex-col bg-white text-slate-900">
       {/* Full-width chrome */}
@@ -31,15 +33,15 @@ export default function HomePage() {
       {/* Main content */}
       <main className="bg-slate-50 py-8">
         <Container>
-          <HeroGrid />
+          <HeroGrid featured={home.featured} side={home.side} />
 
           <div className="mt-10 grid grid-cols-1 gap-8 lg:grid-cols-12">
             <div className="col-span-1 flex flex-col gap-10 lg:col-span-8">
-              <LatestNews />
+              <LatestNews items={home.latest} />
 
               <AdInline />
 
-              <InvestigationSection />
+              <InvestigationSection items={home.investigation} />
             </div>
             <div className="col-span-1 lg:col-span-4">
               <Sidebar />

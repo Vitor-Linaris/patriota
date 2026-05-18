@@ -1,0 +1,158 @@
+import { INestApplication } from '@nestjs/common';
+import request from 'supertest';
+import { createTestApp } from './helpers/app';
+import { makeUser, bearer } from './helpers/auth';
+import { truncate } from './helpers/db';
+import { PrismaService } from '../src/prisma/prisma.service';
+
+describe('Articles (e2e)', () => {
+  let app: INestApplication;
+  let categoryId = '';
+
+  beforeAll(async () => {
+    app = await createTestApp();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  beforeEach(async () => {
+    await truncate(app, ['Article', 'Subtopic', 'Category']);
+    const prisma = app.get(PrismaService);
+    const cat = await prisma.category.create({
+      data: {
+        slug: 'politica',
+        name: 'Política',
+        description: 'd',
+        icon: '◆',
+        color: '#1e40af',
+        order: 1,
+        visible: true,
+      },
+    });
+    categoryId = cat.id;
+  });
+
+  it('POST /admin/articles rejects without auth', async () => {
+    await request(app.getHttpServer())
+      .post('/admin/articles')
+      .send({ title: 'Artigo do jornalista', categoryId })
+      .expect(401);
+  });
+
+  it('Editor creates → publishes → article visible publicly', async () => {
+    const editor = await makeUser(app, { role: 'EDITOR_CHEFE' });
+    const created = await request(app.getHttpServer())
+      .post('/admin/articles')
+      .set(bearer(editor))
+      .send({
+        title: 'Governo aprova novo orçamento',
+        summary: 'Detalhes...',
+        content: '<p>Corpo</p>',
+        categoryId,
+      })
+      .expect(201);
+    expect(created.body.slug).toBe('governo-aprova-novo-orcamento');
+    expect(created.body.status).toBe('RASCUNHO');
+
+    // Public should NOT see it yet
+    await request(app.getHttpServer())
+      .get('/public/articles/by-slug/governo-aprova-novo-orcamento')
+      .expect(404);
+
+    // Publish
+    const pub = await request(app.getHttpServer())
+      .post(`/admin/articles/${created.body.id}/publish`)
+      .set(bearer(editor))
+      .expect(201);
+    expect(pub.body.status).toBe('PUBLICADO');
+
+    // Public should now find it
+    const fetched = await request(app.getHttpServer())
+      .get('/public/articles/by-slug/governo-aprova-novo-orcamento')
+      .expect(200);
+    expect(fetched.body.title).toBe('Governo aprova novo orçamento');
+  });
+
+  it('JORNALISTA can only edit own articles (editar_proprios)', async () => {
+    const author = await makeUser(app, { role: 'JORNALISTA' });
+    const other = await makeUser(app, { role: 'JORNALISTA' });
+
+    const created = await request(app.getHttpServer())
+      .post('/admin/articles')
+      .set(bearer(author))
+      .send({ title: 'Meu artigo', categoryId })
+      .expect(201);
+
+    // Author can edit own
+    await request(app.getHttpServer())
+      .patch(`/admin/articles/${created.body.id}`)
+      .set(bearer(author))
+      .send({ title: 'Meu artigo editado' })
+      .expect(200);
+
+    // Other journalist cannot edit
+    await request(app.getHttpServer())
+      .patch(`/admin/articles/${created.body.id}`)
+      .set(bearer(other))
+      .send({ title: 'Sabotage' })
+      .expect(403);
+  });
+
+  it('JORNALISTA cannot publish (lacks artigos.publicar)', async () => {
+    const author = await makeUser(app, { role: 'JORNALISTA' });
+    const created = await request(app.getHttpServer())
+      .post('/admin/articles')
+      .set(bearer(author))
+      .send({ title: 'Artigo do jornalista', categoryId })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(`/admin/articles/${created.body.id}/publish`)
+      .set(bearer(author))
+      .expect(403);
+  });
+
+  it('GET /public/homepage returns featured + side + latest bundle', async () => {
+    const editor = await makeUser(app, { role: 'EDITOR_CHEFE' });
+    for (let i = 0; i < 5; i++) {
+      const a = await request(app.getHttpServer())
+        .post('/admin/articles')
+        .set(bearer(editor))
+        .send({ title: `Article ${i}`, categoryId, content: '<p>x</p>' });
+      await request(app.getHttpServer())
+        .post(`/admin/articles/${a.body.id}/publish`)
+        .set(bearer(editor));
+    }
+    const res = await request(app.getHttpServer())
+      .get('/public/homepage')
+      .expect(200);
+    expect(res.body.featured).toBeTruthy();
+    expect(Array.isArray(res.body.side)).toBe(true);
+    expect(Array.isArray(res.body.latest)).toBe(true);
+  });
+
+  it('GET /public/articles only lists PUBLICADO', async () => {
+    const editor = await makeUser(app, { role: 'EDITOR_CHEFE' });
+    const draft = await request(app.getHttpServer())
+      .post('/admin/articles')
+      .set(bearer(editor))
+      .send({ title: 'Draft', categoryId });
+    const published = await request(app.getHttpServer())
+      .post('/admin/articles')
+      .set(bearer(editor))
+      .send({ title: 'Published', categoryId });
+    await request(app.getHttpServer())
+      .post(`/admin/articles/${published.body.id}/publish`)
+      .set(bearer(editor));
+
+    const res = await request(app.getHttpServer())
+      .get('/public/articles')
+      .expect(200);
+    expect(res.body.total).toBe(1);
+    const titles = (res.body.items as { title: string }[]).map((a) => a.title);
+    expect(titles).toContain('Published');
+    expect(titles).not.toContain('Draft');
+    void draft;
+  });
+});

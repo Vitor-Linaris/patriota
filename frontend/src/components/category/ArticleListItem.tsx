@@ -8,12 +8,13 @@ export interface ArticleListItemData {
   authorInitials: string;
   authorName: string;
   date: string;
+  slug?: string;
 }
 
 export function ArticleListItem({ item }: { item: ArticleListItemData }) {
   return (
     <a
-      href="#"
+      href={item.slug ? `/artigo/${item.slug}` : "#"}
       className="flex gap-5 rounded-[12px] border border-[#f3f4f6] bg-white p-5 shadow-[0px_1px_3px_0px_rgba(0,0,0,0.05)] transition hover:shadow-md"
     >
       <span className="w-6 shrink-0 text-[20px] font-black leading-none text-patriota-accent">

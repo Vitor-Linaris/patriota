@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module';
 import { RbacModule } from './rbac/rbac.module';
 import { ActivityLogModule } from './activity-log/activity-log.module';
 import { CategoriesModule } from './categories/categories.module';
+import { ArticlesModule } from './articles/articles.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { CategoriesModule } from './categories/categories.module';
     AuthModule,
     ActivityLogModule,
     CategoriesModule,
+    ArticlesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

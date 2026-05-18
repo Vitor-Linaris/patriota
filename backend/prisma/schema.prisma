@@ -20,6 +20,13 @@ enum Role {
   ANALISTA
 }
 
+enum ArticleStatus {
+  RASCUNHO
+  AGENDADO
+  PUBLICADO
+  ARQUIVADO
+}
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -31,6 +38,7 @@ model User {
   updatedAt DateTime @updatedAt
 
   activities ActivityLog[]
+  articles   Article[]
 }
 
 model Category {
@@ -43,8 +51,37 @@ model Category {
   order       Int        @default(0)
   visible     Boolean    @default(true)
   subtopics   Subtopic[]
+  articles    Article[]
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
+}
+
+model Article {
+  id              String        @id @default(cuid())
+  slug            String        @unique
+  title           String
+  summary         String        @default("")
+  content         String        @default("")
+  status          ArticleStatus @default(RASCUNHO)
+  premium         Boolean       @default(false)
+  views           Int           @default(0)
+  readMinutes     Int           @default(3)
+  tags            String[]      @default([])
+  metaTitle       String?
+  metaDescription String?
+  coverImageUrl   String?
+  scheduledAt     DateTime?
+  publishedAt     DateTime?
+  categoryId      String
+  authorId        String
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  category Category @relation(fields: [categoryId], references: [id])
+  author   User     @relation(fields: [authorId], references: [id])
+
+  @@index([categoryId, status, publishedAt])
+  @@index([status, publishedAt])
 }
 
 model Subtopic {
