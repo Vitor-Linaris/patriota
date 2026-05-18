@@ -140,12 +140,161 @@ async function main() {
     }
   }
 
+  // ── Editorial team (10 demo users) ───────────────────────────────
+  const TEAM: { email: string; name: string; role: (typeof ROLE_ORDER)[number] }[] = [
+    { email: 'editor.chefe@opatriota.pt', name: 'Rui Cardoso', role: 'EDITOR_CHEFE' },
+    { email: 'editor1@opatriota.pt', name: 'Paulo Ferreira', role: 'EDITOR' },
+    { email: 'editor2@opatriota.pt', name: 'Marta Sousa', role: 'EDITOR' },
+    { email: 'jorn1@opatriota.pt', name: 'Ana Ferreira', role: 'JORNALISTA' },
+    { email: 'jorn2@opatriota.pt', name: 'Carlos Neves', role: 'JORNALISTA' },
+    { email: 'jorn3@opatriota.pt', name: 'Inês Rodrigues', role: 'JORNALISTA' },
+    { email: 'revisor@opatriota.pt', name: 'Sofia Pinto', role: 'REVISOR' },
+    { email: 'moderador@opatriota.pt', name: 'Ana Lopes', role: 'MODERADOR' },
+    { email: 'analista@opatriota.pt', name: 'Beatriz Faria', role: 'ANALISTA' },
+  ];
+  const teamPasswordHash = await bcrypt.hash('Patriota2026!', 12);
+  for (const t of TEAM) {
+    await prisma.user.upsert({
+      where: { email: t.email },
+      update: { name: t.name, role: t.role, isActive: true },
+      create: {
+        email: t.email,
+        name: t.name,
+        role: t.role,
+        password: teamPasswordHash,
+        isActive: true,
+      },
+    });
+  }
+
+  // ── Articles ─────────────────────────────────────────────────────
+  const existingArticles = await prisma.article.count();
+  if (existingArticles < 30) {
+    const categoryRows = await prisma.category.findMany();
+    const authors = await prisma.user.findMany({
+      where: { role: { in: ['EDITOR', 'EDITOR_CHEFE', 'JORNALISTA'] } },
+    });
+
+    const TITLES: Record<string, string[]> = {
+      politica: [
+        'Governo apresenta proposta de orçamento com aumento de 3,2%',
+        'PS reage com críticas ao modelo de financiamento',
+        'Chega anuncia voto contra orçamento sem negociação prévia',
+        'Conselho de Ministros aprova pacote de medidas anti-corrupção',
+        'Marcelo apela ao diálogo sobre nova lei do arrendamento',
+      ],
+      economia: [
+        'Banco de Portugal revê projeção do PIB em alta para 2026',
+        'Exportações atingem máximo histórico no primeiro trimestre',
+        'FMI alerta para riscos da dívida pública europeia',
+        'TAP regista lucro operacional pelo segundo trimestre',
+        'Inflação desce para 2,1% em abril, abaixo das previsões',
+      ],
+      sociedade: [
+        'Crise da habitação em Lisboa atinge novos máximos',
+        'Greve dos professores paralisa escolas no Norte',
+        'Estudo: portugueses trabalham mais que a média europeia',
+        'Câmaras municipais reforçam apoio social no inverno',
+      ],
+      investigacao: [
+        'Contratos públicos: auditoria revela irregularidades em 47 processos',
+        'Máfia dos Seguros: como uma rede ilegal funciona à luz do dia',
+        'O que dizem os contratos que o governo não quis mostrar',
+      ],
+      mundo: [
+        'Cimeira europeia debate regras para plataformas digitais',
+        'Brasil estreita laços comerciais com Portugal em nova visita',
+        'Eleições nos EUA mantêm Senado dividido por margem mínima',
+      ],
+      tecnologia: [
+        'IA na redacção: oportunidades e riscos para o jornalismo',
+        'Startups portuguesas captam 300 milhões em ronda recorde',
+        'Ciber-ataque a serviços públicos exige resposta coordenada',
+      ],
+      saude: [
+        'SNS recebe reforço de 12% em financiamento hospitalar',
+        'Listas de espera caem 18% em 12 meses no Norte',
+      ],
+      cultura: [
+        'Festival NOS regressa ao Parque da Bela Vista em Julho',
+        'Cinema português conquista prémio em Veneza',
+      ],
+      desporto: [
+        'Sporting reage com cautela à proposta da Liga',
+        'Atletismo: novos recordes nacionais em pista coberta',
+      ],
+    };
+
+    for (const cat of categoryRows) {
+      const slugTitles = TITLES[cat.slug] ?? [];
+      for (let i = 0; i < slugTitles.length; i++) {
+        const title = slugTitles[i];
+        const slug = title
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[̀-ͯ]/g, '')
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/(^-|-$)/g, '')
+          .slice(0, 80);
+        const author = authors[(slugTitles.length * i) % authors.length] ?? authors[0];
+        // 80% published, 10% draft, 10% scheduled
+        const r = Math.random();
+        const status =
+          r < 0.8 ? 'PUBLICADO' : r < 0.9 ? 'RASCUNHO' : 'AGENDADO';
+        const publishedAt =
+          status === 'PUBLICADO'
+            ? new Date(Date.now() - i * 3 * 3600_000)
+            : null;
+        await prisma.article.upsert({
+          where: { slug },
+          update: {},
+          create: {
+            slug,
+            title,
+            summary:
+              'Análise dos desenvolvimentos mais recentes — leitura essencial para perceber o impacto na actualidade portuguesa.',
+            content: `<p>${title}.</p><p>Análise em desenvolvimento. Equipa editorial do <strong>Patriota</strong> a acompanhar o tema com atualizações ao longo do dia.</p><p>Resumo: factos verificados, fontes oficiais e opinião especializada — o ponto de situação claro e objectivo.</p>`,
+            status,
+            categoryId: cat.id,
+            authorId: author?.id ?? user.id,
+            readMinutes: 3 + Math.floor(Math.random() * 7),
+            views: status === 'PUBLICADO' ? Math.floor(Math.random() * 20000) : 0,
+            publishedAt,
+          },
+        });
+      }
+    }
+  }
+
+  // ── Newsletter subscribers (sample) ───────────────────────────────
+  const SUBS = [
+    'maria.santos@gmail.com',
+    'joao.ferreira@outlook.pt',
+    'ana.costa@sapo.pt',
+    'sofia.lopes@gmail.com',
+    'tiago.rodrigues@sapo.pt',
+  ];
+  for (const email of SUBS) {
+    await prisma.newsletterSubscriber.upsert({
+      where: { email },
+      update: {},
+      create: {
+        email,
+        name: email.split('@')[0].replace('.', ' '),
+        status: 'ATIVO',
+        segment: 'Geral',
+      },
+    });
+  }
+
   console.log('Seed complete.');
   console.log(`  Super Admin → ${user.email}`);
   if (!process.env.SUPERADMIN_PASSWORD) {
     console.log(`  Senha de desenvolvimento: ${password}`);
     console.log('  (defina SUPERADMIN_PASSWORD para sobrescrever)');
   }
+  console.log('  Editorial team (password: Patriota2026!):');
+  for (const t of TEAM) console.log(`    ${t.email} · ${t.role}`);
 }
 
 main()
