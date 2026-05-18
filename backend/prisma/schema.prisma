@@ -29,6 +29,23 @@ model User {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  activities ActivityLog[]
+}
+
+model ActivityLog {
+  id          String   @id @default(cuid())
+  userId      String
+  action      String
+  targetType  String
+  targetId    String?
+  targetLabel String
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([userId, createdAt])
 }
 
 /// Per-role permission overrides. SUPER_ADMIN is always implicitly all.

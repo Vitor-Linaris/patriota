@@ -6,6 +6,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { AuthModule } from './auth/auth.module';
 import { RbacModule } from './rbac/rbac.module';
+import { ActivityLogModule } from './activity-log/activity-log.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { RbacModule } from './rbac/rbac.module';
     RedisModule,
     RbacModule,
     AuthModule,
+    ActivityLogModule,
   ],
   controllers: [AppController],
   providers: [AppService],
