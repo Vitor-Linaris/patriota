@@ -48,7 +48,10 @@ export function RichTextEditor({
     immediatelyRender: false, // avoid SSR hydration mismatch
     extensions: [
       StarterKit.configure({
-        heading: { levels: [2, 3, 4] },
+        // H1 is intentionally kept off the public article body — the
+        // article page already renders the title as <h1>, so the body
+        // starts at H2 for clean document outline / SEO.
+        heading: { levels: [1, 2, 3, 4] },
         link: {
           openOnClick: false,
           autolink: true,
@@ -65,8 +68,12 @@ export function RichTextEditor({
     content: initialValue,
     editorProps: {
       attributes: {
+        // Note: we do NOT use Tailwind's `prose` plugin (it's not
+        // installed under Tailwind v4 here). Explicit heading styles
+        // live in the className below so the editor renders the same
+        // typography as the public article page.
         class:
-          "prose prose-slate max-w-none px-5 py-4 focus:outline-none [&_p]:my-3 [&_h2]:mt-6 [&_h3]:mt-5",
+          "tiptap-editor max-w-none px-5 py-4 text-[16px] leading-relaxed text-slate-800 focus:outline-none",
       },
     },
     onUpdate({ editor }) {
@@ -209,29 +216,28 @@ function Toolbar({
 
   return (
     <div className="flex flex-wrap items-center gap-1 border-b border-gray-100 px-3 py-2 text-xs">
-      <select
-        value={
-          editor.isActive("heading", { level: 2 })
-            ? "h2"
-            : editor.isActive("heading", { level: 3 })
-              ? "h3"
-              : editor.isActive("heading", { level: 4 })
-                ? "h4"
-                : "p"
+      <Btn
+        title="Parágrafo"
+        active={
+          !editor.isActive("heading") &&
+          (editor.isActive("paragraph") || editor.state.selection.empty)
         }
-        onChange={(e) => {
-          const v = e.target.value;
-          const c = editor.chain().focus();
-          if (v === "p") c.setParagraph().run();
-          else c.toggleHeading({ level: Number(v.slice(1)) as 2 | 3 | 4 }).run();
-        }}
-        className="h-7 rounded border border-gray-200 bg-white px-2 text-[12px] focus:border-[#0F2C6B] focus:outline-none"
+        onClick={() => editor.chain().focus().setParagraph().run()}
       >
-        <option value="p">Parágrafo</option>
-        <option value="h2">Título 2</option>
-        <option value="h3">Título 3</option>
-        <option value="h4">Título 4</option>
-      </select>
+        P
+      </Btn>
+      {([1, 2, 3, 4] as const).map((level) => (
+        <Btn
+          key={level}
+          title={`Título ${level}`}
+          active={editor.isActive("heading", { level })}
+          onClick={() =>
+            editor.chain().focus().toggleHeading({ level }).run()
+          }
+        >
+          H{level}
+        </Btn>
+      ))}
       {sep}
       <Btn
         title="Negrito"
