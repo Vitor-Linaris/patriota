@@ -95,6 +95,23 @@ describe('Media uploads (e2e)', () => {
       });
   });
 
+  it('rejects oversized uploads with 413 and a friendly Portuguese message', async () => {
+    const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+    // Multer's limit is enforced before the body is buffered. We send
+    // a payload definitely bigger than the cap (MEDIA_MAX_UPLOAD_BYTES
+    // defaults to 10 MB) — 11 MB of zeros is enough.
+    const huge = Buffer.alloc(11 * 1024 * 1024, 0);
+    const res = await request(app.getHttpServer())
+      .post('/admin/media/upload')
+      .set(bearer(user))
+      .attach('file', huge, {
+        filename: 'huge.png',
+        contentType: 'image/png',
+      });
+    expect(res.status).toBe(413);
+    expect(res.body.message).toMatch(/demasiado grande/i);
+  });
+
   it('rejects unauthenticated upload with 401', async () => {
     const png = await makePngBuffer(100, 100);
     await request(app.getHttpServer())

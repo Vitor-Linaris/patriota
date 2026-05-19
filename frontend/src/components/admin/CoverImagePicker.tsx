@@ -3,6 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { uploadMediaFileAction } from "@/app/admin/media/actions";
 import { imageVariant } from "@/lib/images";
+import { validateImageUpload } from "@/lib/upload-limits";
 import { MediaLibraryModal } from "./MediaLibraryModal";
 
 /**
@@ -30,8 +31,11 @@ export function CoverImagePicker({
 
   const handleFiles = (file: File | null | undefined) => {
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setError("Apenas ficheiros de imagem são suportados.");
+    // Validate locally first — Next.js's 12 MB server-action cap would
+    // otherwise turn into a generic "Unexpected response from server".
+    const reason = validateImageUpload(file);
+    if (reason) {
+      setError(reason);
       return;
     }
     setError(null);
@@ -98,7 +102,9 @@ export function CoverImagePicker({
           <p className="text-xs font-semibold text-gray-500">
             {pending ? "A enviar…" : "Arraste uma imagem ou clique para escolher"}
           </p>
-          <p className="text-[10px] text-gray-400">JPG, PNG, WebP — até 10 MB</p>
+          <p className="text-[10px] text-gray-400">
+            JPG, PNG, WebP, GIF — até 10 MB
+          </p>
         </div>
       )}
 

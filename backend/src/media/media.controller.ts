@@ -8,9 +8,11 @@ import {
   Post,
   Query,
   UploadedFile,
+  UseFilters,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { MulterExceptionFilter } from './multer-exception.filter';
 import {
   IsInt,
   IsOptional,
@@ -82,6 +84,7 @@ export class MediaController {
    */
   @Post('upload')
   @RequirePermissions('media.carregar')
+  @UseFilters(MulterExceptionFilter)
   @UseInterceptors(
     FileInterceptor('file', {
       limits: { fileSize: MAX_UPLOAD_BYTES },

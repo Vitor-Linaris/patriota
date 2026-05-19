@@ -10,6 +10,7 @@ import TextAlign from "@tiptap/extension-text-align";
 // configure them through StarterKit options below — registering them
 // separately triggers a "Duplicate extension names" warning.
 import { uploadMediaFileAction } from "@/app/admin/media/actions";
+import { validateImageUpload } from "@/lib/upload-limits";
 import {
   MediaLibraryModal,
   type MediaItem,
@@ -42,6 +43,7 @@ export function RichTextEditor({
   onChangeRef.current = onChange;
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   const editor = useEditor({
@@ -95,12 +97,30 @@ export function RichTextEditor({
 
   const handleUpload = async (file: File | null | undefined) => {
     if (!file) return;
+    // Validate before hitting the server action — anything above the
+    // Next.js body-size cap crashes with a generic "unexpected
+    // response" otherwise. We catch it here with a clear message.
+    const reason = validateImageUpload(file);
+    if (reason) {
+      setUploadError(reason);
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
+    setUploadError(null);
     setUploading(true);
     try {
       const fd = new FormData();
       fd.append("file", file);
       const res = await uploadMediaFileAction(fd);
-      if (res.ok) insertImage(res.media.url);
+      if (res.ok) {
+        insertImage(res.media.url);
+      } else {
+        setUploadError(res.error);
+      }
+    } catch (err) {
+      setUploadError(
+        (err as Error).message ?? "Falha inesperada ao carregar imagem.",
+      );
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -144,6 +164,19 @@ export function RichTextEditor({
         onLibrary={() => setLibraryOpen(true)}
         onLink={promptLink}
       />
+      {uploadError && (
+        <div className="flex items-start justify-between gap-3 border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">
+          <span>{uploadError}</span>
+          <button
+            type="button"
+            onClick={() => setUploadError(null)}
+            aria-label="Fechar"
+            className="shrink-0 text-red-500 hover:text-red-700"
+          >
+            ✕
+          </button>
+        </div>
+      )}
       <div style={{ minHeight }} className="bg-white">
         <EditorContent editor={editor} />
       </div>
