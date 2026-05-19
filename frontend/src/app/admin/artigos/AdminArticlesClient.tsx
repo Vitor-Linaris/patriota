@@ -995,7 +995,11 @@ export default function AdminArticlesClient({
           <h1 className="text-2xl font-black text-[#0F2C6B]">Artigos</h1>
           <p className="mt-1 text-sm text-gray-500">
             {intFmt.format(initialArticles.length)} artigos no total ·{" "}
-            {intFmt.format(counts.publicado)} publicados
+            {intFmt.format(counts.publicado)} publicados ·{" "}
+            {intFmt.format(
+              initialArticles.reduce((sum, a) => sum + (a.views ?? 0), 0),
+            )}{" "}
+            visitas acumuladas
           </p>
         </div>
         <button

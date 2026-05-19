@@ -225,6 +225,41 @@ describe('Articles (e2e)', () => {
     expect(row?.scheduledAt).toBeNull();
   });
 
+  it('Admin list exposes the per-article views counter incremented by public reads', async () => {
+    const editor = await makeUser(app, { role: 'EDITOR_CHEFE' });
+    const created = await request(app.getHttpServer())
+      .post('/admin/articles')
+      .set(bearer(editor))
+      .send({
+        title: 'Mais lido',
+        content: '<p>x</p>',
+        categoryId,
+      })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(`/admin/articles/${created.body.id}/publish`)
+      .set(bearer(editor));
+
+    // Hit the public endpoint 3× — views fire-and-forget, so wait for
+    // the increment to settle before re-reading.
+    for (let i = 0; i < 3; i++) {
+      await request(app.getHttpServer())
+        .get('/public/articles/by-slug/mais-lido')
+        .expect(200);
+    }
+    await new Promise((r) => setTimeout(r, 100));
+
+    const adminList = await request(app.getHttpServer())
+      .get('/admin/articles?pageSize=10')
+      .set(bearer(editor))
+      .expect(200);
+    const row = (adminList.body.items as { id: string; views: number }[]).find(
+      (a) => a.id === created.body.id,
+    );
+    expect(row).toBeDefined();
+    expect(row!.views).toBeGreaterThanOrEqual(3);
+  });
+
   it('Cannot reject articles not in EM_REVISAO', async () => {
     const author = await makeUser(app, { role: 'JORNALISTA' });
     const chief = await makeUser(app, { role: 'EDITOR_CHEFE' });
