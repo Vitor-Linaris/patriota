@@ -8,6 +8,7 @@ import {
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService, type AuthUser } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { Public } from './public.decorator';
@@ -19,6 +20,8 @@ export class AuthController {
 
   @Public()
   @Post('login')
+  // Strict rate limit on login to deter credential-stuffing: 5 / minute / IP.
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
   @HttpCode(HttpStatus.OK)
   @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
   login(@Body() dto: LoginDto) {

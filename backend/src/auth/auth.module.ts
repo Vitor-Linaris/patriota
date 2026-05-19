@@ -15,13 +15,22 @@ import { RbacModule } from '../rbac/rbac.module';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        secret: config.get<string>('JWT_SECRET') ?? 'dev-only-change-me',
-        signOptions: {
-          expiresIn: (config.get<string>('JWT_EXPIRES_IN') ??
-            '8h') as `${number}${'s' | 'm' | 'h' | 'd'}`,
-        },
-      }),
+      useFactory: (config: ConfigService) => {
+        const secret = config.get<string>('JWT_SECRET');
+        if (!secret || secret.length < 32) {
+          throw new Error(
+            'JWT_SECRET must be defined and at least 32 characters long. ' +
+              'Set it in .env (see .env.example for a generated example).',
+          );
+        }
+        return {
+          secret,
+          signOptions: {
+            expiresIn: (config.get<string>('JWT_EXPIRES_IN') ??
+              '8h') as `${number}${'s' | 'm' | 'h' | 'd'}`,
+          },
+        };
+      },
     }),
   ],
   controllers: [AuthController],
