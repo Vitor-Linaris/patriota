@@ -1,168 +1,182 @@
 import { AdminShell } from "./AdminShell";
+import { DashboardActions } from "./DashboardActions";
+import { apiFetch } from "@/lib/api";
 
-interface Stat {
-  label: string;
-  value: string;
-  change: string;
-  up: boolean;
-  cardClass: string;
-  accent: string;
-  changeClass: string;
+interface StatsResponse {
+  articles: { published: number; total: number; pending: number };
+  users: { total: number };
+  visits: { today: number; week: number; month: number };
 }
 
-const STATS: Stat[] = [
-  {
-    label: "Artigos publicados",
-    value: "1.482",
-    change: "+12 hoje",
-    up: true,
-    cardClass: "bg-blue-50 border-blue-200",
-    accent: "text-[#0F2C6B]",
-    changeClass: "text-green-600",
-  },
-  {
-    label: "Utilizadores registados",
-    value: "241.093",
-    change: "+847 esta semana",
-    up: true,
-    cardClass: "bg-green-50 border-green-200",
-    accent: "text-green-700",
-    changeClass: "text-green-600",
-  },
-  {
-    label: "Visitas hoje",
-    value: "94.210",
-    change: "+18% vs ontem",
-    up: true,
-    cardClass: "bg-purple-50 border-purple-200",
-    accent: "text-purple-700",
-    changeClass: "text-green-600",
-  },
-  {
-    label: "Artigos pendentes",
-    value: "7",
-    change: "Aguardam aprovação",
-    up: false,
-    cardClass: "bg-amber-50 border-amber-200",
-    accent: "text-amber-700",
-    changeClass: "text-amber-600",
-  },
-];
-
-interface Activity {
-  user: string;
-  role: string;
+interface ActivityItem {
+  id: string;
   action: string;
-  target: string;
-  time: string;
-  badgeClass: string;
+  targetType: string;
+  targetId: string | null;
+  targetLabel: string;
+  createdAt: string;
+  user: {
+    id: string;
+    name: string | null;
+    email: string;
+    role: string;
+  } | null;
 }
 
-const RECENT_ACTIVITY: Activity[] = [
-  {
-    user: "Marta Sousa",
-    role: "Jornalista",
-    action: "submeteu artigo",
-    target: '"Crise da habitação em Lisboa atinge novos máximos"',
-    time: "Há 4 min",
-    badgeClass: "bg-green-100 text-green-700",
-  },
-  {
-    user: "Paulo Ferreira",
-    role: "Editor",
-    action: "publicou",
-    target: '"FMI alerta para dívida pública europeia"',
-    time: "Há 12 min",
-    badgeClass: "bg-blue-100 text-blue-700",
-  },
-  {
-    user: "Ana Lopes",
-    role: "Moderador",
-    action: "removeu comentário em",
-    target: '"Orçamento do Estado 2026"',
-    time: "Há 28 min",
-    badgeClass: "bg-orange-100 text-orange-700",
-  },
-  {
-    user: "Rui Cardoso",
-    role: "Editor-Chefe",
-    action: "aprovou e editou",
-    target: '"Investigação: Contratos públicos suspeitos"',
-    time: "Há 45 min",
-    badgeClass: "bg-purple-100 text-purple-700",
-  },
-  {
-    user: "Sofia Pinto",
-    role: "Revisor",
-    action: "devolveu para revisão",
-    target: '"PS reage com críticas ao orçamento"',
-    time: "Há 1h",
-    badgeClass: "bg-amber-100 text-amber-700",
-  },
-];
-
-interface PendingArticle {
+interface PendingArticleItem {
+  id: string;
   title: string;
-  author: string;
-  cat: string;
-  submitted: string;
-  priority: "Alta" | "Média" | "Baixa";
+  status: "RASCUNHO" | "AGENDADO" | "PUBLICADO" | "ARQUIVADO";
+  createdAt: string;
+  category: { slug: string; name: string; color: string } | null;
+  author: { id: string; name: string | null; email: string } | null;
 }
 
-const PENDING: PendingArticle[] = [
-  {
-    title: "Greve dos professores paralisa escolas no Norte",
-    author: "Carlos Neves",
-    cat: "SOCIEDADE",
-    submitted: "Há 2h",
-    priority: "Alta",
-  },
-  {
-    title: "Banco de Portugal revê projeção do PIB em alta",
-    author: "Marta Sousa",
-    cat: "ECONOMIA",
-    submitted: "Há 3h",
-    priority: "Média",
-  },
-  {
-    title: "Governo apresenta nova lei do arrendamento",
-    author: "Inês Rodrigues",
-    cat: "POLÍTICA",
-    submitted: "Há 5h",
-    priority: "Alta",
-  },
-  {
-    title: "Festival NOS regressa ao Parque da Bela Vista",
-    author: "Luís Monteiro",
-    cat: "CULTURA",
-    submitted: "Há 6h",
-    priority: "Baixa",
-  },
-];
+interface PageResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
 
-const PRIORITY_CLASS: Record<PendingArticle["priority"], string> = {
-  Alta: "bg-red-100 text-red-700",
-  Média: "bg-amber-100 text-amber-700",
-  Baixa: "bg-gray-100 text-gray-500",
+const intFmt = new Intl.NumberFormat("pt-PT");
+
+function formatToday(): string {
+  const now = new Date();
+  const long = new Intl.DateTimeFormat("pt-PT", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(now);
+  // Capitalise first letter for visual parity with the previous mock.
+  return long.charAt(0).toUpperCase() + long.slice(1);
+}
+
+function relativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  const now = Date.now();
+  const diffMin = Math.max(1, Math.round((now - then) / 60_000));
+  if (diffMin < 60) return `Há ${diffMin} min`;
+  const diffH = Math.round(diffMin / 60);
+  if (diffH < 24) return `Há ${diffH}h`;
+  const diffD = Math.round(diffH / 24);
+  return `Há ${diffD}d`;
+}
+
+const ROLE_BADGE: Record<string, string> = {
+  SUPER_ADMIN: "bg-purple-100 text-purple-700",
+  EDITOR_CHEFE: "bg-purple-100 text-purple-700",
+  EDITOR: "bg-blue-100 text-blue-700",
+  JORNALISTA: "bg-green-100 text-green-700",
+  REVISOR: "bg-amber-100 text-amber-700",
+  MODERADOR: "bg-orange-100 text-orange-700",
+  ANALISTA: "bg-gray-100 text-gray-700",
 };
 
-export default function AdminDashboardPage() {
+const ACTION_LABEL: Record<string, string> = {
+  submitted: "submeteu artigo",
+  published: "publicou",
+  archived: "arquivou",
+  deleted: "eliminou",
+  created: "criou",
+  updated: "actualizou",
+  invited: "convidou utilizador",
+  role_changed: "alterou role de",
+  status_changed: "alterou estado de",
+};
+
+function actionLabel(action: string): string {
+  return ACTION_LABEL[action] ?? action.replace(/_/g, " ");
+}
+
+function roleShort(role: string): string {
+  switch (role) {
+    case "SUPER_ADMIN":
+      return "Super";
+    case "EDITOR_CHEFE":
+      return "Editor-Chefe";
+    case "EDITOR":
+      return "Editor";
+    case "JORNALISTA":
+      return "Jornalista";
+    case "REVISOR":
+      return "Revisor";
+    case "MODERADOR":
+      return "Moderador";
+    case "ANALISTA":
+      return "Analista";
+    default:
+      return role;
+  }
+}
+
+async function loadDashboard() {
+  const [statsRes, activityRes, pendingRes] = await Promise.all([
+    apiFetch("/admin/stats"),
+    apiFetch("/admin/activity?pageSize=8"),
+    apiFetch("/admin/articles?status=RASCUNHO,AGENDADO&pageSize=4"),
+  ]);
+  const stats = statsRes.ok ? ((await statsRes.json()) as StatsResponse) : null;
+  const activity = activityRes.ok
+    ? ((await activityRes.json()) as PageResult<ActivityItem>)
+    : { items: [], total: 0, page: 1, pageSize: 8 };
+  const pending = pendingRes.ok
+    ? ((await pendingRes.json()) as PageResult<PendingArticleItem>)
+    : { items: [], total: 0, page: 1, pageSize: 4 };
+  return { stats, activity, pending };
+}
+
+export default async function AdminDashboardPage() {
+  const { stats, activity, pending } = await loadDashboard();
+
+  const statCards = [
+    {
+      label: "Artigos publicados",
+      value: intFmt.format(stats?.articles.published ?? 0),
+      change: `${stats?.articles.total ?? 0} no total`,
+      cardClass: "bg-blue-50 border-blue-200",
+      accent: "text-[#0F2C6B]",
+      changeClass: "text-gray-500",
+    },
+    {
+      label: "Utilizadores registados",
+      value: intFmt.format(stats?.users.total ?? 0),
+      change: "Equipa editorial",
+      cardClass: "bg-green-50 border-green-200",
+      accent: "text-green-700",
+      changeClass: "text-gray-500",
+    },
+    {
+      label: "Visitas hoje",
+      value: intFmt.format(stats?.visits.today ?? 0),
+      change: `${intFmt.format(stats?.visits.week ?? 0)} esta semana · ${intFmt.format(stats?.visits.month ?? 0)} no mês`,
+      cardClass: "bg-purple-50 border-purple-200",
+      accent: "text-purple-700",
+      changeClass: "text-gray-500",
+    },
+    {
+      label: "Artigos pendentes",
+      value: intFmt.format(stats?.articles.pending ?? 0),
+      change: "Aguardam aprovação",
+      cardClass: "bg-amber-50 border-amber-200",
+      accent: "text-amber-700",
+      changeClass: "text-amber-600",
+    },
+  ];
+
   return (
     <AdminShell active="/admin">
       <main className="bg-[#f6f7fb] p-8">
-        {/* Header */}
         <header className="mb-6">
           <h1 className="text-2xl font-black text-[#0F2C6B]">
             Painel de Controlo
           </h1>
-          <p className="mt-0.5 text-sm text-gray-500">
-            Domingo, 12 de Abril de 2026 · Edição matinal
-          </p>
+          <p className="mt-0.5 text-sm text-gray-500">{formatToday()}</p>
         </header>
 
-        {/* Stats */}
         <section className="mb-6 grid grid-cols-2 gap-4 xl:grid-cols-4">
-          {STATS.map((s) => (
+          {statCards.map((s) => (
             <div
               key={s.label}
               className={`rounded-xl border bg-white p-5 ${s.cardClass}`}
@@ -178,7 +192,6 @@ export default function AdminDashboardPage() {
           ))}
         </section>
 
-        {/* 2/3 + 1/3 grid */}
         <section className="grid gap-6 xl:grid-cols-3">
           {/* Pending articles */}
           <div className="overflow-hidden rounded-xl border border-gray-200 bg-white xl:col-span-2">
@@ -192,51 +205,50 @@ export default function AdminDashboardPage() {
                 </p>
               </div>
               <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-700">
-                {PENDING.length} pendentes
+                {intFmt.format(pending.total)} pendentes
               </span>
             </header>
-            <ul className="divide-y divide-gray-50">
-              {PENDING.map((a) => (
-                <li
-                  key={a.title}
-                  className="flex items-center justify-between gap-4 px-5 py-4"
-                >
-                  <div className="min-w-0">
-                    <div className="mb-1 flex items-center gap-2">
-                      <span className="text-[10px] font-black tracking-wide text-[#0F2C6B]">
-                        {a.cat}
-                      </span>
-                      <span
-                        className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${PRIORITY_CLASS[a.priority]}`}
-                      >
-                        {a.priority}
-                      </span>
-                      <span className="text-[10px] text-gray-300">
-                        {a.submitted}
-                      </span>
+            {pending.items.length === 0 ? (
+              <p className="px-5 py-10 text-center text-xs text-gray-400">
+                Nenhum artigo aguarda aprovação.
+              </p>
+            ) : (
+              <ul className="divide-y divide-gray-50">
+                {pending.items.map((a) => (
+                  <li
+                    key={a.id}
+                    className="flex items-center justify-between gap-4 px-5 py-4"
+                  >
+                    <div className="min-w-0">
+                      <div className="mb-1 flex items-center gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-wide text-[#0F2C6B]">
+                          {a.category?.name ?? "—"}
+                        </span>
+                        <span
+                          className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                            a.status === "AGENDADO"
+                              ? "bg-blue-100 text-blue-700"
+                              : "bg-amber-100 text-amber-700"
+                          }`}
+                        >
+                          {a.status === "AGENDADO" ? "Agendado" : "Rascunho"}
+                        </span>
+                        <span className="text-[10px] text-gray-300">
+                          {relativeTime(a.createdAt)}
+                        </span>
+                      </div>
+                      <p className="truncate text-sm font-semibold text-gray-800">
+                        {a.title}
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        {a.author?.name ?? a.author?.email ?? "—"}
+                      </p>
                     </div>
-                    <p className="truncate text-sm font-semibold text-gray-800">
-                      {a.title}
-                    </p>
-                    <p className="text-xs text-gray-400">{a.author}</p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <button
-                      type="button"
-                      className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-500 transition-colors hover:border-red-300 hover:text-red-600"
-                    >
-                      Devolver
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded-lg bg-[#0F2C6B] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#1A3A7A]"
-                    >
-                      Aprovar
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
+                    <DashboardActions articleId={a.id} />
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           {/* Activity log */}
@@ -249,39 +261,44 @@ export default function AdminDashboardPage() {
                 Últimas acções da equipa
               </p>
             </header>
-            <ul className="divide-y divide-gray-50">
-              {RECENT_ACTIVITY.map((a, i) => (
-                <li key={i} className="px-5 py-3.5">
-                  <div className="flex items-start gap-2.5">
-                    <span
-                      className={`mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${a.badgeClass}`}
-                    >
-                      {a.role.split("-")[0]}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-xs leading-relaxed text-gray-800">
-                        <span className="font-bold">{a.user}</span>{" "}
-                        <span className="text-gray-500">{a.action}</span>{" "}
-                        <span className="font-semibold text-[#0F2C6B]">
-                          {a.target}
-                        </span>
-                      </p>
-                      <p className="mt-0.5 text-[10px] text-gray-400">
-                        {a.time}
-                      </p>
+            {activity.items.length === 0 ? (
+              <p className="px-5 py-10 text-center text-xs text-gray-400">
+                Sem actividade registada ainda.
+              </p>
+            ) : (
+              <ul className="divide-y divide-gray-50">
+                {activity.items.map((a) => (
+                  <li key={a.id} className="px-5 py-3.5">
+                    <div className="flex items-start gap-2.5">
+                      <span
+                        className={`mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                          ROLE_BADGE[a.user?.role ?? ""] ??
+                          "bg-gray-100 text-gray-700"
+                        }`}
+                      >
+                        {roleShort(a.user?.role ?? "—").split("-")[0]}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-xs leading-relaxed text-gray-800">
+                          <span className="font-bold">
+                            {a.user?.name ?? a.user?.email ?? "Sistema"}
+                          </span>{" "}
+                          <span className="text-gray-500">
+                            {actionLabel(a.action)}
+                          </span>{" "}
+                          <span className="font-semibold text-[#0F2C6B]">
+                            “{a.targetLabel}”
+                          </span>
+                        </p>
+                        <p className="mt-0.5 text-[10px] text-gray-400">
+                          {relativeTime(a.createdAt)}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-            <div className="border-t border-gray-50 px-5 py-3">
-              <button
-                type="button"
-                className="text-xs font-semibold text-[#0F2C6B] hover:underline"
-              >
-                Ver histórico completo →
-              </button>
-            </div>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </section>
       </main>
