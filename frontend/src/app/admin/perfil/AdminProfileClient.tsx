@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { changePasswordAction, updateProfileAction } from "./actions";
 
 interface ProfileData {
   name: string;
@@ -29,10 +31,13 @@ interface Props {
 }
 
 export default function AdminProfileClient({ initial }: Props) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
   const [section, setSection] = useState<Section>("perfil");
   const [profile, setProfile] = useState<ProfileData>(initial);
   const [draft, setDraft] = useState<ProfileData>(initial);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [avatarPreview, setAvatarPreview] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -67,11 +72,31 @@ export default function AdminProfileClient({ initial }: Props) {
   }
 
   function saveProfile() {
-    const updated = { ...draft, avatarInitials: initials(draft.name) };
-    if (avatarPreview) updated.avatarUrl = avatarPreview;
-    setProfile(updated);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+    setSaveError(null);
+    const payload = {
+      name: draft.name.trim(),
+      bio: draft.bio,
+      phone: draft.phone,
+      avatarUrl: avatarPreview || draft.avatarUrl,
+    };
+    startTransition(async () => {
+      const res = await updateProfileAction(payload);
+      if (!res.ok) {
+        setSaveError(res.error);
+        return;
+      }
+      const updated = {
+        ...draft,
+        avatarUrl: payload.avatarUrl,
+        avatarInitials: initials(draft.name),
+      };
+      setProfile(updated);
+      setDraft(updated);
+      setAvatarPreview("");
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+      router.refresh();
+    });
   }
 
   function savePassword() {
@@ -81,18 +106,23 @@ export default function AdminProfileClient({ initial }: Props) {
       return;
     }
     if (pw.next.length < 8) {
-      setPwError(
-        "A nova palavra-passe deve ter pelo menos 8 caracteres.",
-      );
+      setPwError("A nova palavra-passe deve ter pelo menos 8 caracteres.");
       return;
     }
     if (pw.next !== pw.confirm) {
       setPwError("As palavras-passe não coincidem.");
       return;
     }
-    setPwSaved(true);
-    setPw({ current: "", next: "", confirm: "" });
-    setTimeout(() => setPwSaved(false), 3000);
+    startTransition(async () => {
+      const res = await changePasswordAction(pw.current, pw.next);
+      if (!res.ok) {
+        setPwError(res.error);
+        return;
+      }
+      setPwSaved(true);
+      setPw({ current: "", next: "", confirm: "" });
+      setTimeout(() => setPwSaved(false), 3000);
+    });
   }
 
   const avatarSrc = avatarPreview || profile.avatarUrl;
@@ -384,7 +414,12 @@ export default function AdminProfileClient({ initial }: Props) {
                   Cancelar alterações
                 </button>
                 <div className="flex items-center gap-3">
-                  {saved && (
+                  {saveError && (
+                    <span className="text-sm font-bold text-red-600">
+                      {saveError}
+                    </span>
+                  )}
+                  {!saveError && saved && (
                     <span className="flex items-center gap-1.5 text-sm font-bold text-green-600">
                       ✓ Perfil guardado
                     </span>
@@ -392,9 +427,10 @@ export default function AdminProfileClient({ initial }: Props) {
                   <button
                     type="button"
                     onClick={saveProfile}
-                    className="rounded-xl bg-[#0F2C6B] px-6 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#0A1F4E]"
+                    disabled={pending}
+                    className="rounded-xl bg-[#0F2C6B] px-6 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#0A1F4E] disabled:opacity-50"
                   >
-                    Guardar alterações
+                    {pending ? "A guardar…" : "Guardar alterações"}
                   </button>
                 </div>
               </div>
