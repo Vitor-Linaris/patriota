@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { createMediaAction, deleteMediaAction } from "./actions";
 
 export interface MediaItem {
   id: string;
@@ -12,105 +14,101 @@ export interface MediaItem {
   usedIn?: string[];
 }
 
-const STORAGE_KEY = "patriota_media";
-
-function loadMedia(): MediaItem[] {
-  if (typeof window === "undefined") return [];
-  try {
-    return JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "[]");
-  } catch {
-    return [];
-  }
-}
-function saveMedia(items: MediaItem[]) {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-  } catch {
-    /* ignore */
-  }
+function parseDimensions(text: string): { width?: number; height?: number } {
+  const match = text.trim().match(/^(\d+)\s*[×x]\s*(\d+)$/i);
+  if (!match) return {};
+  return { width: Number(match[1]), height: Number(match[2]) };
 }
 
-const SAMPLE_IMAGES: MediaItem[] = [
-  { id: "s1", url: "https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=800", name: "parlamento-lisboa.jpg", uploadedAt: "12 Abr 2026", size: "1.2 MB", dimensions: "1920×1080", usedIn: ["Governo apresenta proposta de orçamento"] },
-  { id: "s2", url: "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=800", name: "economia-grafico.jpg", uploadedAt: "12 Abr 2026", size: "890 KB", dimensions: "1600×900", usedIn: ["FMI alerta para riscos da dívida pública"] },
-  { id: "s3", url: "https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=800", name: "professores-greve.jpg", uploadedAt: "11 Abr 2026", size: "1.5 MB", dimensions: "1920×1280", usedIn: ["Greve dos professores paralisa escolas"] },
-  { id: "s4", url: "https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=800", name: "lisboa-cidade.jpg", uploadedAt: "09 Abr 2026", size: "2.1 MB", dimensions: "2560×1440", usedIn: [] },
-  { id: "s5", url: "https://images.unsplash.com/photo-1486325212027-8081e485255e?w=800", name: "habitacao-predio.jpg", uploadedAt: "09 Abr 2026", size: "1.8 MB", dimensions: "1920×1280", usedIn: ["Crise da habitação em Lisboa"] },
-  { id: "s6", url: "https://images.unsplash.com/photo-1551434678-e076c223a692?w=800", name: "tecnologia-ia.jpg", uploadedAt: "14 Abr 2026", size: "750 KB", dimensions: "1600×900", usedIn: ["Inteligência artificial na redacção"] },
-];
-
-export default function AdminMediaClient() {
-  const [items, setItems] = useState<MediaItem[]>([]);
+export default function AdminMediaClient({
+  initialItems,
+}: {
+  initialItems: MediaItem[];
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
   const [selected, setSelected] = useState<MediaItem | null>(null);
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<"todas" | "usadas" | "nao-usadas">("todas");
+  const [filter, setFilter] = useState<"todas" | "usadas" | "nao-usadas">(
+    "todas",
+  );
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadUrl, setUploadUrl] = useState("");
   const [uploadName, setUploadName] = useState("");
   const [uploadDimensions, setUploadDimensions] = useState("");
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Initialise from localStorage on the client
-  useEffect(() => {
-    const existing = loadMedia();
-    if (existing.length === 0) {
-      saveMedia(SAMPLE_IMAGES);
-      setItems(SAMPLE_IMAGES);
-    } else {
-      setItems(existing);
-    }
-  }, []);
-
-  const filtered = items.filter((item) => {
+  const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    const matchSearch =
-      item.name.toLowerCase().includes(q) ||
-      (item.usedIn ?? []).some((a) => a.toLowerCase().includes(q));
-    const matchFilter =
-      filter === "todas"
-        ? true
-        : filter === "usadas"
-          ? (item.usedIn ?? []).length > 0
-          : (item.usedIn ?? []).length === 0;
-    return matchSearch && matchFilter;
-  });
+    return initialItems.filter((item) => {
+      const matchSearch =
+        item.name.toLowerCase().includes(q) ||
+        (item.usedIn ?? []).some((a) => a.toLowerCase().includes(q));
+      const matchFilter =
+        filter === "todas"
+          ? true
+          : filter === "usadas"
+            ? (item.usedIn ?? []).length > 0
+            : (item.usedIn ?? []).length === 0;
+      return matchSearch && matchFilter;
+    });
+  }, [initialItems, search, filter]);
+
+  const stats = useMemo(() => {
+    const usadas = initialItems.filter(
+      (i) => (i.usedIn ?? []).length > 0,
+    ).length;
+    return {
+      total: initialItems.length,
+      usadas,
+      naoUsadas: initialItems.length - usadas,
+    };
+  }, [initialItems]);
 
   const addFromUrl = () => {
-    if (!uploadUrl.trim()) return;
-    const newItem: MediaItem = {
-      id: `m${Date.now()}`,
-      url: uploadUrl.trim(),
-      name:
-        uploadName.trim() ||
-        uploadUrl.split("/").pop()?.split("?")[0] ||
-        "imagem.jpg",
-      uploadedAt: new Date().toLocaleDateString("pt-PT", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      }),
-      dimensions: uploadDimensions.trim() || undefined,
-      usedIn: [],
-    };
-    const updated = [newItem, ...items];
-    setItems(updated);
-    saveMedia(updated);
-    setUploadUrl("");
-    setUploadName("");
-    setUploadDimensions("");
-    setUploadOpen(false);
-    setSelected(newItem);
+    const url = uploadUrl.trim();
+    if (!url) {
+      setUploadError("URL obrigatório.");
+      return;
+    }
+    if (!/^https?:\/\//i.test(url)) {
+      setUploadError("Use um URL http(s).");
+      return;
+    }
+    setUploadError(null);
+    const dims = parseDimensions(uploadDimensions);
+    startTransition(async () => {
+      const res = await createMediaAction({
+        url,
+        name: uploadName.trim() || undefined,
+        width: dims.width,
+        height: dims.height,
+      });
+      if (!res.ok) {
+        setUploadError(res.error);
+        return;
+      }
+      setUploadUrl("");
+      setUploadName("");
+      setUploadDimensions("");
+      setUploadOpen(false);
+      router.refresh();
+    });
   };
 
   const deleteItem = (id: string) => {
-    const updated = items.filter((i) => i.id !== id);
-    setItems(updated);
-    saveMedia(updated);
-    if (selected?.id === id) setSelected(null);
-    setDeleteConfirm(null);
+    startTransition(async () => {
+      const res = await deleteMediaAction(id);
+      if (!res.ok) {
+        alert(res.error);
+        return;
+      }
+      if (selected?.id === id) setSelected(null);
+      setDeleteConfirm(null);
+      router.refresh();
+    });
   };
 
   const copyUrl = (url: string) => {
@@ -118,12 +116,6 @@ export default function AdminMediaClient() {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     });
-  };
-
-  const stats = {
-    total: items.length,
-    usadas: items.filter((i) => (i.usedIn ?? []).length > 0).length,
-    naoUsadas: items.filter((i) => (i.usedIn ?? []).length === 0).length,
   };
 
   return (
@@ -144,7 +136,7 @@ export default function AdminMediaClient() {
                   Adicionar imagem
                 </h2>
                 <p className="mt-0.5 text-xs text-gray-400">
-                  Cole o URL de uma imagem pública
+                  Cole o URL de uma imagem pública (http/https)
                 </p>
               </div>
               <button
@@ -193,6 +185,12 @@ export default function AdminMediaClient() {
                 </div>
               </div>
 
+              {uploadError && (
+                <p className="text-xs font-semibold text-red-600">
+                  {uploadError}
+                </p>
+              )}
+
               {uploadUrl && (
                 <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
                   <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-400">
@@ -221,9 +219,10 @@ export default function AdminMediaClient() {
                 <button
                   type="button"
                   onClick={addFromUrl}
-                  className="flex-1 rounded-xl bg-[#0F2C6B] py-2.5 text-sm font-bold text-white hover:bg-[#1A3A7A]"
+                  disabled={pending}
+                  className="flex-1 rounded-xl bg-[#0F2C6B] py-2.5 text-sm font-bold text-white hover:bg-[#1A3A7A] disabled:opacity-50"
                 >
-                  Adicionar
+                  {pending ? "A guardar…" : "Adicionar"}
                 </button>
               </div>
             </div>
@@ -257,7 +256,8 @@ export default function AdminMediaClient() {
               <button
                 type="button"
                 onClick={() => deleteItem(deleteConfirm)}
-                className="flex-1 rounded-xl bg-red-600 py-2.5 text-sm font-bold text-white hover:bg-red-700"
+                disabled={pending}
+                className="flex-1 rounded-xl bg-red-600 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50"
               >
                 Eliminar
               </button>
@@ -289,9 +289,24 @@ export default function AdminMediaClient() {
       {/* STATS */}
       <div className="mb-5 grid grid-cols-3 gap-3">
         {[
-          { label: "Total de imagens", value: stats.total, color: "text-[#0F2C6B]", bg: "bg-white border-gray-100" },
-          { label: "Usadas em artigos", value: stats.usadas, color: "text-green-600", bg: "bg-green-50 border-green-100" },
-          { label: "Sem utilização", value: stats.naoUsadas, color: "text-amber-600", bg: "bg-amber-50 border-amber-100" },
+          {
+            label: "Total de imagens",
+            value: stats.total,
+            color: "text-[#0F2C6B]",
+            bg: "bg-white border-gray-100",
+          },
+          {
+            label: "Usadas em artigos",
+            value: stats.usadas,
+            color: "text-green-600",
+            bg: "bg-green-50 border-green-100",
+          },
+          {
+            label: "Sem utilização",
+            value: stats.naoUsadas,
+            color: "text-amber-600",
+            bg: "bg-amber-50 border-amber-100",
+          },
         ].map((s) => (
           <div
             key={s.label}
@@ -440,7 +455,9 @@ export default function AdminMediaClient() {
               <div className="mb-4 space-y-2">
                 {selected.dimensions && (
                   <div className="flex justify-between text-xs">
-                    <span className="font-semibold text-gray-400">Dimensões</span>
+                    <span className="font-semibold text-gray-400">
+                      Dimensões
+                    </span>
                     <span className="font-mono text-gray-700">
                       {selected.dimensions}
                     </span>
@@ -452,12 +469,6 @@ export default function AdminMediaClient() {
                     <span className="text-gray-700">{selected.size}</span>
                   </div>
                 )}
-                <div className="flex justify-between text-xs">
-                  <span className="font-semibold text-gray-400">Usada em</span>
-                  <span className="font-semibold text-gray-700">
-                    {(selected.usedIn ?? []).length} artigo(s)
-                  </span>
-                </div>
               </div>
 
               <div className="mb-4 rounded-lg bg-gray-50 px-3 py-2">
@@ -468,24 +479,6 @@ export default function AdminMediaClient() {
                   {selected.url}
                 </p>
               </div>
-
-              {(selected.usedIn ?? []).length > 0 && (
-                <div className="mb-4">
-                  <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-400">
-                    Usada nos artigos
-                  </p>
-                  <div className="space-y-1">
-                    {selected.usedIn!.map((art, i) => (
-                      <div
-                        key={i}
-                        className="line-clamp-1 rounded-lg bg-gray-50 px-2 py-1.5 text-[11px] text-gray-600"
-                      >
-                        {art}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               <div className="flex gap-2">
                 <button
@@ -507,8 +500,6 @@ export default function AdminMediaClient() {
           </div>
         )}
       </div>
-
-      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" />
     </main>
   );
 }
