@@ -3,11 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import Link from "@tiptap/extension-link";
 import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
 import TextAlign from "@tiptap/extension-text-align";
-import Underline from "@tiptap/extension-underline";
+// Note: StarterKit v3+ already includes Link and Underline. We
+// configure them through StarterKit options below — registering them
+// separately triggers a "Duplicate extension names" warning.
 import { uploadMediaFileAction } from "@/app/admin/media/actions";
 import {
   MediaLibraryModal,
@@ -48,13 +49,12 @@ export function RichTextEditor({
     extensions: [
       StarterKit.configure({
         heading: { levels: [2, 3, 4] },
-      }),
-      Underline,
-      Link.configure({
-        openOnClick: false,
-        autolink: true,
-        protocols: ["http", "https", "mailto"],
-        HTMLAttributes: { rel: "noopener nofollow", target: "_blank" },
+        link: {
+          openOnClick: false,
+          autolink: true,
+          protocols: ["http", "https", "mailto"],
+          HTMLAttributes: { rel: "noopener nofollow", target: "_blank" },
+        },
       }),
       Image.configure({
         HTMLAttributes: { class: "rounded-lg" },
