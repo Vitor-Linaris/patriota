@@ -7,9 +7,9 @@
     "build": "next build",
     "start": "next start -p 3005 -H 0.0.0.0",
     "lint": "eslint",
-    "docker:up": "docker compose up -d --build",
-    "docker:down": "docker compose down",
-    "docker:logs": "docker compose logs -f web"
+    "docker:up": "docker compose -f ../docker-compose.yml up -d --build",
+    "docker:down": "docker compose -f ../docker-compose.yml down",
+    "docker:logs": "docker compose -f ../docker-compose.yml logs -f web"
   },
   "dependencies": {
     "@tiptap/extension-image": "^3.23.5",
