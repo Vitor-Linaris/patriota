@@ -1,14 +1,79 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState, useTransition, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import { saveSettingsSectionAction, type SettingsSection } from "./actions";
 
-type TabId =
-  | "geral"
-  | "email"
-  | "seo"
-  | "redes"
-  | "newsletter"
-  | "seguranca";
+type TabId = SettingsSection;
+
+export interface GeralSettings {
+  siteName: string;
+  tagline: string;
+  siteUrl: string;
+  timezone: string;
+  language: string;
+  breakingNews: boolean;
+  maintenanceMode: boolean;
+}
+
+export interface EmailSettings {
+  smtpHost: string;
+  smtpPort: string;
+  smtpUser: string;
+  fromName: string;
+  fromEmail: string;
+  emailComments: boolean;
+  emailSubscriptions: boolean;
+  emailArticlePublished: boolean;
+}
+
+export interface SeoSettings {
+  metaTitle: string;
+  metaDescription: string;
+  ogImage: string;
+  canonicalUrl: string;
+  googleAnalytics: string;
+  indexing: boolean;
+  sitemap: boolean;
+}
+
+export interface RedesSettings {
+  twitter: string;
+  facebook: string;
+  instagram: string;
+  linkedin: string;
+  youtube: string;
+  shareButtons: boolean;
+  twitterCards: boolean;
+}
+
+export interface NewsletterSettings {
+  provider: string;
+  listId: string;
+  welcomeEmail: boolean;
+  doubleOptin: boolean;
+  weeklyDigest: boolean;
+  digestDay: string;
+}
+
+export interface SegurancaSettings {
+  twoFactor: boolean;
+  sessionTimeout: string;
+  maxLoginAttempts: string;
+  ipWhitelist: string;
+  auditLog: boolean;
+  recaptcha: boolean;
+  recaptchaKey: string;
+}
+
+export interface SettingsBundle {
+  geral: GeralSettings;
+  email: EmailSettings;
+  seo: SeoSettings;
+  redes: RedesSettings;
+  newsletter: NewsletterSettings;
+  seguranca: SegurancaSettings;
+}
 
 const tabs: { id: TabId; label: string; icon: string }[] = [
   { id: "geral", label: "Geral", icon: "⊙" },
@@ -108,83 +173,203 @@ function Textarea({
 function SaveBar({
   onSave,
   saved,
+  pending,
+  error,
 }: {
   onSave: () => void;
   saved: boolean;
+  pending: boolean;
+  error: string | null;
 }) {
   return (
     <div className="mt-2 flex items-center justify-end gap-3 border-t border-gray-100 pt-4">
-      {saved && (
+      {error && (
+        <span className="text-sm font-semibold text-red-600">{error}</span>
+      )}
+      {!error && saved && (
         <span className="text-sm font-semibold text-green-600">✓ Guardado</span>
       )}
       <button
         type="button"
         onClick={onSave}
-        className="rounded-lg bg-[#0F2C6B] px-5 py-2 text-sm font-bold text-white transition-colors hover:bg-[#1A3A7A]"
+        disabled={pending}
+        className="rounded-lg bg-[#0F2C6B] px-5 py-2 text-sm font-bold text-white transition-colors hover:bg-[#1A3A7A] disabled:opacity-50"
       >
-        Guardar alterações
+        {pending ? "A guardar…" : "Guardar alterações"}
       </button>
     </div>
   );
 }
 
-export default function AdminSettingsClient() {
+export default function AdminSettingsClient({
+  initial,
+}: {
+  initial: SettingsBundle;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
   const [tab, setTab] = useState<TabId>("geral");
   const [saved, setSaved] = useState<TabId | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
-  const [siteName, setSiteName] = useState("O Patriota Notícias");
-  const [tagline, setTagline] = useState("Jornalismo independente que faz a diferença.");
-  const [siteUrl, setSiteUrl] = useState("https://www.opatriota.pt");
-  const [timezone, setTimezone] = useState("Europe/Lisbon");
-  const [language, setLanguage] = useState("pt-PT");
-  const [breakingNews, setBreakingNews] = useState(true);
-  const [maintenanceMode, setMaintenanceMode] = useState(false);
+  // ── Geral ──
+  const [siteName, setSiteName] = useState(initial.geral.siteName);
+  const [tagline, setTagline] = useState(initial.geral.tagline);
+  const [siteUrl, setSiteUrl] = useState(initial.geral.siteUrl);
+  const [timezone, setTimezone] = useState(initial.geral.timezone);
+  const [language, setLanguage] = useState(initial.geral.language);
+  const [breakingNews, setBreakingNews] = useState(initial.geral.breakingNews);
+  const [maintenanceMode, setMaintenanceMode] = useState(
+    initial.geral.maintenanceMode,
+  );
 
-  const [smtpHost, setSmtpHost] = useState("smtp.sendgrid.net");
-  const [smtpPort, setSmtpPort] = useState("587");
-  const [smtpUser, setSmtpUser] = useState("apikey");
-  const [smtpPass, setSmtpPass] = useState("••••••••••••••••");
-  const [fromName, setFromName] = useState("O Patriota Notícias");
-  const [fromEmail, setFromEmail] = useState("noreply@opatriota.pt");
-  const [emailComments, setEmailComments] = useState(true);
-  const [emailSubscriptions, setEmailSubscriptions] = useState(true);
-  const [emailArticlePublished, setEmailArticlePublished] = useState(false);
+  // ── Email ──
+  const [smtpHost, setSmtpHost] = useState(initial.email.smtpHost);
+  const [smtpPort, setSmtpPort] = useState(initial.email.smtpPort);
+  const [smtpUser, setSmtpUser] = useState(initial.email.smtpUser);
+  // SMTP password is never sent from the server. Keep it local & opaque.
+  const [smtpPass, setSmtpPass] = useState("");
+  const [fromName, setFromName] = useState(initial.email.fromName);
+  const [fromEmail, setFromEmail] = useState(initial.email.fromEmail);
+  const [emailComments, setEmailComments] = useState(
+    initial.email.emailComments,
+  );
+  const [emailSubscriptions, setEmailSubscriptions] = useState(
+    initial.email.emailSubscriptions,
+  );
+  const [emailArticlePublished, setEmailArticlePublished] = useState(
+    initial.email.emailArticlePublished,
+  );
 
-  const [metaTitle, setMetaTitle] = useState("O Patriota Notícias — Jornalismo independente");
-  const [metaDesc, setMetaDesc] = useState("Cobertura completa da actualidade portuguesa. Política, economia, investigação e sociedade.");
-  const [ogImage, setOgImage] = useState("https://www.opatriota.pt/og-default.jpg");
-  const [canonicalUrl, setCanonicalUrl] = useState("https://www.opatriota.pt");
-  const [indexing, setIndexing] = useState(true);
-  const [sitemap, setSitemap] = useState(true);
-  const [googleAnalytics, setGoogleAnalytics] = useState("G-XXXXXXXXXX");
+  // ── SEO ──
+  const [metaTitle, setMetaTitle] = useState(initial.seo.metaTitle);
+  const [metaDesc, setMetaDesc] = useState(initial.seo.metaDescription);
+  const [ogImage, setOgImage] = useState(initial.seo.ogImage);
+  const [canonicalUrl, setCanonicalUrl] = useState(initial.seo.canonicalUrl);
+  const [indexing, setIndexing] = useState(initial.seo.indexing);
+  const [sitemap, setSitemap] = useState(initial.seo.sitemap);
+  const [googleAnalytics, setGoogleAnalytics] = useState(
+    initial.seo.googleAnalytics,
+  );
 
-  const [twitter, setTwitter] = useState("@opatriota");
-  const [facebook, setFacebook] = useState("https://facebook.com/opatriota");
-  const [instagram, setInstagram] = useState("@opatriota_pt");
-  const [linkedin, setLinkedin] = useState("https://linkedin.com/company/opatriota");
-  const [youtube, setYoutube] = useState("https://youtube.com/@opatriota");
-  const [shareButtons, setShareButtons] = useState(true);
-  const [twitterCards, setTwitterCards] = useState(true);
+  // ── Redes ──
+  const [twitter, setTwitter] = useState(initial.redes.twitter);
+  const [facebook, setFacebook] = useState(initial.redes.facebook);
+  const [instagram, setInstagram] = useState(initial.redes.instagram);
+  const [linkedin, setLinkedin] = useState(initial.redes.linkedin);
+  const [youtube, setYoutube] = useState(initial.redes.youtube);
+  const [shareButtons, setShareButtons] = useState(initial.redes.shareButtons);
+  const [twitterCards, setTwitterCards] = useState(initial.redes.twitterCards);
 
-  const [provider, setProvider] = useState("brevo");
-  const [listId, setListId] = useState("12");
-  const [apiKey, setApiKey] = useState("xkeysib-••••••••••••••••••••••••");
-  const [welcomeEmail, setWelcomeEmail] = useState(true);
-  const [doubleOptin, setDoubleOptin] = useState(true);
-  const [weeklyDigest, setWeeklyDigest] = useState(true);
-  const [digestDay, setDigestDay] = useState("segunda");
+  // ── Newsletter ──
+  const [provider, setProvider] = useState(initial.newsletter.provider);
+  const [listId, setListId] = useState(initial.newsletter.listId);
+  const [apiKey, setApiKey] = useState("");
+  const [welcomeEmail, setWelcomeEmail] = useState(
+    initial.newsletter.welcomeEmail,
+  );
+  const [doubleOptin, setDoubleOptin] = useState(
+    initial.newsletter.doubleOptin,
+  );
+  const [weeklyDigest, setWeeklyDigest] = useState(
+    initial.newsletter.weeklyDigest,
+  );
+  const [digestDay, setDigestDay] = useState(initial.newsletter.digestDay);
 
-  const [twoFactor, setTwoFactor] = useState(false);
-  const [sessionTimeout, setSessionTimeout] = useState("480");
-  const [maxLoginAttempts, setMaxLoginAttempts] = useState("5");
-  const [ipWhitelist, setIpWhitelist] = useState("");
-  const [auditLog, setAuditLog] = useState(true);
-  const [recaptcha, setRecaptcha] = useState(true);
-  const [recaptchaKey, setRecaptchaKey] = useState("6LeXXXXXXXXXXXXXXXXXX");
+  // ── Segurança ──
+  const [twoFactor, setTwoFactor] = useState(initial.seguranca.twoFactor);
+  const [sessionTimeout, setSessionTimeout] = useState(
+    initial.seguranca.sessionTimeout,
+  );
+  const [maxLoginAttempts, setMaxLoginAttempts] = useState(
+    initial.seguranca.maxLoginAttempts,
+  );
+  const [ipWhitelist, setIpWhitelist] = useState(initial.seguranca.ipWhitelist);
+  const [auditLog, setAuditLog] = useState(initial.seguranca.auditLog);
+  const [recaptcha, setRecaptcha] = useState(initial.seguranca.recaptcha);
+  const [recaptchaKey, setRecaptchaKey] = useState(
+    initial.seguranca.recaptchaKey,
+  );
+
+  const collectCurrent = (): Record<string, unknown> => {
+    switch (tab) {
+      case "geral":
+        return {
+          siteName,
+          tagline,
+          siteUrl,
+          timezone,
+          language,
+          breakingNews,
+          maintenanceMode,
+        };
+      case "email":
+        return {
+          smtpHost,
+          smtpPort,
+          smtpUser,
+          fromName,
+          fromEmail,
+          emailComments,
+          emailSubscriptions,
+          emailArticlePublished,
+        };
+      case "seo":
+        return {
+          metaTitle,
+          metaDescription: metaDesc,
+          ogImage,
+          canonicalUrl,
+          googleAnalytics,
+          indexing,
+          sitemap,
+        };
+      case "redes":
+        return {
+          twitter,
+          facebook,
+          instagram,
+          linkedin,
+          youtube,
+          shareButtons,
+          twitterCards,
+        };
+      case "newsletter":
+        return {
+          provider,
+          listId,
+          welcomeEmail,
+          doubleOptin,
+          weeklyDigest,
+          digestDay,
+        };
+      case "seguranca":
+        return {
+          twoFactor,
+          sessionTimeout,
+          maxLoginAttempts,
+          ipWhitelist,
+          auditLog,
+          recaptcha,
+          recaptchaKey,
+        };
+    }
+  };
 
   const handleSave = () => {
-    setSaved(tab);
-    setTimeout(() => setSaved(null), 2500);
+    setSaveError(null);
+    const data = collectCurrent();
+    const section = tab;
+    startTransition(async () => {
+      const res = await saveSettingsSectionAction(section, data);
+      if (!res.ok) {
+        setSaveError(res.error);
+        return;
+      }
+      setSaved(section);
+      setTimeout(() => setSaved(null), 2500);
+      router.refresh();
+    });
   };
 
   return (
@@ -289,7 +474,12 @@ export default function AdminSettingsClient() {
                   </span>
                 </div>
               </Field>
-              <SaveBar onSave={handleSave} saved={saved === "geral"} />
+              <SaveBar
+                onSave={handleSave}
+                saved={saved === "geral"}
+                pending={pending && tab === "geral"}
+                error={tab === "geral" ? saveError : null}
+              />
             </div>
           )}
 
@@ -355,7 +545,12 @@ export default function AdminSettingsClient() {
                   </div>
                 ))}
               </div>
-              <SaveBar onSave={handleSave} saved={saved === "email"} />
+              <SaveBar
+                onSave={handleSave}
+                saved={saved === "email"}
+                pending={pending && tab === "email"}
+                error={tab === "email" ? saveError : null}
+              />
             </div>
           )}
 
@@ -430,7 +625,12 @@ export default function AdminSettingsClient() {
                   )}
                 </div>
               </Field>
-              <SaveBar onSave={handleSave} saved={saved === "seo"} />
+              <SaveBar
+                onSave={handleSave}
+                saved={saved === "seo"}
+                pending={pending && tab === "seo"}
+                error={tab === "seo" ? saveError : null}
+              />
             </div>
           )}
 
@@ -475,7 +675,12 @@ export default function AdminSettingsClient() {
                   </span>
                 </div>
               </Field>
-              <SaveBar onSave={handleSave} saved={saved === "redes"} />
+              <SaveBar
+                onSave={handleSave}
+                saved={saved === "redes"}
+                pending={pending && tab === "redes"}
+                error={tab === "redes" ? saveError : null}
+              />
             </div>
           )}
 
@@ -555,7 +760,12 @@ export default function AdminSettingsClient() {
                   )}
                 </div>
               </Field>
-              <SaveBar onSave={handleSave} saved={saved === "newsletter"} />
+              <SaveBar
+                onSave={handleSave}
+                saved={saved === "newsletter"}
+                pending={pending && tab === "newsletter"}
+                error={tab === "newsletter" ? saveError : null}
+              />
             </div>
           )}
 
@@ -680,7 +890,12 @@ export default function AdminSettingsClient() {
                   </button>
                 </div>
               </div>
-              <SaveBar onSave={handleSave} saved={saved === "seguranca"} />
+              <SaveBar
+                onSave={handleSave}
+                saved={saved === "seguranca"}
+                pending={pending && tab === "seguranca"}
+                error={tab === "seguranca" ? saveError : null}
+              />
             </div>
           )}
         </div>

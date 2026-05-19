@@ -1,10 +1,86 @@
 import { AdminShell } from "../AdminShell";
-import AdminSettingsClient from "./AdminSettingsClient";
+import AdminSettingsClient, {
+  type SettingsBundle,
+} from "./AdminSettingsClient";
+import { apiFetch } from "@/lib/api";
 
-export default function Page() {
+const DEFAULTS: SettingsBundle = {
+  geral: {
+    siteName: "O Patriota Notícias",
+    tagline: "Jornalismo independente que faz a diferença.",
+    siteUrl: "https://www.opatriota.pt",
+    timezone: "Europe/Lisbon",
+    language: "pt-PT",
+    breakingNews: true,
+    maintenanceMode: false,
+  },
+  email: {
+    smtpHost: "",
+    smtpPort: "587",
+    smtpUser: "",
+    fromName: "O Patriota Notícias",
+    fromEmail: "noreply@opatriota.pt",
+    emailComments: true,
+    emailSubscriptions: true,
+    emailArticlePublished: false,
+  },
+  seo: {
+    metaTitle: "O Patriota Notícias — Jornalismo independente",
+    metaDescription:
+      "Cobertura completa da actualidade portuguesa. Política, economia, investigação e sociedade.",
+    ogImage: "https://www.opatriota.pt/og-default.jpg",
+    canonicalUrl: "https://www.opatriota.pt",
+    googleAnalytics: "",
+    indexing: true,
+    sitemap: true,
+  },
+  redes: {
+    twitter: "@opatriota",
+    facebook: "https://facebook.com/opatriota",
+    instagram: "@opatriota_pt",
+    linkedin: "https://linkedin.com/company/opatriota",
+    youtube: "https://youtube.com/@opatriota",
+    shareButtons: true,
+    twitterCards: true,
+  },
+  newsletter: {
+    provider: "brevo",
+    listId: "",
+    welcomeEmail: true,
+    doubleOptin: true,
+    weeklyDigest: true,
+    digestDay: "segunda",
+  },
+  seguranca: {
+    twoFactor: false,
+    sessionTimeout: "480",
+    maxLoginAttempts: "5",
+    ipWhitelist: "",
+    auditLog: true,
+    recaptcha: true,
+    recaptchaKey: "",
+  },
+};
+
+function mergeWithDefaults(remote: Partial<SettingsBundle>): SettingsBundle {
+  return {
+    geral: { ...DEFAULTS.geral, ...(remote.geral ?? {}) },
+    email: { ...DEFAULTS.email, ...(remote.email ?? {}) },
+    seo: { ...DEFAULTS.seo, ...(remote.seo ?? {}) },
+    redes: { ...DEFAULTS.redes, ...(remote.redes ?? {}) },
+    newsletter: { ...DEFAULTS.newsletter, ...(remote.newsletter ?? {}) },
+    seguranca: { ...DEFAULTS.seguranca, ...(remote.seguranca ?? {}) },
+  };
+}
+
+export default async function Page() {
+  const res = await apiFetch("/admin/settings");
+  const data = res.ok
+    ? ((await res.json()) as Partial<SettingsBundle>)
+    : {};
   return (
     <AdminShell active="/admin/configuracoes">
-      <AdminSettingsClient />
+      <AdminSettingsClient initial={mergeWithDefaults(data)} />
     </AdminShell>
   );
 }
