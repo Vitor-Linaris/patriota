@@ -37,3 +37,93 @@ body {
   color: var(--foreground);
   font-family: var(--font-inter), Arial, Helvetica, sans-serif;
 }
+
+/* ──────────────────────────────────────────────────────────────────
+ * Tiptap editor typography (admin → /admin/artigos editor)
+ *
+ * Tailwind v4 strips plain CSS from files that don't `@import "tailwindcss"`,
+ * so these rules live here in globals.css to be reliably bundled.
+ * They mirror the public article scale so authors get a true WYSIWYG.
+ * ────────────────────────────────────────────────────────────────── */
+.tiptap-editor h1 {
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1.15;
+  color: #0f172a;
+  margin: 1.5rem 0 0.75rem;
+}
+.tiptap-editor h2 {
+  font-size: 1.5rem;
+  font-weight: 800;
+  line-height: 1.2;
+  color: #0f172a;
+  margin: 1.5rem 0 0.5rem;
+}
+.tiptap-editor h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: #0f172a;
+  margin: 1.25rem 0 0.4rem;
+}
+.tiptap-editor h4 {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: #1e293b;
+  margin: 1rem 0 0.3rem;
+}
+.tiptap-editor p {
+  margin: 0.75rem 0;
+}
+.tiptap-editor ul,
+.tiptap-editor ol {
+  margin: 0.75rem 0;
+  padding-left: 1.5rem;
+}
+.tiptap-editor ul {
+  list-style: disc;
+}
+.tiptap-editor ol {
+  list-style: decimal;
+}
+.tiptap-editor li {
+  margin: 0.25rem 0;
+}
+.tiptap-editor blockquote {
+  border-left: 4px solid #ffcc66;
+  background: #fff7e6;
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+  font-style: italic;
+  color: #4a3500;
+}
+.tiptap-editor code {
+  background: #f1f5f9;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+}
+.tiptap-editor a {
+  color: #1e40af;
+  text-decoration: underline;
+}
+.tiptap-editor hr {
+  border: 0;
+  border-top: 2px solid #e2e8f0;
+  margin: 1.5rem 0;
+}
+.tiptap-editor img {
+  margin: 1rem 0;
+  max-width: 100%;
+  height: auto;
+}
+.tiptap-editor p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: #94a3b8;
+  pointer-events: none;
+  height: 0;
+}
