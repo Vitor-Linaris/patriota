@@ -15,13 +15,20 @@ export interface ArticleFormPayload {
   summary?: string;
   content?: string;
   categoryId: string;
-  status?: "RASCUNHO" | "AGENDADO" | "PUBLICADO" | "ARQUIVADO";
+  status?:
+    | "RASCUNHO"
+    | "EM_REVISAO"
+    | "AGENDADO"
+    | "PUBLICADO"
+    | "ARQUIVADO";
   premium?: boolean;
   readMinutes?: number;
   tags?: string[];
   metaTitle?: string;
   metaDescription?: string;
   coverImageUrl?: string;
+  /** ISO 8601 (UTC). Required when status === "AGENDADO". */
+  scheduledAt?: string;
 }
 
 export async function createArticleAction(payload: ArticleFormPayload) {

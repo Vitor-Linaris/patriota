@@ -4,6 +4,7 @@ import { createTestApp } from './helpers/app';
 import { makeUser, bearer } from './helpers/auth';
 import { truncate } from './helpers/db';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { ArticlesScheduler } from '../src/articles/articles.scheduler';
 
 describe('Articles (e2e)', () => {
   let app: INestApplication;
@@ -175,6 +176,53 @@ describe('Articles (e2e)', () => {
     await request(app.getHttpServer())
       .get(`/public/articles/by-slug/investigacao-sensivel`)
       .expect(200);
+  });
+
+  it('Scheduler promotes AGENDADO articles whose scheduledAt has passed', async () => {
+    const editor = await makeUser(app, { role: 'EDITOR_CHEFE' });
+    const prisma = app.get(PrismaService);
+    const scheduler = app.get(ArticlesScheduler);
+
+    // 1. Editor saves an article as AGENDADO with a past scheduledAt
+    //    (simulating "scheduled for 2 minutes ago" — never published)
+    const past = new Date(Date.now() - 60_000).toISOString();
+    const created = await request(app.getHttpServer())
+      .post('/admin/articles')
+      .set(bearer(editor))
+      .send({
+        title: 'Artigo agendado',
+        content: '<p>body</p>',
+        categoryId,
+        status: 'AGENDADO',
+        scheduledAt: past,
+      })
+      .expect(201);
+    expect(created.body.status).toBe('AGENDADO');
+
+    // 2. Public can't read it yet
+    await request(app.getHttpServer())
+      .get('/public/articles/by-slug/artigo-agendado')
+      .expect(404);
+
+    // 3. Cron tick promotes it
+    const promoted = await scheduler.runDueArticles();
+    expect(promoted).toBeGreaterThanOrEqual(1);
+
+    // 4. Now public can read it
+    const fetched = await request(app.getHttpServer())
+      .get('/public/articles/by-slug/artigo-agendado')
+      .expect(200);
+    expect(fetched.body.status).toBe('PUBLICADO');
+    // publishedAt should reflect the scheduled date, not "now"
+    expect(new Date(fetched.body.publishedAt).getTime()).toBe(
+      new Date(past).getTime(),
+    );
+
+    // 5. Article row no longer has a scheduledAt
+    const row = await prisma.article.findUnique({
+      where: { id: created.body.id },
+    });
+    expect(row?.scheduledAt).toBeNull();
   });
 
   it('Cannot reject articles not in EM_REVISAO', async () => {

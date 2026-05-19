@@ -158,6 +158,12 @@ interface EditorState {
   coverImage: string;
   categoryId: string;
   rejectionReason: string | null;
+  /**
+   * ISO 8601 (UTC) — when set, "Publicar"/"Enviar para revisão" stores
+   * the article as AGENDADO with this timestamp instead of going live
+   * immediately. The backend cron flips AGENDADO→PUBLICADO at the date.
+   */
+  scheduledAt: string | null;
 }
 
 function emptyEditor(categoryId: string): EditorState {
@@ -175,6 +181,7 @@ function emptyEditor(categoryId: string): EditorState {
     coverImage: "",
     categoryId,
     rejectionReason: null,
+    scheduledAt: null,
   };
 }
 
@@ -194,6 +201,7 @@ function articleToEditor(a: AdminArticle): EditorState {
     coverImage: a.coverImage,
     categoryId: a.categoryId,
     rejectionReason: a.rejectionReason,
+    scheduledAt: a.scheduledAt,
   };
 }
 
@@ -217,6 +225,19 @@ function ArticleEditor({
   const [form, setForm] = useState<EditorState>(initial);
   const [tagInput, setTagInput] = useState("");
   const [seoOpen, setSeoOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  // Local draft of the date/time inputs so the user can fiddle before
+  // committing. Pre-fill from form.scheduledAt when re-opening.
+  const [scheduleDate, setScheduleDate] = useState(() =>
+    form.scheduledAt ? new Date(form.scheduledAt).toISOString().slice(0, 10) : "",
+  );
+  const [scheduleTime, setScheduleTime] = useState(() => {
+    if (!form.scheduledAt) return "08:00";
+    const d = new Date(form.scheduledAt);
+    return `${String(d.getUTCHours()).padStart(2, "0")}:${String(
+      d.getUTCMinutes(),
+    ).padStart(2, "0")}`;
+  });
   const [editorKey] = useState(() => Math.random().toString(36).slice(2));
 
   const set = (patch: Partial<EditorState>) =>
@@ -270,12 +291,30 @@ function ArticleEditor({
             </div>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="relative flex shrink-0 items-center gap-2">
           <button
             onClick={() => setSeoOpen(!seoOpen)}
             className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-500 transition-colors hover:bg-gray-50"
           >
             SEO
+          </button>
+          <button
+            type="button"
+            onClick={() => setScheduleOpen((v) => !v)}
+            className={`rounded-lg border px-3 py-2 text-xs font-bold transition-colors ${
+              form.scheduledAt
+                ? "border-blue-300 bg-blue-50 text-blue-700"
+                : "border-gray-200 text-gray-500 hover:bg-gray-50"
+            }`}
+          >
+            {form.scheduledAt
+              ? `◷ ${new Date(form.scheduledAt).toLocaleString("pt-PT", {
+                  day: "2-digit",
+                  month: "short",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}`
+              : "◷ Agendar…"}
           </button>
           <button
             disabled={saving}
@@ -289,8 +328,78 @@ function ArticleEditor({
             onClick={() => onSave(form, true)}
             className="rounded-lg bg-[#0F2C6B] px-5 py-2 text-xs font-bold text-white transition-colors hover:bg-[#1A3A7A] disabled:opacity-50"
           >
-            {canPublish ? "Publicar" : "Enviar para revisão"}
+            {form.scheduledAt
+              ? "Agendar publicação"
+              : canPublish
+                ? "Publicar"
+                : "Enviar para revisão"}
           </button>
+
+          {scheduleOpen && (
+            <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-72 rounded-xl border border-gray-200 bg-white p-4 shadow-2xl">
+              <p className="mb-1 text-sm font-black text-[#0F2C6B]">
+                Agendar publicação
+              </p>
+              <p className="mb-3 text-[11px] text-gray-500">
+                O artigo entra em modo agendado e é publicado
+                automaticamente à hora indicada.
+              </p>
+              <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                Data
+              </label>
+              <input
+                type="date"
+                value={scheduleDate}
+                onChange={(e) => setScheduleDate(e.target.value)}
+                min={new Date().toISOString().slice(0, 10)}
+                className="mb-3 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#0F2C6B] focus:outline-none"
+              />
+              <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                Hora (UTC)
+              </label>
+              <input
+                type="time"
+                value={scheduleTime}
+                onChange={(e) => setScheduleTime(e.target.value)}
+                className="mb-4 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#0F2C6B] focus:outline-none"
+              />
+              <div className="flex gap-2">
+                {form.scheduledAt && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      set({ scheduledAt: null });
+                      setScheduleOpen(false);
+                    }}
+                    className="flex-1 rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-50"
+                  >
+                    Remover
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setScheduleOpen(false)}
+                  className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-500 hover:bg-gray-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={!scheduleDate}
+                  onClick={() => {
+                    const iso = new Date(
+                      `${scheduleDate}T${scheduleTime || "08:00"}:00.000Z`,
+                    ).toISOString();
+                    set({ scheduledAt: iso });
+                    setScheduleOpen(false);
+                  }}
+                  className="flex-1 rounded-lg bg-[#0F2C6B] px-3 py-2 text-xs font-bold text-white hover:bg-[#1A3A7A] disabled:opacity-50"
+                >
+                  Aplicar
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -733,11 +842,21 @@ export default function AdminArticlesClient({
     }
     setEditorError(null);
 
-    // For the save-as-draft path keep the article's existing status if
-    // it's not in a terminal state; otherwise default to RASCUNHO.
-    const draftStatus: ApiStatus =
-      form.status === "agendado" ? "AGENDADO" : "RASCUNHO";
-    const status: ApiStatus = publish ? "PUBLICADO" : draftStatus;
+    const isScheduled = Boolean(form.scheduledAt);
+
+    // Save-payload: we always save the row first as a "still pending"
+    // state — never directly as PUBLICADO. The workflow transition is
+    // then triggered by a dedicated server action so the backend is the
+    // single source of truth on status.
+    //   • scheduledAt set + publish → AGENDADO (cron will publish it)
+    //   • plain publish → start from RASCUNHO, then call /publish
+    //   • plain save → keep current status if it was scheduled,
+    //     otherwise default to RASCUNHO
+    let saveStatus: ApiStatus;
+    if (publish && isScheduled) saveStatus = "AGENDADO";
+    else if (publish) saveStatus = "RASCUNHO";
+    else if (form.status === "agendado") saveStatus = "AGENDADO";
+    else saveStatus = "RASCUNHO";
 
     const payload: ArticleFormPayload = {
       title: form.title.trim(),
@@ -745,16 +864,14 @@ export default function AdminArticlesClient({
       summary: form.summary,
       content: form.content,
       categoryId: form.categoryId,
-      // Always save the row as a draft (or current scheduled state).
-      // The publish/submit transition is handled by a dedicated server
-      // action after the save, so the backend can enforce the workflow.
-      status: publish ? draftStatus : status,
+      status: saveStatus,
       premium: form.premium,
       readMinutes: form.readMinutes,
       tags: form.tags,
       metaTitle: form.metaTitle || undefined,
       metaDescription: form.metaDescription || undefined,
       coverImageUrl: form.coverImage || undefined,
+      scheduledAt: form.scheduledAt ?? undefined,
     };
 
     startTransition(async () => {
@@ -775,17 +892,25 @@ export default function AdminArticlesClient({
       }
 
       if (publish && articleId) {
-        // canPublish === true → /publish endpoint goes straight to PUBLICADO.
-        // canPublish === false → /submit goes to EM_REVISAO.
-        // We also catch the backend-side fallback (publish() converts to
-        // submitForReview for non-publishers) but doing the right call
-        // upfront keeps the UX honest.
-        const transitionRes = canPublish
-          ? await publishArticleAction(articleId)
-          : await submitArticleAction(articleId);
-        if (!transitionRes.ok) {
-          setEditorError(transitionRes.error);
-          return;
+        if (isScheduled) {
+          // Scheduled path: row already saved as AGENDADO above. No
+          // immediate transition — the backend cron handles it.
+          // (Future enhancement: editors-in-chief might still want to
+          // approve scheduled items; today we trust them.)
+        } else if (canPublish) {
+          // Publisher → straight to PUBLICADO via /publish.
+          const transitionRes = await publishArticleAction(articleId);
+          if (!transitionRes.ok) {
+            setEditorError(transitionRes.error);
+            return;
+          }
+        } else {
+          // Non-publisher → EM_REVISAO via /submit.
+          const transitionRes = await submitArticleAction(articleId);
+          if (!transitionRes.ok) {
+            setEditorError(transitionRes.error);
+            return;
+          }
         }
       }
 
