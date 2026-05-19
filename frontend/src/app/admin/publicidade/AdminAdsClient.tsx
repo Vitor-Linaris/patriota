@@ -553,9 +553,13 @@ function AdsInner() {
   );
 }
 
-export default function AdminAdsClient() {
+export default function AdminAdsClient({
+  initialAds,
+}: {
+  initialAds: Ad[];
+}) {
   return (
-    <AdProvider>
+    <AdProvider initialAds={initialAds}>
       <AdsInner />
     </AdProvider>
   );

@@ -2,11 +2,16 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useState,
-  useEffect,
+  useTransition,
   type ReactNode,
 } from "react";
+import {
+  updateAdAction,
+  type AdTypeApi,
+} from "@/app/admin/publicidade/actions";
 
 export type AdType = "empty" | "image" | "html";
 
@@ -28,81 +33,72 @@ export interface Ad {
   updatedAt?: string;
 }
 
-const DEFAULT_ADS: Ad[] = [
-  { id: "homepage-leaderboard", name: "Homepage — Leaderboard topo", page: "Homepage", position: "Topo da página", size: "970×90", sizeLabel: "Leaderboard", type: "empty", enabled: true },
-  { id: "homepage-mid", name: "Homepage — Intermédio conteúdo", page: "Homepage", position: "Meio da página", size: "970×60", sizeLabel: "Banner horizontal", type: "empty", enabled: true },
-  { id: "homepage-sidebar", name: "Homepage — Sidebar", page: "Homepage", position: "Coluna lateral", size: "300×250", sizeLabel: "Rectangle", type: "empty", enabled: true },
-  { id: "homepage-prefooter", name: "Homepage — Pré-rodapé", page: "Homepage", position: "Antes do rodapé", size: "970×90", sizeLabel: "Leaderboard", type: "empty", enabled: true },
-  { id: "article-leaderboard", name: "Artigo — Leaderboard topo", page: "Artigo", position: "Topo da página", size: "970×90", sizeLabel: "Leaderboard", type: "empty", enabled: true },
-  { id: "article-incontent", name: "Artigo — Dentro do conteúdo", page: "Artigo", position: "Meio do artigo", size: "336×280", sizeLabel: "Rectangle médio", type: "empty", enabled: true },
-  { id: "article-sidebar", name: "Artigo — Sidebar", page: "Artigo", position: "Coluna lateral", size: "300×250", sizeLabel: "Rectangle", type: "empty", enabled: true },
-  { id: "article-prefooter", name: "Artigo — Pré-rodapé", page: "Artigo", position: "Antes do rodapé", size: "970×90", sizeLabel: "Leaderboard", type: "empty", enabled: true },
-  { id: "category-leaderboard", name: "Categoria — Leaderboard topo", page: "Categoria", position: "Topo da página", size: "970×90", sizeLabel: "Leaderboard", type: "empty", enabled: true },
-  { id: "category-sidebar", name: "Categoria — Sidebar", page: "Categoria", position: "Coluna lateral", size: "300×250", sizeLabel: "Rectangle", type: "empty", enabled: true },
-];
+const TYPE_API_TO_UI: Record<AdTypeApi, AdType> = {
+  EMPTY: "empty",
+  IMAGE: "image",
+  HTML: "html",
+};
+
+const TYPE_UI_TO_API: Record<AdType, AdTypeApi> = {
+  empty: "EMPTY",
+  image: "IMAGE",
+  html: "HTML",
+};
 
 interface AdContextValue {
   ads: Ad[];
   updateAd: (id: string, patch: Partial<Ad>) => void;
   getAd: (id: string) => Ad | undefined;
+  saving: boolean;
 }
 
 const AdContext = createContext<AdContextValue | null>(null);
 
-const STORAGE_KEY = "patriota_ads";
+export function AdProvider({
+  initialAds,
+  children,
+}: {
+  initialAds: Ad[];
+  children: ReactNode;
+}) {
+  const [ads, setAds] = useState<Ad[]>(initialAds);
+  const [saving, startTransition] = useTransition();
 
-function mergeWithSaved(saved: Ad[]): Ad[] {
-  return DEFAULT_ADS.map((def) => {
-    const found = saved.find((s) => s.id === def.id);
-    return found ? { ...def, ...found } : def;
-  });
-}
-
-export function AdProvider({ children }: { children: ReactNode }) {
-  // Always start from DEFAULT_ADS on both server and client so the first
-  // render matches and hydration succeeds. After mount, hydrate from
-  // localStorage on the client.
-  const [ads, setAds] = useState<Ad[]>(DEFAULT_ADS);
-  const [hydrated, setHydrated] = useState(false);
-
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const saved: Ad[] = JSON.parse(raw);
-        setAds(mergeWithSaved(saved));
-      }
-    } catch {
-      /* ignore */
-    }
-    setHydrated(true);
-  }, []);
-
-  useEffect(() => {
-    // Only persist after we've hydrated, so we don't immediately overwrite
-    // existing localStorage with the defaults on first mount.
-    if (!hydrated) return;
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(ads));
-    } catch {
-      /* ignore */
-    }
-  }, [ads, hydrated]);
-
-  const updateAd = (id: string, patch: Partial<Ad>) => {
+  const updateAd = useCallback((id: string, patch: Partial<Ad>) => {
+    // Optimistic update for snappy UI.
     setAds((prev) =>
       prev.map((a) =>
         a.id === id
-          ? { ...a, ...patch, updatedAt: new Date().toLocaleString("pt-PT") }
+          ? {
+              ...a,
+              ...patch,
+              updatedAt: new Date().toLocaleString("pt-PT"),
+            }
           : a,
       ),
     );
-  };
+    startTransition(async () => {
+      const payload: Parameters<typeof updateAdAction>[1] = {};
+      if (patch.type !== undefined) payload.type = TYPE_UI_TO_API[patch.type];
+      if (patch.enabled !== undefined) payload.enabled = patch.enabled;
+      if (patch.imageUrl !== undefined) payload.imageUrl = patch.imageUrl || null;
+      if (patch.linkUrl !== undefined) payload.linkUrl = patch.linkUrl || null;
+      if (patch.linkTarget !== undefined)
+        payload.linkTarget = patch.linkTarget || null;
+      if (patch.altText !== undefined) payload.altText = patch.altText || null;
+      if (patch.htmlCode !== undefined) payload.htmlCode = patch.htmlCode || null;
 
-  const getAd = (id: string) => ads.find((a) => a.id === id);
+      const res = await updateAdAction(id, payload);
+      if (!res.ok) {
+        console.error("Ad update failed:", res.error);
+      }
+    });
+  }, []);
+
+  const getAd = useCallback((id: string) => ads.find((a) => a.id === id), [ads]);
 
   return (
-    <AdContext.Provider value={{ ads, updateAd, getAd }}>
+    <AdContext.Provider value={{ ads, updateAd, getAd, saving }}>
       {children}
     </AdContext.Provider>
   );
@@ -112,4 +108,41 @@ export function useAds() {
   const ctx = useContext(AdContext);
   if (!ctx) throw new Error("useAds must be used inside AdProvider");
   return ctx;
+}
+
+export function mapApiAdToUi(api: {
+  id: string;
+  name: string;
+  page: string;
+  position: string;
+  size: string;
+  sizeLabel: string;
+  type: AdTypeApi;
+  enabled: boolean;
+  imageUrl: string | null;
+  linkUrl: string | null;
+  linkTarget: string | null;
+  altText: string | null;
+  htmlCode: string | null;
+  updatedAt: string;
+}): Ad {
+  return {
+    id: api.id,
+    name: api.name,
+    page: api.page,
+    position: api.position,
+    size: api.size,
+    sizeLabel: api.sizeLabel,
+    type: TYPE_API_TO_UI[api.type],
+    enabled: api.enabled,
+    imageUrl: api.imageUrl ?? undefined,
+    linkUrl: api.linkUrl ?? undefined,
+    linkTarget:
+      api.linkTarget === "_blank" || api.linkTarget === "_self"
+        ? api.linkTarget
+        : undefined,
+    altText: api.altText ?? undefined,
+    htmlCode: api.htmlCode ?? undefined,
+    updatedAt: api.updatedAt,
+  };
 }
