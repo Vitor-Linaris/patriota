@@ -36,13 +36,23 @@ export class CategoriesService {
     });
   }
 
-  listPublic() {
-    return this.prisma.category.findMany({
+  async listPublic() {
+    const items = await this.prisma.category.findMany({
       where: { visible: true },
       orderBy: { order: 'asc' },
       include: {
         subtopics: { orderBy: { order: 'asc' } },
+        _count: {
+          select: {
+            articles: { where: { status: 'PUBLICADO' } },
+          },
+        },
       },
+    });
+    // Surface the count under a stable name so the public API stays small.
+    return items.map((c) => {
+      const { _count, ...rest } = c;
+      return { ...rest, articleCount: _count.articles };
     });
   }
 

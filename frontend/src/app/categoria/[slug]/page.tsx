@@ -16,7 +16,7 @@ import { Pagination } from "@/components/category/Pagination";
 import { CategorySidebar } from "@/components/category/CategorySidebar";
 import { SectionMarker } from "@/components/category/SectionMarker";
 import { getCategoryBySlug, getCategories } from "@/lib/categories";
-import { listPublicArticles, timeAgo } from "@/lib/public-api";
+import { listBreaking, listPublicArticles, timeAgo } from "@/lib/public-api";
 
 // Pre-render the category routes that we know about at build time.
 export async function generateStaticParams() {
@@ -36,10 +36,10 @@ export default async function CategoryPage({
   const category = await getCategoryBySlug(slug);
   if (!category) notFound();
 
-  const { items: rawArticles, total } = await listPublicArticles({
-    category: slug,
-    pageSize: 20,
-  });
+  const [{ items: rawArticles, total }, breaking] = await Promise.all([
+    listPublicArticles({ category: slug, pageSize: 20 }),
+    listBreaking(3),
+  ]);
   const [featured, ...rest] = rawArticles;
   const articleCount = total;
   const listItems = rest.map((a, i) => ({
@@ -63,7 +63,9 @@ export default async function CategoryPage({
   return (
     <div className="flex flex-1 flex-col bg-white text-slate-900">
       <TopBar />
-      <BreakingNews />
+      <BreakingNews
+        items={breaking.map((a) => ({ slug: a.slug, title: a.title }))}
+      />
       <SiteHeader />
       <SecondaryNav />
 

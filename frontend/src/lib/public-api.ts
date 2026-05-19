@@ -17,10 +17,23 @@ export interface ArticleSummary {
   author: { name: string | null };
 }
 
+export interface ArticleContextColumn {
+  label: string;
+  body: string;
+}
+
+export interface ArticlePullQuote {
+  quote: string;
+  cite: string;
+}
+
 export interface ArticleDetail extends ArticleSummary {
   content: string;
   metaTitle: string | null;
   metaDescription: string | null;
+  essentials: string[];
+  context: { columns: ArticleContextColumn[] } | null;
+  pullQuote: ArticlePullQuote | null;
 }
 
 export interface HomepageBundle {
@@ -73,6 +86,7 @@ export interface PublicListQuery {
   category?: string;
   page?: number;
   pageSize?: number;
+  sort?: "publishedAt" | "views";
 }
 
 export async function listPublicArticles(
@@ -83,6 +97,7 @@ export async function listPublicArticles(
     if (q.category) params.set("category", q.category);
     if (q.page) params.set("page", String(q.page));
     if (q.pageSize) params.set("pageSize", String(q.pageSize));
+    if (q.sort) params.set("sort", q.sort);
     const res = await fetch(
       `${apiUrl()}/public/articles?${params.toString()}`,
       { cache: "no-store" },
@@ -95,6 +110,38 @@ export async function listPublicArticles(
     return body;
   } catch {
     return { items: [], total: 0 };
+  }
+}
+
+/** Most-viewed published articles, descending. */
+export async function listMostRead(limit = 4): Promise<ArticleSummary[]> {
+  const { items } = await listPublicArticles({
+    sort: "views",
+    pageSize: limit,
+  });
+  return items;
+}
+
+/** Latest published articles for the breaking-news ticker. */
+export async function listBreaking(limit = 3): Promise<ArticleSummary[]> {
+  const { items } = await listPublicArticles({ pageSize: limit });
+  return items;
+}
+
+/** Sibling published articles in the same category as `slug`. */
+export async function listRelated(
+  slug: string,
+  limit = 4,
+): Promise<ArticleSummary[]> {
+  try {
+    const res = await fetch(
+      `${apiUrl()}/public/articles/related/${encodeURIComponent(slug)}?limit=${limit}`,
+      { cache: "no-store" },
+    );
+    if (!res.ok) return [];
+    return (await res.json()) as ArticleSummary[];
+  } catch {
+    return [];
   }
 }
 

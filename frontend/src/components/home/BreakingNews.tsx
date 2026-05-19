@@ -1,12 +1,12 @@
 import { Container } from "../Container";
 
-const HEADLINES = [
-  "Assembleia da República aprova nova lei do arrendamento",
-  "TAP regista lucro operacional pelo segundo trimestre consecutivo",
-  "Conselho de Ministros reúne hoje para aprovar pacote habitacional",
-];
+interface BreakingItem {
+  slug: string;
+  title: string;
+}
 
-export function BreakingNews() {
+export function BreakingNews({ items }: { items: BreakingItem[] }) {
+  if (items.length === 0) return null;
   return (
     <div
       style={{
@@ -18,22 +18,29 @@ export function BreakingNews() {
           Última hora
         </span>
         <div className="flex flex-1 items-center gap-7 overflow-hidden text-[14px]">
-          {HEADLINES.map((h, i) => (
+          {items.map((item, i) => (
             <a
-              key={i}
-              href="#"
+              key={item.slug}
+              href={`/artigo/${item.slug}`}
               className={`whitespace-nowrap transition hover:text-white ${
                 i === 0 ? "text-white" : "text-white/60 hidden lg:inline"
               }`}
             >
-              {h}
+              {item.title}
             </a>
           ))}
         </div>
         <div className="hidden items-center gap-1.5 md:flex">
-          <span className="h-2 w-5 rounded-full bg-patriota-accent" />
-          <span className="h-2 w-2 rounded-full bg-white/30" />
-          <span className="h-2 w-2 rounded-full bg-white/30" />
+          {items.slice(0, 3).map((_, i) => (
+            <span
+              key={i}
+              className={
+                i === 0
+                  ? "h-2 w-5 rounded-full bg-patriota-accent"
+                  : "h-2 w-2 rounded-full bg-white/30"
+              }
+            />
+          ))}
         </div>
       </Container>
     </div>

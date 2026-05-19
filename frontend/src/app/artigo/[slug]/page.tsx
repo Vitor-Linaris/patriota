@@ -12,7 +12,12 @@ import { ContextBox } from "@/components/article/ContextBox";
 import { Blockquote } from "@/components/article/Blockquote";
 import { AuthorBio } from "@/components/article/AuthorBio";
 import { ArticleSidebar } from "@/components/article/ArticleSidebar";
-import { getArticleBySlug, timeAgo } from "@/lib/public-api";
+import {
+  getArticleBySlug,
+  listBreaking,
+  listRelated,
+  timeAgo,
+} from "@/lib/public-api";
 
 export default async function ArticlePage({
   params,
@@ -22,6 +27,10 @@ export default async function ArticlePage({
   const { slug } = await params;
   const article = await getArticleBySlug(slug);
   if (!article) notFound();
+  const [related, breaking] = await Promise.all([
+    listRelated(slug, 4),
+    listBreaking(3),
+  ]);
   const authorInitials = (article.author.name ?? "??")
     .split(" ")
     .filter(Boolean)
@@ -32,7 +41,9 @@ export default async function ArticlePage({
   return (
     <div className="flex flex-1 flex-col bg-white text-slate-900">
       <TopBar />
-      <BreakingNews />
+      <BreakingNews
+        items={breaking.map((a) => ({ slug: a.slug, title: a.title }))}
+      />
       <SiteHeader />
       <SecondaryNav />
 
@@ -108,32 +119,23 @@ export default async function ArticlePage({
               </div>
 
               {/* Essential */}
-              <div className="mt-8">
-                <EssentialBox
-                  items={[
-                    "Despesa pública aumenta 3,2% face ao orçamento de 2025",
-                    "Investimento em saúde e educação sobe 5,4%",
-                    "Défice previsto de 1,8% do PIB, dentro dos limites europeus",
-                    "Oposição critica falta de reformas estruturais",
-                  ]}
-                />
-              </div>
-
-              {/* Hero image (placeholder) */}
-              <figure className="mt-8">
-                <div className="flex aspect-[16/9] w-full flex-col items-center justify-center rounded-lg bg-gradient-to-br from-slate-200 to-slate-300 text-slate-500">
-                  <span className="text-5xl" aria-hidden>
-                    🏛️
-                  </span>
-                  <span className="mt-3 text-[14px] font-semibold">
-                    Assembleia da República, Lisboa
-                  </span>
+              {article.essentials && article.essentials.length > 0 && (
+                <div className="mt-8">
+                  <EssentialBox items={article.essentials} />
                 </div>
-                <figcaption className="mt-2 text-[12px] text-slate-500">
-                  Vista da sala de plenário durante a apresentação do orçamento.
-                  Foto: Lusa
-                </figcaption>
-              </figure>
+              )}
+
+              {/* Cover image, if any */}
+              {article.coverImageUrl && (
+                <figure className="mt-8">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={article.coverImageUrl}
+                    alt={article.title}
+                    className="aspect-[16/9] w-full rounded-lg object-cover"
+                  />
+                </figure>
+              )}
 
               {/* Body */}
               {article.content ? (
@@ -148,82 +150,25 @@ export default async function ArticlePage({
               )}
 
               {/* Context */}
-              <div className="mt-8">
-                <ContextBox
-                  columns={[
-                    {
-                      label: "O que aconteceu",
-                      body: "Governo entregou proposta de OE2026 na Assembleia da República",
-                    },
-                    {
-                      label: "Porque importa",
-                      body: "Define a política fiscal e social para os próximos 12 meses",
-                    },
-                    {
-                      label: "Próximo passo",
-                      body: "Debate na generalidade previsto para 28 de abril",
-                    },
-                  ]}
-                />
-              </div>
-
-              {/* Body paragraphs */}
-              <p className="mt-8 text-[16px] leading-relaxed text-slate-800">
-                A proposta inclui um aumento de 5,4% no investimento em saúde
-                e educação, áreas consideradas prioritárias pelo executivo. O
-                défice orçamental está previsto em 1,8% do PIB, abaixo do
-                limite de 3% estabelecido pelo Pacto de Estabilidade e
-                Crescimento da União Europeia.
-              </p>
-              <p className="mt-6 text-[16px] leading-relaxed text-slate-800">
-                A oposição reagiu com críticas à falta de reformas estruturais.
-                &ldquo;Este orçamento não responde aos desafios de longo prazo
-                do país&rdquo;, afirmou o líder parlamentar do PS,
-                acrescentando que o crescimento da despesa não está
-                acompanhado de medidas de eficiência.
-              </p>
+              {article.context &&
+                article.context.columns &&
+                article.context.columns.length > 0 && (
+                  <div className="mt-8">
+                    <ContextBox columns={article.context.columns} />
+                  </div>
+                )}
 
               {/* Blockquote */}
-              <div className="mt-8">
-                <Blockquote
-                  quote="Apresentamos um orçamento que investe no futuro sem comprometer a estabilidade que os portugueses merecem."
-                  cite="— Ministro das Finanças, conferência de imprensa"
-                />
-              </div>
-
-              {/* Inline ad (Renault) */}
-              <div className="mt-8">
-                <div className="flex items-center gap-5 rounded-lg border border-rose-100 bg-gradient-to-r from-rose-50 to-amber-50 px-5 py-4">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-white text-2xl font-black text-rose-600 shadow-sm">
-                    R
+              {article.pullQuote &&
+                article.pullQuote.quote &&
+                article.pullQuote.quote.length > 0 && (
+                  <div className="mt-8">
+                    <Blockquote
+                      quote={article.pullQuote.quote}
+                      cite={article.pullQuote.cite}
+                    />
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[14px] font-bold text-slate-900">
-                      Renault — Novo Mégane E-Tech Eléctrico
-                    </p>
-                    <p className="truncate text-[12px] text-slate-600">
-                      Autonomia até 470 km. Test drive gratuito na sua cidade.
-                    </p>
-                  </div>
-                  <a
-                    href="#"
-                    className="hidden shrink-0 rounded-md bg-rose-600 px-4 py-2 text-[12px] font-semibold text-white hover:bg-rose-700 md:inline-flex"
-                  >
-                    Agendar test drive
-                  </a>
-                </div>
-                <p className="mt-2 text-center text-[10px] uppercase tracking-wider text-slate-400">
-                  Publicidade
-                </p>
-              </div>
-
-              {/* Final paragraph */}
-              <p className="mt-8 text-[16px] leading-relaxed text-slate-800">
-                O documento será debatido na generalidade no final do mês, com
-                votação final global prevista para meados de maio. Os partidos
-                de esquerda já anunciaram reservas, enquanto a direita
-                moderada mantém posição de análise.
-              </p>
+                )}
 
               {/* Transparency notice */}
               <div className="mt-10 rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 text-[13px] leading-relaxed text-amber-900">
@@ -243,6 +188,37 @@ export default async function ArticlePage({
                   bio="Jornalista da equipa editorial do O Patriota."
                 />
               </div>
+
+              {/* Related articles */}
+              {related.length > 0 && (
+                <section className="mt-12 border-t border-slate-200 pt-8">
+                  <h2 className="text-[20px] font-black uppercase tracking-wide text-slate-900">
+                    Continuar a ler
+                  </h2>
+                  <ul className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2">
+                    {related.map((r) => (
+                      <li key={r.id}>
+                        <Link
+                          href={`/artigo/${r.slug}`}
+                          className="block rounded-xl border border-slate-200 bg-white p-4 transition hover:shadow-md"
+                        >
+                          <p className="text-[11px] font-bold uppercase tracking-wider text-orange-600">
+                            {r.category.name}
+                          </p>
+                          <h3 className="mt-1 text-[16px] font-bold leading-snug text-slate-900">
+                            {r.title}
+                          </h3>
+                          {r.summary && (
+                            <p className="mt-2 line-clamp-2 text-[13px] text-slate-600">
+                              {r.summary}
+                            </p>
+                          )}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
             </article>
 
             {/* Sidebar */}

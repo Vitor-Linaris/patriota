@@ -5,6 +5,7 @@ export interface CategoryDef {
   label: string;
   description: string;
   subtopics: string[];
+  articleCount: number;
 }
 
 interface BackendCategory {
@@ -16,6 +17,7 @@ interface BackendCategory {
   color: string;
   order: number;
   visible: boolean;
+  articleCount?: number;
   subtopics: { id: string; label: string; order: number }[];
 }
 
@@ -46,6 +48,7 @@ export const getCategories = cache(async (): Promise<CategoryDef[]> => {
       slug: c.slug,
       label: c.name,
       description: c.description,
+      articleCount: c.articleCount ?? 0,
       subtopics: c.subtopics.map((s) => s.label),
     }));
   } catch {

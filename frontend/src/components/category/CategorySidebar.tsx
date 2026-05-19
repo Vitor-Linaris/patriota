@@ -1,45 +1,33 @@
 import Link from "next/link";
 import { SectionMarker } from "./SectionMarker";
 import { getCategories } from "@/lib/categories";
+import { listPublicArticles } from "@/lib/public-api";
+import { NewsletterForm } from "@/components/home/NewsletterForm";
 
 interface CategorySidebarProps {
   currentSlug: string;
   newsletterTitle: string;
 }
 
-const OPINIONS = [
-  {
-    initials: "JM",
-    name: "Prof. João Marques",
-    role: "Economista, ISEG",
-    title: "A ilusão do crescimento sem reforma estrutural",
-  },
-  {
-    initials: "IV",
-    name: "Dra. Inês Vasconcelos",
-    role: "Jurista constitucional",
-    title: "Separação de poderes: o que está realmente em causa",
-  },
-];
-
-// Mocked article counts for other rubrics.
-const OTHER_COUNTS: Record<string, number> = {
-  politica: 24,
-  economia: 24,
-  sociedade: 18,
-  investigacao: 9,
-  mundo: 31,
-  tecnologia: 15,
-};
+function initialsOf(name: string | null): string {
+  if (!name) return "—";
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() ?? "")
+    .join("");
+}
 
 export async function CategorySidebar({
   currentSlug,
   newsletterTitle,
 }: CategorySidebarProps) {
-  const cats = await getCategories();
-  const others = cats
-    .filter((c) => c.slug !== currentSlug && OTHER_COUNTS[c.slug] !== undefined)
-    .slice(0, 5);
+  const [cats, opinion] = await Promise.all([
+    getCategories(),
+    listPublicArticles({ category: "opiniao", pageSize: 2 }),
+  ]);
+  const others = cats.filter((c) => c.slug !== currentSlug).slice(0, 6);
 
   return (
     <aside className="flex flex-col gap-8">
@@ -54,48 +42,40 @@ export async function CategorySidebar({
         <p className="mt-2 text-[13px] text-white/70">
           Curadoria editorial diária, sem spam. Cancelamento imediato.
         </p>
-        <form className="mt-5 flex flex-col gap-3">
-          <input
-            type="email"
-            placeholder="O seu e-mail"
-            className="h-10 rounded-md border border-white/10 bg-white/5 px-4 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-patriota-accent/50"
-          />
-          <button
-            type="submit"
-            className="h-10 rounded-md bg-patriota-accent text-[13px] font-bold text-patriota-ink transition hover:brightness-105"
-          >
-            Subscrever gratuitamente
-          </button>
-        </form>
+        <NewsletterForm />
       </section>
 
       {/* Opinião */}
-      <section>
-        <SectionMarker title="Opinião" />
-        <ul className="mt-4 flex flex-col gap-3">
-          {OPINIONS.map((o) => (
-            <li key={o.name}>
-              <a
-                href="#"
-                className="flex gap-4 rounded-xl border border-slate-200 bg-white p-4 transition hover:shadow-md"
-              >
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-patriota-pure text-[12px] font-bold text-patriota-accent">
-                  {o.initials}
-                </span>
-                <div className="min-w-0">
-                  <p className="text-[12px] font-semibold text-slate-900">
-                    {o.name}
-                  </p>
-                  <p className="text-[11px] text-slate-500">{o.role}</p>
-                  <h4 className="mt-2 text-[13px] font-bold leading-snug text-slate-900">
-                    {o.title}
-                  </h4>
-                </div>
-              </a>
-            </li>
-          ))}
-        </ul>
-      </section>
+      {opinion.items.length > 0 && (
+        <section>
+          <SectionMarker title="Opinião" />
+          <ul className="mt-4 flex flex-col gap-3">
+            {opinion.items.map((o) => (
+              <li key={o.id}>
+                <Link
+                  href={`/artigo/${o.slug}`}
+                  className="flex gap-4 rounded-xl border border-slate-200 bg-white p-4 transition hover:shadow-md"
+                >
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-patriota-pure text-[12px] font-bold text-patriota-accent">
+                    {initialsOf(o.author.name)}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-[12px] font-semibold text-slate-900">
+                      {o.author.name ?? "Editorial"}
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      {o.category.name}
+                    </p>
+                    <h4 className="mt-2 text-[13px] font-bold leading-snug text-slate-900">
+                      {o.title}
+                    </h4>
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* NOS Ad */}
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-gradient-to-br from-rose-50 to-amber-50 p-6 text-center shadow-sm">
@@ -135,8 +115,12 @@ export async function CategorySidebar({
               >
                 <span className="font-semibold text-slate-800">{c.label}</span>
                 <span className="flex items-center gap-3 text-[12px] text-slate-500">
-                  <span>{OTHER_COUNTS[c.slug]} artigos</span>
-                  <span aria-hidden className="text-slate-400">→</span>
+                  <span>
+                    {c.articleCount} {c.articleCount === 1 ? "artigo" : "artigos"}
+                  </span>
+                  <span aria-hidden className="text-slate-400">
+                    →
+                  </span>
                 </span>
               </Link>
             </li>

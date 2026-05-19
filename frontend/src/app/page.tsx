@@ -9,15 +9,20 @@ import { LatestNews } from "@/components/home/LatestNews";
 import { InvestigationSection } from "@/components/home/InvestigationSection";
 import { Sidebar } from "@/components/home/Sidebar";
 import { SiteFooter } from "@/components/home/SiteFooter";
-import { getHomepage } from "@/lib/public-api";
+import { getHomepage, listBreaking } from "@/lib/public-api";
 
 export default async function HomePage() {
-  const home = await getHomepage();
+  const [home, breaking] = await Promise.all([
+    getHomepage(),
+    listBreaking(3),
+  ]);
   return (
     <div className="flex flex-1 flex-col bg-white text-slate-900">
       {/* Full-width chrome */}
       <TopBar />
-      <BreakingNews />
+      <BreakingNews
+        items={breaking.map((a) => ({ slug: a.slug, title: a.title }))}
+      />
       <SiteHeader />
       <SecondaryNav />
 
