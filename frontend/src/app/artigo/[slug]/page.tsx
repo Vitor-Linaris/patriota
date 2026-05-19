@@ -12,6 +12,7 @@ import { ContextBox } from "@/components/article/ContextBox";
 import { Blockquote } from "@/components/article/Blockquote";
 import { AuthorBio } from "@/components/article/AuthorBio";
 import { ArticleSidebar } from "@/components/article/ArticleSidebar";
+import { imageVariant } from "@/lib/images";
 import {
   getArticleBySlug,
   listBreaking,
@@ -130,7 +131,7 @@ export default async function ArticlePage({
                 <figure className="mt-8">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={article.coverImageUrl}
+                    src={imageVariant(article.coverImageUrl, "large") ?? article.coverImageUrl}
                     alt={article.title}
                     className="aspect-[16/9] w-full rounded-lg object-cover"
                   />

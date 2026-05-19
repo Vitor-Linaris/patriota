@@ -27,6 +27,10 @@ services:
       - ./tsconfig.build.json:/usr/src/app/tsconfig.build.json
       - ./package.json:/usr/src/app/package.json
       - ./nest-cli.json:/usr/src/app/nest-cli.json
+      # Persistent storage for uploaded media (sharp output).
+      # Named volume → survives docker compose down and is independent
+      # of the source bind-mounts above. NEVER add :ro here.
+      - uploads_data:/usr/src/app/uploads
 
   postgres:
     image: postgres:16-alpine
@@ -64,3 +68,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  uploads_data:

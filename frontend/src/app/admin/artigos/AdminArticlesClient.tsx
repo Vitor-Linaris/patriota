@@ -3,6 +3,8 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { RichTextEditor } from "@/components/admin/RichTextEditor";
+import { CoverImagePicker } from "@/components/admin/CoverImagePicker";
+import { imageVariant } from "@/lib/images";
 import {
   archiveArticleAction,
   createArticleAction,
@@ -553,38 +555,9 @@ function ArticleEditor({
             <p className="mb-3 text-xs font-black uppercase tracking-wider text-gray-400">
               Imagem de capa
             </p>
-            {form.coverImage ? (
-              <div className="relative mb-3">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={form.coverImage}
-                  alt="capa"
-                  className="aspect-video w-full rounded-xl object-cover"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = "none";
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => set({ coverImage: "" })}
-                  className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-black/50 text-xs text-white hover:bg-black/70"
-                >
-                  ✕
-                </button>
-              </div>
-            ) : (
-              <div className="mb-3 flex aspect-video flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50">
-                <span className="text-2xl text-gray-300">🖼</span>
-                <p className="text-[10px] font-semibold text-gray-400">
-                  Sem imagem de capa
-                </p>
-              </div>
-            )}
-            <input
+            <CoverImagePicker
               value={form.coverImage}
-              onChange={(e) => set({ coverImage: e.target.value })}
-              placeholder="Cole o URL da imagem de capa…"
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 font-mono text-xs focus:border-[#0F2C6B] focus:outline-none"
+              onChange={(url) => set({ coverImage: url })}
             />
           </div>
 
@@ -1042,7 +1015,7 @@ export default function AdminArticlesClient({
                       {a.coverImage ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src={a.coverImage}
+                          src={imageVariant(a.coverImage, "small") ?? a.coverImage}
                           alt=""
                           className="h-9 w-12 shrink-0 rounded-md object-cover"
                         />

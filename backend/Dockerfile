@@ -3,7 +3,9 @@ ARG NODE_VERSION=22-alpine
 # ---------- base ----------
 FROM node:${NODE_VERSION} AS base
 WORKDIR /usr/src/app
-RUN apk add --no-cache libc6-compat openssl
+# vips is required by sharp's prebuilt binary on Alpine.
+RUN apk add --no-cache libc6-compat openssl vips \
+    && mkdir -p /usr/src/app/uploads
 
 # ---------- deps ----------
 FROM base AS deps

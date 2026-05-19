@@ -30,7 +30,11 @@ enum ArticleStatus {
 
 model Media {
   id           String   @id @default(cuid())
+  // Canonical URL — points to the "large" WebP variant for uploads,
+  // or to the raw external URL for URL-paste entries.
   url          String
+  urlMedium    String?
+  urlSmall     String?
   name         String
   mimeType     String?
   size         Int?

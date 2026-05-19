@@ -1,5 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import { existsSync, mkdirSync } from 'node:fs';
 import { AppModule } from './app.module';
 
 function resolveCorsOrigin(): string[] | false {
@@ -16,7 +18,7 @@ function resolveCorsOrigin(): string[] | false {
 }
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -27,6 +29,19 @@ async function bootstrap() {
 
   const corsOrigin = resolveCorsOrigin();
   app.enableCors({ origin: corsOrigin, credentials: true });
+
+  // Serve uploaded media (sharp output) from the named docker volume.
+  // The Dockerfile creates this dir at build time; we double-check at
+  // runtime in case the container is started from a stale image.
+  const uploadsDir = process.env.UPLOADS_DIR ?? '/usr/src/app/uploads';
+  if (!existsSync(uploadsDir)) {
+    mkdirSync(uploadsDir, { recursive: true });
+  }
+  app.useStaticAssets(uploadsDir, {
+    prefix: '/uploads/',
+    immutable: true,
+    maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days — variants are content-addressed
+  });
 
   const port = Number(process.env.PORT ?? 8585);
   await app.listen(port, '0.0.0.0');
