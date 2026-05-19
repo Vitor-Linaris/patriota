@@ -131,6 +131,45 @@ describe('ArticlesService', () => {
     });
   });
 
+  describe('essentials / context / pullQuote', () => {
+    it('persists the new structured fields when provided', async () => {
+      prisma.category.findUnique.mockResolvedValueOnce({ id: 'cat1' });
+      prisma.article.create.mockResolvedValueOnce({ id: 'a1' });
+      await service.create(
+        {
+          title: 'Artigo com caixas',
+          categoryId: 'cat1',
+          essentials: ['Ponto 1', 'Ponto 2'],
+          context: {
+            columns: [
+              { label: 'O que aconteceu', body: 'Resumo.' },
+              { label: 'Porque importa', body: 'Impacto.' },
+            ],
+          } as never,
+          pullQuote: { quote: 'Frase de impacto', cite: 'Fulano' } as never,
+        },
+        { id: 'u1', role: 'EDITOR' },
+      );
+      const data = prisma.article.create.mock.calls[0][0].data;
+      expect(data.essentials).toEqual(['Ponto 1', 'Ponto 2']);
+      expect(data.context).toMatchObject({ columns: expect.any(Array) });
+      expect(data.pullQuote).toMatchObject({ quote: expect.any(String) });
+    });
+
+    it('stores null when the structured fields are omitted', async () => {
+      prisma.category.findUnique.mockResolvedValueOnce({ id: 'cat1' });
+      prisma.article.create.mockResolvedValueOnce({ id: 'a1' });
+      await service.create(
+        { title: 'Artigo simples', categoryId: 'cat1' },
+        { id: 'u1', role: 'EDITOR' },
+      );
+      const data = prisma.article.create.mock.calls[0][0].data;
+      expect(data.essentials).toEqual([]);
+      expect(data.context).toBeNull();
+      expect(data.pullQuote).toBeNull();
+    });
+  });
+
   describe('findPublicBySlug()', () => {
     it('returns only PUBLICADO articles', async () => {
       prisma.article.findFirst.mockResolvedValueOnce(null);

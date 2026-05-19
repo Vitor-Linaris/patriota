@@ -225,6 +225,103 @@ async function main() {
       ],
     };
 
+    // Pre-built structured fields for the first 3 published articles so
+    // the public site demonstrates the new caixas (essentials/context/quote).
+    const RICH_DETAILS: Record<
+      string,
+      {
+        essentials: string[];
+        context: { columns: { label: string; body: string }[] };
+        pullQuote: { quote: string; cite: string };
+      }
+    > = {
+      'governo-apresenta-proposta-de-orcamento-com-aumento-de-3-2': {
+        essentials: [
+          'Despesa pública aumenta 3,2% face ao orçamento de 2025.',
+          'Investimento em saúde e educação sobe 5,4%.',
+          'Défice previsto de 1,8% do PIB, dentro do limite europeu.',
+          'Oposição critica falta de reformas estruturais.',
+        ],
+        context: {
+          columns: [
+            {
+              label: 'O que aconteceu',
+              body: 'Governo entregou a proposta de OE2026 na Assembleia da República.',
+            },
+            {
+              label: 'Porque importa',
+              body: 'Define a política fiscal e social para os próximos 12 meses.',
+            },
+            {
+              label: 'Próximo passo',
+              body: 'Debate na generalidade previsto para 28 de Abril.',
+            },
+          ],
+        },
+        pullQuote: {
+          quote:
+            'Apresentamos um orçamento que investe no futuro sem comprometer a estabilidade que os portugueses merecem.',
+          cite: 'Ministro das Finanças, conferência de imprensa',
+        },
+      },
+      'banco-de-portugal-reve-projecao-do-pib-em-alta-para-2026': {
+        essentials: [
+          'Projeção de crescimento do PIB sobe de 1,9% para 2,3%.',
+          'Inflação esperada estabiliza nos 2,1%.',
+          'Exportações continuam a impulsionar a procura externa.',
+        ],
+        context: {
+          columns: [
+            {
+              label: 'O que aconteceu',
+              body: 'Banco de Portugal publicou o Boletim Económico de Primavera.',
+            },
+            {
+              label: 'Porque importa',
+              body: 'Confirma resiliência da economia portuguesa face à incerteza global.',
+            },
+            {
+              label: 'Próximo passo',
+              body: 'Próxima atualização ao Boletim em Junho.',
+            },
+          ],
+        },
+        pullQuote: {
+          quote:
+            'A economia portuguesa mostra-se robusta, mas os riscos externos permanecem elevados.',
+          cite: 'Governador do Banco de Portugal',
+        },
+      },
+      'crise-da-habitacao-em-lisboa-atinge-novos-maximos': {
+        essentials: [
+          'Preço médio por m² em Lisboa ultrapassa 5.400€.',
+          'Tempo de poupança para entrada chega aos 11 anos.',
+          'Jovens deixam centro da cidade em busca de arrendamento acessível.',
+        ],
+        context: {
+          columns: [
+            {
+              label: 'O que aconteceu',
+              body: 'INE divulgou novos números do imobiliário no 1.º trimestre.',
+            },
+            {
+              label: 'Porque importa',
+              body: 'Habitação é a prioridade número um nos inquéritos à juventude.',
+            },
+            {
+              label: 'Próximo passo',
+              body: 'Câmara de Lisboa apresenta plano municipal em Maio.',
+            },
+          ],
+        },
+        pullQuote: {
+          quote:
+            'Estamos a perder uma geração inteira para fora da cidade — é urgente agir.',
+          cite: 'Especialista em política urbana, ISCTE',
+        },
+      },
+    };
+
     for (const cat of categoryRows) {
       const slugTitles = TITLES[cat.slug] ?? [];
       for (let i = 0; i < slugTitles.length; i++) {
@@ -245,9 +342,16 @@ async function main() {
           status === 'PUBLICADO'
             ? new Date(Date.now() - i * 3 * 3600_000)
             : null;
+        const rich = RICH_DETAILS[slug];
         await prisma.article.upsert({
           where: { slug },
-          update: {},
+          update: rich
+            ? {
+                essentials: rich.essentials,
+                context: rich.context as never,
+                pullQuote: rich.pullQuote as never,
+              }
+            : {},
           create: {
             slug,
             title,
@@ -260,6 +364,9 @@ async function main() {
             readMinutes: 3 + Math.floor(Math.random() * 7),
             views: status === 'PUBLICADO' ? Math.floor(Math.random() * 20000) : 0,
             publishedAt,
+            essentials: rich?.essentials ?? [],
+            context: (rich?.context as never) ?? null,
+            pullQuote: (rich?.pullQuote as never) ?? null,
           },
         });
       }

@@ -164,6 +164,9 @@ model Article {
   views           Int           @default(0)
   readMinutes     Int           @default(3)
   tags            String[]      @default([])
+  essentials      String[]      @default([])
+  context         Json?
+  pullQuote       Json?
   metaTitle       String?
   metaDescription String?
   coverImageUrl   String?
