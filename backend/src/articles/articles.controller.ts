@@ -1,9 +1,11 @@
 import {
   Body,
   Controller,
+  DefaultValuePipe,
   Delete,
   Get,
   Param,
+  ParseIntPipe,
   Patch,
   Post,
   Query,
@@ -76,6 +78,15 @@ export class ArticlesController {
   @Get('public/articles/by-slug/:slug')
   publicBySlug(@Param('slug') slug: string) {
     return this.service.findPublicBySlug(slug);
+  }
+
+  @Public()
+  @Get('public/articles/related/:slug')
+  publicRelated(
+    @Param('slug') slug: string,
+    @Query('limit', new DefaultValuePipe(4), ParseIntPipe) limit: number,
+  ) {
+    return this.service.findRelated(slug, limit);
   }
 
   @Public()

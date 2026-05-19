@@ -132,6 +132,89 @@ describe('Articles (e2e)', () => {
     expect(Array.isArray(res.body.latest)).toBe(true);
   });
 
+  it('GET /public/articles?sort=views orders by views desc', async () => {
+    const editor = await makeUser(app, { role: 'EDITOR_CHEFE' });
+    const prisma = app.get(PrismaService);
+
+    const titles = ['Less viewed', 'Most viewed', 'Mid viewed'];
+    const ids: string[] = [];
+    for (const title of titles) {
+      const created = await request(app.getHttpServer())
+        .post('/admin/articles')
+        .set(bearer(editor))
+        .send({ title, categoryId });
+      await request(app.getHttpServer())
+        .post(`/admin/articles/${created.body.id}/publish`)
+        .set(bearer(editor));
+      ids.push(created.body.id);
+    }
+    await prisma.article.update({ where: { id: ids[0] }, data: { views: 1 } });
+    await prisma.article.update({ where: { id: ids[1] }, data: { views: 99 } });
+    await prisma.article.update({ where: { id: ids[2] }, data: { views: 42 } });
+
+    const res = await request(app.getHttpServer())
+      .get('/public/articles?sort=views')
+      .expect(200);
+    const order = (res.body.items as { title: string }[]).map((a) => a.title);
+    expect(order).toEqual(['Most viewed', 'Mid viewed', 'Less viewed']);
+  });
+
+  it('GET /public/articles/related/:slug returns same-category siblings only', async () => {
+    const editor = await makeUser(app, { role: 'EDITOR_CHEFE' });
+    const prisma = app.get(PrismaService);
+    const other = await prisma.category.create({
+      data: {
+        slug: 'desporto',
+        name: 'Desporto',
+        description: 'd',
+        icon: '●',
+        color: '#059669',
+        order: 2,
+        visible: true,
+      },
+    });
+
+    const ref = await request(app.getHttpServer())
+      .post('/admin/articles')
+      .set(bearer(editor))
+      .send({ title: 'Artigo de referencia', categoryId });
+    await request(app.getHttpServer())
+      .post(`/admin/articles/${ref.body.id}/publish`)
+      .set(bearer(editor));
+
+    for (let i = 0; i < 3; i++) {
+      const a = await request(app.getHttpServer())
+        .post('/admin/articles')
+        .set(bearer(editor))
+        .send({ title: `Mesmo tema ${i}`, categoryId });
+      await request(app.getHttpServer())
+        .post(`/admin/articles/${a.body.id}/publish`)
+        .set(bearer(editor));
+    }
+    const off = await request(app.getHttpServer())
+      .post('/admin/articles')
+      .set(bearer(editor))
+      .send({ title: 'Outro tema', categoryId: other.id });
+    await request(app.getHttpServer())
+      .post(`/admin/articles/${off.body.id}/publish`)
+      .set(bearer(editor));
+
+    const res = await request(app.getHttpServer())
+      .get('/public/articles/related/artigo-de-referencia?limit=4')
+      .expect(200);
+    const items = res.body as { id: string; title: string }[];
+    expect(items).toHaveLength(3);
+    expect(items.find((a) => a.id === ref.body.id)).toBeUndefined();
+    expect(items.every((a) => a.title.startsWith('Mesmo tema'))).toBe(true);
+  });
+
+  it('GET /public/articles/related/:slug returns [] for missing slug', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/public/articles/related/inexistente')
+      .expect(200);
+    expect(res.body).toEqual([]);
+  });
+
   it('GET /public/articles only lists PUBLICADO', async () => {
     const editor = await makeUser(app, { role: 'EDITOR_CHEFE' });
     const draft = await request(app.getHttpServer())

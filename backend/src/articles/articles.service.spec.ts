@@ -181,4 +181,53 @@ describe('ArticlesService', () => {
       );
     });
   });
+
+  describe('listPublic()', () => {
+    it('orders by publishedAt desc by default', async () => {
+      prisma.article.findMany.mockResolvedValueOnce([]);
+      prisma.article.count.mockResolvedValueOnce(0);
+      await service.listPublic({} as never);
+      const args = prisma.article.findMany.mock.calls[0][0];
+      expect(args.orderBy).toEqual({ publishedAt: 'desc' });
+      expect(args.where).toMatchObject({ status: 'PUBLICADO' });
+    });
+
+    it('orders by views desc when sort=views is given', async () => {
+      prisma.article.findMany.mockResolvedValueOnce([]);
+      prisma.article.count.mockResolvedValueOnce(0);
+      await service.listPublic({ sort: 'views' } as never);
+      const args = prisma.article.findMany.mock.calls[0][0];
+      expect(args.orderBy).toEqual({ views: 'desc' });
+    });
+  });
+
+  describe('findRelated()', () => {
+    it('returns [] when the reference slug does not exist', async () => {
+      prisma.article.findUnique.mockResolvedValueOnce(null);
+      await expect(service.findRelated('missing')).resolves.toEqual([]);
+      expect(prisma.article.findMany).not.toHaveBeenCalled();
+    });
+
+    it('excludes the reference article and only returns PUBLICADO from the same category', async () => {
+      prisma.article.findUnique.mockResolvedValueOnce({ id: 'a1', categoryId: 'cat1' });
+      prisma.article.findMany.mockResolvedValueOnce([{ id: 'a2' }, { id: 'a3' }]);
+      await service.findRelated('some-slug', 4);
+      const args = prisma.article.findMany.mock.calls[0][0];
+      expect(args.where).toEqual({
+        status: 'PUBLICADO',
+        categoryId: 'cat1',
+        NOT: { id: 'a1' },
+      });
+      expect(args.take).toBe(4);
+    });
+
+    it('clamps limit between 1 and 10', async () => {
+      prisma.article.findUnique.mockResolvedValue({ id: 'a1', categoryId: 'cat1' });
+      prisma.article.findMany.mockResolvedValue([]);
+      await service.findRelated('s', 99);
+      expect(prisma.article.findMany.mock.calls[0][0].take).toBe(10);
+      await service.findRelated('s', 0);
+      expect(prisma.article.findMany.mock.calls[1][0].take).toBe(1);
+    });
+  });
 });

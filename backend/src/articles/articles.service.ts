@@ -244,12 +244,16 @@ export class ArticlesService {
     const { skip, take } = toSkipTake(query);
     const where: Record<string, unknown> = { status: 'PUBLICADO' };
     if (query.category) where.category = { slug: query.category };
+    const orderBy =
+      query.sort === 'views'
+        ? { views: 'desc' as const }
+        : { publishedAt: 'desc' as const };
     const [items, total] = await Promise.all([
       this.prisma.article.findMany({
         where,
         skip,
         take,
-        orderBy: { publishedAt: 'desc' },
+        orderBy,
         include: {
           category: { select: { slug: true, name: true } },
           author: { select: { name: true } },
@@ -263,6 +267,27 @@ export class ArticlesService {
       page: query.page ?? 1,
       pageSize: query.pageSize ?? 20,
     };
+  }
+
+  async findRelated(slug: string, limit = 4) {
+    const ref = await this.prisma.article.findUnique({
+      where: { slug },
+      select: { id: true, categoryId: true },
+    });
+    if (!ref) return [];
+    return this.prisma.article.findMany({
+      where: {
+        status: 'PUBLICADO',
+        categoryId: ref.categoryId,
+        NOT: { id: ref.id },
+      },
+      orderBy: { publishedAt: 'desc' },
+      take: Math.min(Math.max(limit, 1), 10),
+      include: {
+        category: { select: { slug: true, name: true } },
+        author: { select: { name: true } },
+      },
+    });
   }
 
   async findPublicBySlug(slug: string) {

@@ -1,6 +1,8 @@
-import { IsArray, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsIn, IsOptional, IsString } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { PageQueryDto } from '../../common/dto/pagination.dto';
+
+export type ArticleSort = 'publishedAt' | 'views';
 
 export class ListArticlesQueryDto extends PageQueryDto {
   @IsOptional()
@@ -22,4 +24,9 @@ export class ListArticlesQueryDto extends PageQueryDto {
   @IsArray()
   @IsString({ each: true })
   status?: string[];
+
+  /** Order: `publishedAt` (default) or `views` (most-read). */
+  @IsOptional()
+  @IsIn(['publishedAt', 'views'])
+  sort?: ArticleSort;
 }

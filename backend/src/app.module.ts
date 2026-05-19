@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, type MiddlewareConsumer, type NestModule } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
@@ -17,12 +17,11 @@ import { AdsModule } from './ads/ads.module';
 import { NewsletterModule } from './newsletter/newsletter.module';
 import { SettingsModule } from './settings/settings.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { VisitsMiddleware } from './common/visits.middleware';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    // Global throttler — covers all routes. Auth-specific stricter limits
-    // live on the AuthController via @Throttle().
     ThrottlerModule.forRoot([
       { name: 'default', ttl: 60_000, limit: 120 },
     ]),
@@ -46,4 +45,10 @@ import { DashboardModule } from './dashboard/dashboard.module';
     { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    // Counts visits to public surfaces. Excluded routes (admin/*, auth/*)
+    // never increment the counter.
+    consumer.apply(VisitsMiddleware).forRoutes('*');
+  }
+}
