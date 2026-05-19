@@ -1,8 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import {
+  changeUserRoleAction,
+  inviteUserAction,
+  setUserStatusAction,
+} from "./actions";
 
-type RoleId =
+export type RoleId =
   | "super_admin"
   | "editor_chefe"
   | "editor"
@@ -11,171 +17,333 @@ type RoleId =
   | "moderador"
   | "analista";
 
-const roleOptions: { id: RoleId; label: string; color: string; desc: string }[] = [
-  { id: "super_admin", label: "Super Admin", color: "bg-red-100 text-red-700 border-red-200", desc: "Acesso total" },
-  { id: "editor_chefe", label: "Editor-Chefe", color: "bg-purple-100 text-purple-700 border-purple-200", desc: "Gestão editorial completa" },
-  { id: "editor", label: "Editor", color: "bg-blue-100 text-blue-700 border-blue-200", desc: "Edição e publicação" },
-  { id: "jornalista", label: "Jornalista", color: "bg-green-100 text-green-700 border-green-200", desc: "Criação de conteúdo" },
-  { id: "revisor", label: "Revisor", color: "bg-amber-100 text-amber-700 border-amber-200", desc: "Revisão e comentário" },
-  { id: "moderador", label: "Moderador", color: "bg-orange-100 text-orange-700 border-orange-200", desc: "Moderação de comentários" },
-  { id: "analista", label: "Analista", color: "bg-gray-100 text-gray-600 border-gray-200", desc: "Métricas e relatórios" },
-];
-
-interface User {
-  id: number;
+export interface AdminUser {
+  id: string;
   name: string;
   email: string;
   role: RoleId;
   initials: string;
-  articles: number;
-  lastActive: string;
-  status: "active" | "inactive" | "suspended";
-  joinedDate: string;
+  status: "active" | "inactive";
+  createdAt: string;
 }
 
-const initialUsers: User[] = [
-  { id: 1, name: "Rui Cardoso", email: "rui.cardoso@opatriota.pt", role: "editor_chefe", initials: "RC", articles: 312, lastActive: "Agora", status: "active", joinedDate: "Jan 2022" },
-  { id: 2, name: "Paulo Ferreira", email: "paulo.ferreira@opatriota.pt", role: "editor", initials: "PF", articles: 198, lastActive: "Há 12 min", status: "active", joinedDate: "Mar 2022" },
-  { id: 3, name: "Marta Sousa", email: "marta.sousa@opatriota.pt", role: "jornalista", initials: "MS", articles: 87, lastActive: "Há 2h", status: "active", joinedDate: "Set 2023" },
-  { id: 4, name: "Ana Lopes", email: "ana.lopes@opatriota.pt", role: "moderador", initials: "AL", articles: 0, lastActive: "Há 28 min", status: "active", joinedDate: "Fev 2024" },
-  { id: 5, name: "Sofia Pinto", email: "sofia.pinto@opatriota.pt", role: "revisor", initials: "SP", articles: 23, lastActive: "Há 1h", status: "active", joinedDate: "Jun 2023" },
-  { id: 6, name: "Carlos Neves", email: "carlos.neves@opatriota.pt", role: "jornalista", initials: "CN", articles: 54, lastActive: "Há 3h", status: "active", joinedDate: "Nov 2023" },
-  { id: 7, name: "Inês Rodrigues", email: "ines.rodrigues@opatriota.pt", role: "jornalista", initials: "IR", articles: 41, lastActive: "Ontem", status: "active", joinedDate: "Jan 2024" },
-  { id: 8, name: "Luís Monteiro", email: "luis.monteiro@opatriota.pt", role: "jornalista", initials: "LM", articles: 29, lastActive: "Ontem", status: "inactive", joinedDate: "Abr 2024" },
-  { id: 9, name: "Beatriz Faria", email: "beatriz.faria@opatriota.pt", role: "analista", initials: "BF", articles: 0, lastActive: "Há 4h", status: "active", joinedDate: "Out 2023" },
-  { id: 10, name: "Miguel Santos", email: "miguel.santos@gmail.com", role: "jornalista", initials: "MS", articles: 3, lastActive: "Há 1 semana", status: "suspended", joinedDate: "Mar 2025" },
+const ROLE_OPTIONS: {
+  id: RoleId;
+  label: string;
+  color: string;
+  desc: string;
+}[] = [
+  {
+    id: "super_admin",
+    label: "Super Admin",
+    color: "bg-red-100 text-red-700 border-red-200",
+    desc: "Acesso total",
+  },
+  {
+    id: "editor_chefe",
+    label: "Editor-Chefe",
+    color: "bg-purple-100 text-purple-700 border-purple-200",
+    desc: "Gestão editorial completa",
+  },
+  {
+    id: "editor",
+    label: "Editor",
+    color: "bg-blue-100 text-blue-700 border-blue-200",
+    desc: "Edição e publicação",
+  },
+  {
+    id: "jornalista",
+    label: "Jornalista",
+    color: "bg-green-100 text-green-700 border-green-200",
+    desc: "Criação de conteúdo",
+  },
+  {
+    id: "revisor",
+    label: "Revisor",
+    color: "bg-amber-100 text-amber-700 border-amber-200",
+    desc: "Revisão e comentário",
+  },
+  {
+    id: "moderador",
+    label: "Moderador",
+    color: "bg-orange-100 text-orange-700 border-orange-200",
+    desc: "Moderação de comentários",
+  },
+  {
+    id: "analista",
+    label: "Analista",
+    color: "bg-gray-100 text-gray-600 border-gray-200",
+    desc: "Métricas e relatórios",
+  },
 ];
 
-const statusLabel: Record<User["status"], { label: string; color: string }> = {
+const STATUS_LABEL: Record<
+  AdminUser["status"],
+  { label: string; color: string }
+> = {
   active: { label: "Activo", color: "bg-green-100 text-green-700" },
   inactive: { label: "Inactivo", color: "bg-gray-100 text-gray-500" },
-  suspended: { label: "Suspenso", color: "bg-red-100 text-red-700" },
 };
 
-export default function AdminUsersClient() {
-  const [users, setUsers] = useState<User[]>(initialUsers);
-  const [editingId, setEditingId] = useState<number | null>(null);
+const dateFmt = new Intl.DateTimeFormat("pt-PT", {
+  month: "short",
+  year: "numeric",
+});
+
+function formatJoined(iso: string): string {
+  try {
+    return dateFmt.format(new Date(iso));
+  } catch {
+    return "—";
+  }
+}
+
+function getRoleInfo(roleId: RoleId) {
+  return ROLE_OPTIONS.find((r) => r.id === roleId) ?? ROLE_OPTIONS[3];
+}
+
+export default function AdminUsersClient({
+  initialUsers,
+}: {
+  initialUsers: AdminUser[];
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [editingRole, setEditingRole] = useState<RoleId | null>(null);
   const [search, setSearch] = useState("");
   const [filterRole, setFilterRole] = useState<RoleId | "all">("all");
-  const [showInviteModal, setShowInviteModal] = useState(false);
+
+  const [showInvite, setShowInvite] = useState(false);
   const [newEmail, setNewEmail] = useState("");
+  const [newName, setNewName] = useState("");
   const [newRole, setNewRole] = useState<RoleId>("jornalista");
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [invitedPassword, setInvitedPassword] = useState<string | null>(null);
 
-  const filtered = users.filter((u) => {
+  const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    const matchSearch =
-      u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
-    const matchRole = filterRole === "all" || u.role === filterRole;
-    return matchSearch && matchRole;
-  });
+    return initialUsers.filter((u) => {
+      const matchSearch =
+        u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+      const matchRole = filterRole === "all" || u.role === filterRole;
+      return matchSearch && matchRole;
+    });
+  }, [initialUsers, search, filterRole]);
 
-  const startEdit = (u: User) => {
+  const startEdit = (u: AdminUser) => {
     setEditingId(u.id);
     setEditingRole(u.role);
   };
 
-  const confirmEdit = (id: number) => {
-    if (!editingRole) return;
-    setUsers((prev) =>
-      prev.map((u) => (u.id === id ? { ...u, role: editingRole } : u)),
-    );
+  const cancelEdit = () => {
     setEditingId(null);
     setEditingRole(null);
   };
 
-  const getRoleInfo = (roleId: RoleId) =>
-    roleOptions.find((r) => r.id === roleId)!;
+  const confirmEdit = (id: string) => {
+    if (!editingRole) return;
+    startTransition(async () => {
+      const res = await changeUserRoleAction(id, editingRole);
+      if (!res.ok) {
+        alert(res.error);
+        return;
+      }
+      cancelEdit();
+      router.refresh();
+    });
+  };
+
+  const toggleStatus = (u: AdminUser) => {
+    const nextActive = u.status !== "active";
+    startTransition(async () => {
+      const res = await setUserStatusAction(u.id, nextActive);
+      if (!res.ok) {
+        alert(res.error);
+        return;
+      }
+      router.refresh();
+    });
+  };
+
+  const submitInvite = () => {
+    if (!newEmail.trim()) {
+      setInviteError("E-mail obrigatório.");
+      return;
+    }
+    setInviteError(null);
+    startTransition(async () => {
+      const res = await inviteUserAction(
+        newEmail.trim(),
+        newRole,
+        newName.trim() || undefined,
+      );
+      if (!res.ok) {
+        setInviteError(res.error);
+        return;
+      }
+      setInvitedPassword(res.temporaryPassword);
+      setNewEmail("");
+      setNewName("");
+      router.refresh();
+    });
+  };
+
+  const closeInvite = () => {
+    setShowInvite(false);
+    setInvitedPassword(null);
+    setInviteError(null);
+    setNewEmail("");
+    setNewName("");
+  };
 
   return (
     <main className="bg-[#f6f7fb] p-8">
       {/* INVITE MODAL */}
-      {showInviteModal && (
+      {showInvite && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-          onClick={() => setShowInviteModal(false)}
+          onClick={closeInvite}
         >
           <div
             className="w-full max-w-md rounded-2xl bg-white p-7 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="mb-1 text-xl font-black text-[#0F2C6B]">
-              Convidar utilizador
-            </h2>
-            <p className="mb-5 text-sm text-gray-500">
-              Será enviado um e-mail com link de activação.
-            </p>
-
-            <div className="space-y-4">
-              <div>
-                <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-600">
-                  E-mail
-                </label>
-                <input
-                  autoFocus
-                  type="email"
-                  value={newEmail}
-                  onChange={(e) => setNewEmail(e.target.value)}
-                  placeholder="nome@email.pt"
-                  className="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm focus:border-[#0F2C6B] focus:outline-none focus:ring-2 focus:ring-[#0F2C6B]/10"
-                />
-              </div>
-              <div>
-                <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-600">
-                  Role inicial
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {roleOptions.map((r) => (
+            {invitedPassword ? (
+              <>
+                <h2 className="mb-1 text-xl font-black text-[#0F2C6B]">
+                  Utilizador criado ✓
+                </h2>
+                <p className="mb-5 text-sm text-gray-500">
+                  Partilhe a palavra-passe temporária com o utilizador. Ele
+                  deverá alterá-la no primeiro acesso.
+                </p>
+                <div className="mb-4 rounded-lg bg-[#F0F2F7] p-4">
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                    Palavra-passe temporária
+                  </p>
+                  <div className="flex items-center justify-between gap-3">
+                    <code className="font-mono text-sm font-bold text-[#0F2C6B]">
+                      {invitedPassword}
+                    </code>
                     <button
-                      key={r.id}
                       type="button"
-                      onClick={() => setNewRole(r.id)}
-                      className={`rounded-lg border-2 px-3 py-2.5 text-left transition-all ${newRole === r.id ? "border-[#0F2C6B] bg-[#F0F2F7]" : "border-gray-100 hover:border-gray-200"}`}
+                      onClick={() => {
+                        void navigator.clipboard.writeText(invitedPassword);
+                      }}
+                      className="rounded-lg bg-[#0F2C6B] px-3 py-1.5 text-xs font-semibold text-white"
                     >
-                      <span
-                        className={`mb-0.5 inline-block rounded-full border px-1.5 py-0.5 text-[10px] font-black ${r.color}`}
-                      >
-                        {r.label}
-                      </span>
-                      <p className="text-[10px] text-gray-400">{r.desc}</p>
+                      Copiar
                     </button>
-                  ))}
+                  </div>
                 </div>
-              </div>
-            </div>
+                <button
+                  type="button"
+                  onClick={closeInvite}
+                  className="w-full rounded-lg bg-[#0F2C6B] py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#1A3A7A]"
+                >
+                  Fechar
+                </button>
+              </>
+            ) : (
+              <>
+                <h2 className="mb-1 text-xl font-black text-[#0F2C6B]">
+                  Convidar utilizador
+                </h2>
+                <p className="mb-5 text-sm text-gray-500">
+                  Uma palavra-passe temporária será gerada para o primeiro
+                  acesso.
+                </p>
 
-            <div className="mt-6 flex gap-3">
-              <button
-                type="button"
-                onClick={() => setShowInviteModal(false)}
-                className="flex-1 rounded-lg border border-gray-200 py-2.5 text-sm font-semibold text-gray-500 transition-colors hover:bg-gray-50"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowInviteModal(false)}
-                className="flex-1 rounded-lg bg-[#0F2C6B] py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#1A3A7A]"
-              >
-                Enviar convite
-              </button>
-            </div>
+                <div className="space-y-4">
+                  <div>
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-600">
+                      Nome
+                    </label>
+                    <input
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                      placeholder="Nome do utilizador"
+                      className="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm focus:border-[#0F2C6B] focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-600">
+                      E-mail
+                    </label>
+                    <input
+                      autoFocus
+                      type="email"
+                      value={newEmail}
+                      onChange={(e) => setNewEmail(e.target.value)}
+                      placeholder="nome@email.pt"
+                      className="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm focus:border-[#0F2C6B] focus:outline-none focus:ring-2 focus:ring-[#0F2C6B]/10"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-600">
+                      Role inicial
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {ROLE_OPTIONS.map((r) => (
+                        <button
+                          key={r.id}
+                          type="button"
+                          onClick={() => setNewRole(r.id)}
+                          className={`rounded-lg border-2 px-3 py-2.5 text-left transition-all ${newRole === r.id ? "border-[#0F2C6B] bg-[#F0F2F7]" : "border-gray-100 hover:border-gray-200"}`}
+                        >
+                          <span
+                            className={`mb-0.5 inline-block rounded-full border px-1.5 py-0.5 text-[10px] font-black ${r.color}`}
+                          >
+                            {r.label}
+                          </span>
+                          <p className="text-[10px] text-gray-400">{r.desc}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {inviteError && (
+                    <p className="text-xs font-semibold text-red-600">
+                      {inviteError}
+                    </p>
+                  )}
+                </div>
+
+                <div className="mt-6 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={closeInvite}
+                    className="flex-1 rounded-lg border border-gray-200 py-2.5 text-sm font-semibold text-gray-500 transition-colors hover:bg-gray-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={submitInvite}
+                    disabled={pending}
+                    className="flex-1 rounded-lg bg-[#0F2C6B] py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#1A3A7A] disabled:opacity-50"
+                  >
+                    {pending ? "A criar…" : "Criar utilizador"}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
 
-      {/* PAGE HEADER */}
+      {/* HEADER */}
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-black text-[#0F2C6B]">Utilizadores</h1>
           <p className="mt-1 text-sm text-gray-500">
-            {users.length} membros da equipa ·{" "}
-            {users.filter((u) => u.status === "active").length} activos
+            {initialUsers.length} membros da equipa ·{" "}
+            {initialUsers.filter((u) => u.status === "active").length} activos
           </p>
         </div>
         <button
           type="button"
-          onClick={() => setShowInviteModal(true)}
+          onClick={() => setShowInvite(true)}
           className="shrink-0 rounded-lg bg-[#0F2C6B] px-5 py-2 text-sm font-bold text-white transition-colors hover:bg-[#1A3A7A]"
         >
           + Convidar utilizador
@@ -189,10 +357,10 @@ export default function AdminUsersClient() {
           onClick={() => setFilterRole("all")}
           className={`rounded-full border px-3 py-1.5 text-xs font-bold transition-all ${filterRole === "all" ? "border-[#0F2C6B] bg-[#0F2C6B] text-white" : "border-gray-200 bg-white text-gray-500 hover:border-gray-400"}`}
         >
-          Todos ({users.length})
+          Todos ({initialUsers.length})
         </button>
-        {roleOptions.map((r) => {
-          const count = users.filter((u) => u.role === r.id).length;
+        {ROLE_OPTIONS.map((r) => {
+          const count = initialUsers.filter((u) => u.role === r.id).length;
           if (count === 0) return null;
           return (
             <button
@@ -241,12 +409,6 @@ export default function AdminUsersClient() {
               <th className="hidden px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-400 md:table-cell">
                 Estado
               </th>
-              <th className="hidden px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-400 lg:table-cell">
-                Artigos
-              </th>
-              <th className="hidden px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-400 xl:table-cell">
-                Último acesso
-              </th>
               <th className="hidden px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-400 xl:table-cell">
                 Membro desde
               </th>
@@ -257,16 +419,21 @@ export default function AdminUsersClient() {
             {filtered.map((u) => {
               const roleInfo = getRoleInfo(u.role);
               const isEditing = editingId === u.id;
-              const st = statusLabel[u.status];
+              const st = STATUS_LABEL[u.status];
               return (
-                <tr key={u.id} className="transition-colors hover:bg-gray-50/50">
+                <tr
+                  key={u.id}
+                  className="transition-colors hover:bg-gray-50/50"
+                >
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-3">
                       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0F2C6B] text-[10px] font-black text-[#FFCC66]">
                         {u.initials}
                       </div>
                       <div>
-                        <p className="text-sm font-semibold text-gray-800">{u.name}</p>
+                        <p className="text-sm font-semibold text-gray-800">
+                          {u.name}
+                        </p>
                         <p className="text-xs text-gray-400">{u.email}</p>
                       </div>
                     </div>
@@ -276,11 +443,13 @@ export default function AdminUsersClient() {
                     {isEditing ? (
                       <select
                         value={editingRole ?? u.role}
-                        onChange={(e) => setEditingRole(e.target.value as RoleId)}
+                        onChange={(e) =>
+                          setEditingRole(e.target.value as RoleId)
+                        }
                         autoFocus
                         className="rounded-lg border border-[#0F2C6B] bg-white px-2 py-1.5 text-xs font-semibold focus:outline-none"
                       >
-                        {roleOptions.map((r) => (
+                        {ROLE_OPTIONS.map((r) => (
                           <option key={r.id} value={r.id}>
                             {r.label}
                           </option>
@@ -296,21 +465,17 @@ export default function AdminUsersClient() {
                   </td>
 
                   <td className="hidden px-4 py-3.5 md:table-cell">
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${st.color}`}>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${st.color}`}
+                    >
                       {st.label}
                     </span>
                   </td>
 
-                  <td className="hidden px-4 py-3.5 lg:table-cell">
-                    <span className="text-sm font-semibold text-gray-700">{u.articles}</span>
-                  </td>
-
                   <td className="hidden px-4 py-3.5 xl:table-cell">
-                    <span className="text-xs text-gray-500">{u.lastActive}</span>
-                  </td>
-
-                  <td className="hidden px-4 py-3.5 xl:table-cell">
-                    <span className="text-xs text-gray-400">{u.joinedDate}</span>
+                    <span className="text-xs text-gray-400">
+                      {formatJoined(u.createdAt)}
+                    </span>
                   </td>
 
                   <td className="px-4 py-3.5">
@@ -319,10 +484,7 @@ export default function AdminUsersClient() {
                         <>
                           <button
                             type="button"
-                            onClick={() => {
-                              setEditingId(null);
-                              setEditingRole(null);
-                            }}
+                            onClick={cancelEdit}
                             className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-400 transition-colors hover:bg-gray-50"
                           >
                             Cancelar
@@ -330,7 +492,8 @@ export default function AdminUsersClient() {
                           <button
                             type="button"
                             onClick={() => confirmEdit(u.id)}
-                            className="rounded-lg bg-[#0F2C6B] px-2.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#1A3A7A]"
+                            disabled={pending}
+                            className="rounded-lg bg-[#0F2C6B] px-2.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#1A3A7A] disabled:opacity-50"
                           >
                             Confirmar
                           </button>
@@ -346,9 +509,11 @@ export default function AdminUsersClient() {
                           </button>
                           <button
                             type="button"
-                            className="rounded-lg border border-gray-100 px-2.5 py-1.5 text-xs text-gray-400 transition-colors hover:border-red-200 hover:text-red-600"
+                            onClick={() => toggleStatus(u)}
+                            disabled={pending}
+                            className="rounded-lg border border-gray-100 px-2.5 py-1.5 text-xs text-gray-400 transition-colors hover:border-amber-200 hover:text-amber-600 disabled:opacity-50"
                           >
-                            ···
+                            {u.status === "active" ? "Desactivar" : "Activar"}
                           </button>
                         </>
                       )}
@@ -359,7 +524,10 @@ export default function AdminUsersClient() {
             })}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={7} className="py-12 text-center text-sm text-gray-400">
+                <td
+                  colSpan={5}
+                  className="py-12 text-center text-sm text-gray-400"
+                >
                   Nenhum utilizador encontrado.
                 </td>
               </tr>
