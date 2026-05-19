@@ -23,18 +23,40 @@ export class RbacService implements OnModuleInit {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Ensure every Role has a RolePermissions row on boot. Idempotent. */
+  /**
+   * Ensure every Role has a RolePermissions row on boot.
+   * For new rows: seed with DEFAULT_ROLE_PERMISSIONS.
+   * For existing rows: only ADD permissions that are in the default set
+   * but missing from the row — never removes admin customisations.
+   * Idempotent.
+   */
   async onModuleInit() {
     try {
       for (const role of ROLE_ORDER) {
-        await this.prisma.rolePermissions.upsert({
+        const existing = await this.prisma.rolePermissions.findUnique({
           where: { role },
-          update: {},
-          create: { role, permissions: DEFAULT_ROLE_PERMISSIONS[role] },
         });
+        if (!existing) {
+          await this.prisma.rolePermissions.create({
+            data: { role, permissions: DEFAULT_ROLE_PERMISSIONS[role] },
+          });
+          continue;
+        }
+        const missing = DEFAULT_ROLE_PERMISSIONS[role].filter(
+          (p) => !existing.permissions.includes(p),
+        );
+        if (missing.length > 0) {
+          await this.prisma.rolePermissions.update({
+            where: { role },
+            data: { permissions: [...existing.permissions, ...missing] },
+          });
+          this.logger.log(
+            `Added ${missing.length} new default permission(s) to ${role}: ${missing.join(', ')}`,
+          );
+        }
       }
     } catch (err) {
-      // Table may not exist yet on first boot before `db push` ran.
+      // Table may not exist yet on first boot before `migrate deploy` ran.
       this.logger.warn(
         `RolePermissions bootstrap skipped: ${(err as Error).message}`,
       );

@@ -100,16 +100,95 @@ describe('Articles (e2e)', () => {
       .expect(403);
   });
 
-  it('JORNALISTA cannot publish (lacks artigos.publicar)', async () => {
+  it('JORNALISTA POST /publish falls back to submitForReview (no auto-publish)', async () => {
     const author = await makeUser(app, { role: 'JORNALISTA' });
     const created = await request(app.getHttpServer())
       .post('/admin/articles')
       .set(bearer(author))
       .send({ title: 'Artigo do jornalista', categoryId })
       .expect(201);
-    await request(app.getHttpServer())
+    const res = await request(app.getHttpServer())
       .post(`/admin/articles/${created.body.id}/publish`)
       .set(bearer(author))
+      .expect(201);
+    expect(res.body.status).toBe('EM_REVISAO');
+  });
+
+  it('Full review flow: submit → reject (with reason) → re-submit → approve → public', async () => {
+    const author = await makeUser(app, { role: 'JORNALISTA' });
+    const chief = await makeUser(app, { role: 'EDITOR_CHEFE' });
+
+    // 1. Author creates draft
+    const created = await request(app.getHttpServer())
+      .post('/admin/articles')
+      .set(bearer(author))
+      .send({
+        title: 'Investigação sensível',
+        summary: 'Resumo',
+        content: '<p>Conteúdo</p>',
+        categoryId,
+      })
+      .expect(201);
+    const id = created.body.id;
+    expect(created.body.status).toBe('RASCUNHO');
+
+    // 2. Author submits for review
+    const submitted = await request(app.getHttpServer())
+      .post(`/admin/articles/${id}/submit`)
+      .set(bearer(author))
+      .send({})
+      .expect(201);
+    expect(submitted.body.status).toBe('EM_REVISAO');
+
+    // 3. Author CANNOT reject (no artigos.aprovar)
+    await request(app.getHttpServer())
+      .post(`/admin/articles/${id}/reject`)
+      .set(bearer(author))
+      .send({ reason: 'tentar' })
+      .expect(403);
+
+    // 4. Chief rejects with a reason → back to RASCUNHO + rejectionReason
+    const rejected = await request(app.getHttpServer())
+      .post(`/admin/articles/${id}/reject`)
+      .set(bearer(chief))
+      .send({ reason: 'Faltam fontes oficiais' })
+      .expect(201);
+    expect(rejected.body.status).toBe('RASCUNHO');
+    expect(rejected.body.rejectionReason).toBe('Faltam fontes oficiais');
+
+    // 5. Author re-submits
+    await request(app.getHttpServer())
+      .post(`/admin/articles/${id}/submit`)
+      .set(bearer(author))
+      .send({})
+      .expect(201);
+
+    // 6. Chief publishes (from EM_REVISAO)
+    const published = await request(app.getHttpServer())
+      .post(`/admin/articles/${id}/publish`)
+      .set(bearer(chief))
+      .expect(201);
+    expect(published.body.status).toBe('PUBLICADO');
+    expect(published.body.rejectionReason).toBeNull();
+
+    // 7. Public can read it
+    await request(app.getHttpServer())
+      .get(`/public/articles/by-slug/investigacao-sensivel`)
+      .expect(200);
+  });
+
+  it('Cannot reject articles not in EM_REVISAO', async () => {
+    const author = await makeUser(app, { role: 'JORNALISTA' });
+    const chief = await makeUser(app, { role: 'EDITOR_CHEFE' });
+    const created = await request(app.getHttpServer())
+      .post('/admin/articles')
+      .set(bearer(author))
+      .send({ title: 'Ainda rascunho', categoryId })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(`/admin/articles/${created.body.id}/reject`)
+      .set(bearer(chief))
+      .send({ reason: 'qualquer' })
       .expect(403);
   });
 

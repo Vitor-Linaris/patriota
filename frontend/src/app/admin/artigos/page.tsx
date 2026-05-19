@@ -18,7 +18,7 @@ interface ArticleApi {
   title: string;
   summary: string;
   content: string;
-  status: "RASCUNHO" | "AGENDADO" | "PUBLICADO" | "ARQUIVADO";
+  status: "RASCUNHO" | "EM_REVISAO" | "AGENDADO" | "PUBLICADO" | "ARQUIVADO";
   premium: boolean;
   views: number;
   readMinutes: number;
@@ -31,10 +31,19 @@ interface ArticleApi {
   coverImageUrl: string | null;
   scheduledAt: string | null;
   publishedAt: string | null;
+  rejectionReason: string | null;
   createdAt: string;
   categoryId: string;
   category: { slug: string; name: string; color: string } | null;
   author: { id: string; name: string | null; email: string } | null;
+}
+
+interface MeWithPerms {
+  id: string;
+  email: string;
+  name: string | null;
+  role: string;
+  permissions: string[];
 }
 
 interface CategoryApi {
@@ -62,6 +71,7 @@ function toAdminArticle(a: ArticleApi): AdminArticle {
     scheduledAt: a.scheduledAt,
     createdAt: a.createdAt,
     publishedAt: a.publishedAt,
+    rejectionReason: a.rejectionReason ?? null,
     categoryId: a.categoryId,
     categoryName: a.category?.name ?? "—",
     categoryColor: a.category?.color ?? "#6b7280",
@@ -70,9 +80,10 @@ function toAdminArticle(a: ArticleApi): AdminArticle {
 }
 
 export default async function AdminArticlesPage() {
-  const [articlesRes, categoriesRes] = await Promise.all([
+  const [articlesRes, categoriesRes, meRes] = await Promise.all([
     apiFetch("/admin/articles?pageSize=100"),
     apiFetch("/admin/categories"),
+    apiFetch("/auth/me"),
   ]);
   const articles = articlesRes.ok
     ? ((await articlesRes.json()) as PageResult<ArticleApi>).items.map(
@@ -84,12 +95,23 @@ export default async function AdminArticlesPage() {
         (c) => ({ id: c.id, name: c.name, slug: c.slug, color: c.color }),
       )
     : [];
+  const me = meRes.ok ? ((await meRes.json()) as MeWithPerms) : null;
+  const canPublish =
+    me?.role === "SUPER_ADMIN" ||
+    me?.permissions?.includes("artigos.publicar") ||
+    false;
+  const canApprove =
+    me?.role === "SUPER_ADMIN" ||
+    me?.permissions?.includes("artigos.aprovar") ||
+    false;
 
   return (
     <AdminShell active="/admin/artigos">
       <AdminArticlesClient
         initialArticles={articles}
         categories={categories}
+        canPublish={canPublish}
+        canApprove={canApprove}
       />
     </AdminShell>
   );

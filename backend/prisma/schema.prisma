@@ -22,6 +22,7 @@ enum Role {
 
 enum ArticleStatus {
   RASCUNHO
+  EM_REVISAO
   AGENDADO
   PUBLICADO
   ARQUIVADO
@@ -172,6 +173,7 @@ model Article {
   coverImageUrl   String?
   scheduledAt     DateTime?
   publishedAt     DateTime?
+  rejectionReason String?
   categoryId      String
   authorId        String
   createdAt       DateTime      @default(now())

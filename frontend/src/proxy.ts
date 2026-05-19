@@ -3,10 +3,10 @@ import { NextResponse, type NextRequest } from "next/server";
 /**
  * Counts unique daily visitors to the public surfaces of the site.
  *
- * Why a Next.js middleware (and not a backend interceptor):
- *   • The middleware sees the actual user-agent + IP of the visitor,
- *     once per page load. The backend only sees server-to-server SSR
- *     fetches which would over-count by a factor of N per render.
+ * Why a Next.js proxy (and not a backend interceptor):
+ *   • The proxy sees the actual user-agent + IP of the visitor, once
+ *     per page load. The backend only sees server-to-server SSR fetches
+ *     which would over-count by a factor of N per render.
  *   • We compute a stable hash of (IP + UA + daily salt) here and ship
  *     only the hash to the backend, so the raw IP never crosses the
  *     internal network. The backend stores hashes in a Redis SET so
@@ -14,6 +14,9 @@ import { NextResponse, type NextRequest } from "next/server";
  *
  * Important: the fetch is fire-and-forget — we never await it before
  * continuing to the route, so users never wait for the tracker.
+ *
+ * Next.js 16 renamed the `middleware` file convention to `proxy`. The
+ * exported function MUST be named `proxy` (not `middleware`).
  */
 
 const BOT_RE = /bot|crawler|spider|preview|monitor|curl|wget|python-requests|headless/i;
@@ -49,7 +52,7 @@ async function visitorHash(ip: string, ua: string): Promise<string> {
     .join("");
 }
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const ua = req.headers.get("user-agent") ?? "";
   if (!BOT_RE.test(ua)) {
     const ip = getClientIp(req);
@@ -78,9 +81,5 @@ export async function middleware(req: NextRequest) {
  *   2. The tracker fetch never fires for static assets.
  */
 export const config = {
-  matcher: [
-    "/",
-    "/artigo/:path*",
-    "/categoria/:path*",
-  ],
+  matcher: ["/", "/artigo/:path*", "/categoria/:path*"],
 };

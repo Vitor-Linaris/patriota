@@ -26,7 +26,12 @@ interface ActivityItem {
 interface PendingArticleItem {
   id: string;
   title: string;
-  status: "RASCUNHO" | "AGENDADO" | "PUBLICADO" | "ARQUIVADO";
+  status:
+    | "RASCUNHO"
+    | "EM_REVISAO"
+    | "AGENDADO"
+    | "PUBLICADO"
+    | "ARQUIVADO";
   createdAt: string;
   category: { slug: string; name: string; color: string } | null;
   author: { id: string; name: string | null; email: string } | null;
@@ -76,6 +81,9 @@ const ROLE_BADGE: Record<string, string> = {
 
 const ACTION_LABEL: Record<string, string> = {
   submitted: "submeteu artigo",
+  submitted_for_review: "enviou para revisão",
+  rejected: "recusou",
+  approved: "aprovou",
   published: "publicou",
   archived: "arquivou",
   deleted: "eliminou",
@@ -111,11 +119,20 @@ function roleShort(role: string): string {
   }
 }
 
+interface MeWithPerms {
+  id: string;
+  email: string;
+  name: string | null;
+  role: string;
+  permissions: string[];
+}
+
 async function loadDashboard() {
-  const [statsRes, activityRes, pendingRes] = await Promise.all([
+  const [statsRes, activityRes, pendingRes, meRes] = await Promise.all([
     apiFetch("/admin/stats"),
     apiFetch("/admin/activity?pageSize=8"),
-    apiFetch("/admin/articles?status=RASCUNHO,AGENDADO&pageSize=4"),
+    apiFetch("/admin/articles?status=EM_REVISAO,AGENDADO&pageSize=6"),
+    apiFetch("/auth/me"),
   ]);
   const stats = statsRes.ok ? ((await statsRes.json()) as StatsResponse) : null;
   const activity = activityRes.ok
@@ -124,11 +141,16 @@ async function loadDashboard() {
   const pending = pendingRes.ok
     ? ((await pendingRes.json()) as PageResult<PendingArticleItem>)
     : { items: [], total: 0, page: 1, pageSize: 4 };
-  return { stats, activity, pending };
+  const me = meRes.ok ? ((await meRes.json()) as MeWithPerms) : null;
+  const canApprove =
+    me?.role === "SUPER_ADMIN" ||
+    me?.permissions?.includes("artigos.aprovar") ||
+    false;
+  return { stats, activity, pending, canApprove };
 }
 
 export default async function AdminDashboardPage() {
-  const { stats, activity, pending } = await loadDashboard();
+  const { stats, activity, pending, canApprove } = await loadDashboard();
 
   const statCards = [
     {
@@ -228,10 +250,16 @@ export default async function AdminDashboardPage() {
                           className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
                             a.status === "AGENDADO"
                               ? "bg-blue-100 text-blue-700"
-                              : "bg-amber-100 text-amber-700"
+                              : a.status === "EM_REVISAO"
+                                ? "bg-purple-100 text-purple-700"
+                                : "bg-amber-100 text-amber-700"
                           }`}
                         >
-                          {a.status === "AGENDADO" ? "Agendado" : "Rascunho"}
+                          {a.status === "AGENDADO"
+                            ? "Agendado"
+                            : a.status === "EM_REVISAO"
+                              ? "Em revisão"
+                              : "Rascunho"}
                         </span>
                         <span className="text-[10px] text-gray-300">
                           {relativeTime(a.createdAt)}
@@ -244,7 +272,11 @@ export default async function AdminDashboardPage() {
                         {a.author?.name ?? a.author?.email ?? "—"}
                       </p>
                     </div>
-                    <DashboardActions articleId={a.id} />
+                    <DashboardActions
+                      articleId={a.id}
+                      articleTitle={a.title}
+                      canApprove={canApprove}
+                    />
                   </li>
                 ))}
               </ul>

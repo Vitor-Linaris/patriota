@@ -84,15 +84,144 @@ describe('ArticlesService', () => {
       expect(updateArgs.where).toEqual({ id: 'a1' });
       expect(updateArgs.data.status).toBe('PUBLICADO');
       expect(updateArgs.data.publishedAt).toBeInstanceOf(Date);
+      expect(updateArgs.data.rejectionReason).toBeNull();
     });
 
-    it('forbids users without artigos.publicar', async () => {
+    it('forbids users without artigos.publicar and no artigos.submeter', async () => {
       rbac.getPermissionsForRole.mockResolvedValueOnce([]);
       prisma.article.findUnique.mockResolvedValueOnce({
         id: 'a1', authorId: 'u1', status: 'RASCUNHO',
       });
       await expect(
         service.publish('a1', { id: 'u2', role: 'JORNALISTA' }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('falls back to submitForReview when caller has submeter but not publicar', async () => {
+      // First call: publish() perms check
+      rbac.getPermissionsForRole.mockResolvedValueOnce([
+        'artigos.submeter',
+        'artigos.editar_proprios',
+      ]);
+      prisma.article.findUnique.mockResolvedValueOnce({
+        id: 'a1', authorId: 'u1', status: 'RASCUNHO',
+      });
+      // Second call: assertCanEdit inside submitForReview
+      rbac.getPermissionsForRole.mockResolvedValueOnce([
+        'artigos.editar_proprios',
+      ]);
+      prisma.article.findUnique.mockResolvedValueOnce({
+        id: 'a1', authorId: 'u1', status: 'RASCUNHO',
+      });
+      prisma.article.update.mockResolvedValueOnce({
+        id: 'a1', status: 'EM_REVISAO',
+      });
+
+      await service.publish('a1', { id: 'u1', role: 'JORNALISTA' });
+
+      const updateArgs = prisma.article.update.mock.calls[0][0];
+      expect(updateArgs.data.status).toBe('EM_REVISAO');
+      expect(activity.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'submitted_for_review' }),
+      );
+    });
+  });
+
+  describe('submitForReview()', () => {
+    it('moves RASCUNHO → EM_REVISAO and logs activity', async () => {
+      rbac.getPermissionsForRole.mockResolvedValueOnce([
+        'artigos.editar_proprios',
+      ]);
+      prisma.article.findUnique.mockResolvedValueOnce({
+        id: 'a1', authorId: 'u1', status: 'RASCUNHO',
+      });
+      prisma.article.update.mockResolvedValueOnce({ id: 'a1', status: 'EM_REVISAO' });
+
+      await service.submitForReview('a1', { id: 'u1', role: 'JORNALISTA' });
+
+      const args = prisma.article.update.mock.calls[0][0];
+      expect(args.data.status).toBe('EM_REVISAO');
+      expect(args.data.rejectionReason).toBeNull();
+      expect(activity.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'submitted_for_review' }),
+      );
+    });
+
+    it('refuses to submit articles already PUBLICADO', async () => {
+      rbac.getPermissionsForRole.mockResolvedValueOnce([
+        'artigos.editar_proprios',
+      ]);
+      prisma.article.findUnique.mockResolvedValueOnce({
+        id: 'a1', authorId: 'u1', status: 'PUBLICADO',
+      });
+      await expect(
+        service.submitForReview('a1', { id: 'u1', role: 'JORNALISTA' }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('persists scheduledAt when provided', async () => {
+      rbac.getPermissionsForRole.mockResolvedValueOnce([
+        'artigos.editar_proprios',
+      ]);
+      prisma.article.findUnique.mockResolvedValueOnce({
+        id: 'a1', authorId: 'u1', status: 'RASCUNHO',
+      });
+      prisma.article.update.mockResolvedValueOnce({ id: 'a1' });
+      const when = '2026-06-01T10:00:00.000Z';
+      await service.submitForReview(
+        'a1',
+        { id: 'u1', role: 'JORNALISTA' },
+        { scheduledAt: when },
+      );
+      const args = prisma.article.update.mock.calls[0][0];
+      expect(args.data.scheduledAt).toEqual(new Date(when));
+    });
+  });
+
+  describe('reject()', () => {
+    it('moves EM_REVISAO → RASCUNHO and stores the reason', async () => {
+      rbac.getPermissionsForRole.mockResolvedValueOnce(['artigos.aprovar']);
+      prisma.article.findUnique.mockResolvedValueOnce({
+        id: 'a1', authorId: 'u1', status: 'EM_REVISAO', title: 'X',
+      });
+      prisma.article.update.mockResolvedValueOnce({ id: 'a1' });
+
+      await service.reject(
+        'a1',
+        { id: 'u2', role: 'EDITOR_CHEFE' },
+        'Faltam fontes',
+      );
+
+      const args = prisma.article.update.mock.calls[0][0];
+      expect(args.data.status).toBe('RASCUNHO');
+      expect(args.data.rejectionReason).toBe('Faltam fontes');
+      expect(activity.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'rejected',
+          targetLabel: expect.stringContaining('Faltam fontes'),
+        }),
+      );
+    });
+
+    it('forbids users without artigos.aprovar', async () => {
+      rbac.getPermissionsForRole.mockResolvedValueOnce([
+        'artigos.editar_proprios',
+      ]);
+      prisma.article.findUnique.mockResolvedValueOnce({
+        id: 'a1', authorId: 'u1', status: 'EM_REVISAO',
+      });
+      await expect(
+        service.reject('a1', { id: 'u3', role: 'JORNALISTA' }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('refuses to reject articles not in EM_REVISAO', async () => {
+      rbac.getPermissionsForRole.mockResolvedValueOnce(['artigos.aprovar']);
+      prisma.article.findUnique.mockResolvedValueOnce({
+        id: 'a1', authorId: 'u1', status: 'RASCUNHO',
+      });
+      await expect(
+        service.reject('a1', { id: 'u2', role: 'EDITOR_CHEFE' }),
       ).rejects.toThrow(ForbiddenException);
     });
   });

@@ -11,9 +11,23 @@ import {
   Query,
 } from '@nestjs/common';
 import { ArticlesService } from './articles.service';
+import { IsOptional, IsString, Length } from 'class-validator';
 import { CreateArticleDto } from './dto/create-article.dto';
 import { UpdateArticleDto } from './dto/update-article.dto';
 import { ListArticlesQueryDto } from './dto/list-articles.query.dto';
+
+class SubmitArticleDto {
+  @IsOptional()
+  @IsString()
+  scheduledAt?: string;
+}
+
+class RejectArticleDto {
+  @IsOptional()
+  @IsString()
+  @Length(0, 500)
+  reason?: string;
+}
 import { RequirePermissions } from '../auth/permissions.decorator';
 import { Public } from '../auth/public.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -54,6 +68,34 @@ export class ArticlesController {
   @Post('admin/articles/:id/publish')
   publish(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.service.publish(id, { id: user.id, role: user.role });
+  }
+
+  @Post('admin/articles/:id/submit')
+  @RequirePermissions('artigos.submeter')
+  submit(
+    @Param('id') id: string,
+    @Body() dto: SubmitArticleDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.service.submitForReview(
+      id,
+      { id: user.id, role: user.role },
+      { scheduledAt: dto.scheduledAt ?? null },
+    );
+  }
+
+  @Post('admin/articles/:id/reject')
+  @RequirePermissions('artigos.aprovar')
+  reject(
+    @Param('id') id: string,
+    @Body() dto: RejectArticleDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.service.reject(
+      id,
+      { id: user.id, role: user.role },
+      dto.reason,
+    );
   }
 
   @Post('admin/articles/:id/archive')

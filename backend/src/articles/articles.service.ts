@@ -162,6 +162,11 @@ export class ArticlesService {
       // keep existing slug if not explicitly changed
       delete data.slug;
     }
+    // When an author re-edits an article that was rejected, the previous
+    // rejection note is no longer relevant — clear it.
+    if (existing.rejectionReason && existing.status === 'RASCUNHO') {
+      data.rejectionReason = null;
+    }
     try {
       return await this.prisma.article.update({
         where: { id },
@@ -175,13 +180,103 @@ export class ArticlesService {
     }
   }
 
+  /**
+   * Author (or anyone with edit permission) puts a draft into the
+   * approval queue. Allowed transitions: RASCUNHO → EM_REVISAO.
+   * Optional `scheduledAt` is stored so the approver knows the desired
+   * publication date.
+   */
+  async submitForReview(
+    id: string,
+    user: ActingUser,
+    opts: { scheduledAt?: string | null } = {},
+  ) {
+    const a = await this.loadOrThrow(id);
+    await this.assertCanEdit(a, user);
+    if (a.status !== 'RASCUNHO' && a.status !== 'EM_REVISAO') {
+      throw new ForbiddenException(
+        'Só rascunhos podem ser submetidos para revisão.',
+      );
+    }
+    const updated = await this.prisma.article.update({
+      where: { id },
+      data: {
+        status: 'EM_REVISAO',
+        scheduledAt: opts.scheduledAt ? new Date(opts.scheduledAt) : null,
+        rejectionReason: null,
+      },
+    });
+    void this.activity.record({
+      userId: user.id,
+      action: 'submitted_for_review',
+      targetType: 'article',
+      targetId: a.id,
+      targetLabel: a.title,
+    });
+    return updated;
+  }
+
+  /**
+   * Approver returns an article from the review queue back to the
+   * author's drafts. Allowed transitions: EM_REVISAO → RASCUNHO.
+   * `reason` is optional and surfaced both in the article row and the
+   * activity log so the author can read it in /admin/artigos.
+   */
+  async reject(id: string, user: ActingUser, reason?: string) {
+    const a = await this.loadOrThrow(id);
+    const perms =
+      user.role === 'SUPER_ADMIN'
+        ? ['artigos.aprovar']
+        : await this.rbac.getPermissionsForRole(user.role);
+    if (!perms.includes('artigos.aprovar')) {
+      throw new ForbiddenException('Sem permissão para aprovar/recusar.');
+    }
+    if (a.status !== 'EM_REVISAO') {
+      throw new ForbiddenException(
+        'Só artigos em revisão podem ser recusados.',
+      );
+    }
+    const trimmedReason = reason?.trim().slice(0, 500) || null;
+    const updated = await this.prisma.article.update({
+      where: { id },
+      data: {
+        status: 'RASCUNHO',
+        rejectionReason: trimmedReason,
+        scheduledAt: null,
+      },
+    });
+    void this.activity.record({
+      userId: user.id,
+      action: 'rejected',
+      targetType: 'article',
+      targetId: a.id,
+      targetLabel: trimmedReason
+        ? `${a.title} — "${trimmedReason}"`
+        : a.title,
+    });
+    return updated;
+  }
+
+  /**
+   * Publish an article immediately.
+   * - If the caller has `artigos.publicar`: any non-PUBLICADO status
+   *   transitions to PUBLICADO.
+   * - If the caller does NOT have `artigos.publicar` but DOES have
+   *   `artigos.submeter`: server-side fallback to submitForReview so a
+   *   client mis-route never silently auto-publishes someone's draft.
+   *
+   * Clears any prior rejectionReason on success.
+   */
   async publish(id: string, user: ActingUser) {
     const a = await this.loadOrThrow(id);
     const perms =
       user.role === 'SUPER_ADMIN'
-        ? ['artigos.publicar']
+        ? ['artigos.publicar', 'artigos.aprovar']
         : await this.rbac.getPermissionsForRole(user.role);
     if (!perms.includes('artigos.publicar')) {
+      if (perms.includes('artigos.submeter')) {
+        return this.submitForReview(id, user);
+      }
       throw new ForbiddenException('Sem permissão para publicar.');
     }
     const updated = await this.prisma.article.update({
@@ -190,6 +285,7 @@ export class ArticlesService {
         status: 'PUBLICADO',
         publishedAt: new Date(),
         scheduledAt: null,
+        rejectionReason: null,
       },
     });
     void this.activity.record({

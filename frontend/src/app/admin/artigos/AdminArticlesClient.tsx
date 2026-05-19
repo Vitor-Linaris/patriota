@@ -8,12 +8,24 @@ import {
   createArticleAction,
   deleteArticleAction,
   publishArticleAction,
+  rejectArticleAction,
+  submitArticleAction,
   updateArticleAction,
   type ArticleFormPayload,
 } from "./actions";
 
-type ApiStatus = "RASCUNHO" | "AGENDADO" | "PUBLICADO" | "ARQUIVADO";
-type UiStatus = "publicado" | "rascunho" | "agendado" | "arquivado";
+type ApiStatus =
+  | "RASCUNHO"
+  | "EM_REVISAO"
+  | "AGENDADO"
+  | "PUBLICADO"
+  | "ARQUIVADO";
+type UiStatus =
+  | "publicado"
+  | "rascunho"
+  | "em_revisao"
+  | "agendado"
+  | "arquivado";
 
 export interface AdminArticle {
   id: string;
@@ -32,6 +44,7 @@ export interface AdminArticle {
   scheduledAt: string | null;
   createdAt: string;
   publishedAt: string | null;
+  rejectionReason: string | null;
   categoryId: string;
   categoryName: string;
   categoryColor: string;
@@ -48,6 +61,7 @@ export interface CategoryOption {
 const API_TO_UI: Record<ApiStatus, UiStatus> = {
   PUBLICADO: "publicado",
   RASCUNHO: "rascunho",
+  EM_REVISAO: "em_revisao",
   AGENDADO: "agendado",
   ARQUIVADO: "arquivado",
 };
@@ -55,6 +69,7 @@ const API_TO_UI: Record<ApiStatus, UiStatus> = {
 const UI_TO_API: Record<UiStatus, ApiStatus> = {
   publicado: "PUBLICADO",
   rascunho: "RASCUNHO",
+  em_revisao: "EM_REVISAO",
   agendado: "AGENDADO",
   arquivado: "ARQUIVADO",
 };
@@ -73,6 +88,11 @@ const STATUS_CONFIG: Record<
     color: "bg-gray-100 text-gray-500",
     dot: "bg-gray-400",
   },
+  em_revisao: {
+    label: "Em revisão",
+    color: "bg-purple-100 text-purple-700",
+    dot: "bg-purple-500",
+  },
   agendado: {
     label: "Agendado",
     color: "bg-blue-100 text-blue-700",
@@ -88,6 +108,7 @@ const STATUS_CONFIG: Record<
 const FILTERS: { key: UiStatus | "todos"; label: string }[] = [
   { key: "todos", label: "Todos" },
   { key: "publicado", label: "Publicados" },
+  { key: "em_revisao", label: "Em revisão" },
   { key: "rascunho", label: "Rascunhos" },
   { key: "agendado", label: "Agendados" },
   { key: "arquivado", label: "Arquivados" },
@@ -134,6 +155,7 @@ interface EditorState {
   metaDescription: string;
   coverImage: string;
   categoryId: string;
+  rejectionReason: string | null;
 }
 
 function emptyEditor(categoryId: string): EditorState {
@@ -150,6 +172,7 @@ function emptyEditor(categoryId: string): EditorState {
     metaDescription: "",
     coverImage: "",
     categoryId,
+    rejectionReason: null,
   };
 }
 
@@ -168,6 +191,7 @@ function articleToEditor(a: AdminArticle): EditorState {
     metaDescription: a.metaDescription,
     coverImage: a.coverImage,
     categoryId: a.categoryId,
+    rejectionReason: a.rejectionReason,
   };
 }
 
@@ -178,6 +202,7 @@ function ArticleEditor({
   onCancel,
   saving,
   error,
+  canPublish,
 }: {
   initial: EditorState;
   categories: CategoryOption[];
@@ -185,6 +210,7 @@ function ArticleEditor({
   onCancel: () => void;
   saving: boolean;
   error: string | null;
+  canPublish: boolean;
 }) {
   const [form, setForm] = useState<EditorState>(initial);
   const [tagInput, setTagInput] = useState("");
@@ -261,7 +287,7 @@ function ArticleEditor({
             onClick={() => onSave(form, true)}
             className="rounded-lg bg-[#0F2C6B] px-5 py-2 text-xs font-bold text-white transition-colors hover:bg-[#1A3A7A] disabled:opacity-50"
           >
-            Publicar
+            {canPublish ? "Publicar" : "Enviar para revisão"}
           </button>
         </div>
       </div>
@@ -269,6 +295,20 @@ function ArticleEditor({
       <div className="mx-auto grid max-w-[1100px] grid-cols-12 gap-6 px-6 py-8">
         {/* MAIN */}
         <div className="col-span-12 space-y-5 xl:col-span-8">
+          {form.rejectionReason && form.status === "rascunho" && (
+            <div className="rounded-xl border-l-4 border-red-400 bg-red-50 px-5 py-4">
+              <p className="text-xs font-black uppercase tracking-wider text-red-700">
+                Artigo recusado
+              </p>
+              <p className="mt-1 text-sm text-red-900">
+                {form.rejectionReason}
+              </p>
+              <p className="mt-2 text-[11px] text-red-600">
+                Edite o artigo e re-envie para revisão quando estiver pronto.
+              </p>
+            </div>
+          )}
+
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
             <input
               value={form.title}
@@ -555,7 +595,11 @@ function ArticleEditor({
               onClick={() => onSave(form, true)}
               className="w-full rounded-xl bg-[#0F2C6B] py-3 text-sm font-black text-white transition-colors hover:bg-[#1A3A7A] disabled:opacity-50"
             >
-              {saving ? "A guardar…" : "Publicar artigo"}
+              {saving
+                ? "A guardar…"
+                : canPublish
+                  ? "Publicar artigo"
+                  : "Enviar para revisão"}
             </button>
             <button
               type="button"
@@ -582,9 +626,13 @@ function ArticleEditor({
 export default function AdminArticlesClient({
   initialArticles,
   categories,
+  canPublish,
+  canApprove,
 }: {
   initialArticles: AdminArticle[];
   categories: CategoryOption[];
+  canPublish: boolean;
+  canApprove: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -596,6 +644,8 @@ export default function AdminArticlesClient({
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorState, setEditorState] = useState<EditorState | null>(null);
   const [editorError, setEditorError] = useState<string | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<AdminArticle | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -613,6 +663,8 @@ export default function AdminArticlesClient({
     () => ({
       todos: initialArticles.length,
       publicado: initialArticles.filter((a) => a.status === "PUBLICADO")
+        .length,
+      em_revisao: initialArticles.filter((a) => a.status === "EM_REVISAO")
         .length,
       rascunho: initialArticles.filter((a) => a.status === "RASCUNHO").length,
       agendado: initialArticles.filter((a) => a.status === "AGENDADO").length,
@@ -708,9 +760,11 @@ export default function AdminArticlesClient({
     }
     setEditorError(null);
 
-    const status: ApiStatus = publish
-      ? "PUBLICADO"
-      : UI_TO_API[form.status];
+    // For the save-as-draft path keep the article's existing status if
+    // it's not in a terminal state; otherwise default to RASCUNHO.
+    const draftStatus: ApiStatus =
+      form.status === "agendado" ? "AGENDADO" : "RASCUNHO";
+    const status: ApiStatus = publish ? "PUBLICADO" : draftStatus;
 
     const payload: ArticleFormPayload = {
       title: form.title.trim(),
@@ -718,7 +772,10 @@ export default function AdminArticlesClient({
       summary: form.summary,
       content: form.content,
       categoryId: form.categoryId,
-      status,
+      // Always save the row as a draft (or current scheduled state).
+      // The publish/submit transition is handled by a dedicated server
+      // action after the save, so the backend can enforce the workflow.
+      status: publish ? draftStatus : status,
       premium: form.premium,
       readMinutes: form.readMinutes,
       tags: form.tags,
@@ -728,14 +785,12 @@ export default function AdminArticlesClient({
     };
 
     startTransition(async () => {
+      let articleId = form.id;
       if (form.id) {
         const res = await updateArticleAction(form.id, payload);
         if (!res.ok) {
           setEditorError(res.error);
           return;
-        }
-        if (publish) {
-          await publishArticleAction(form.id);
         }
       } else {
         const res = await createArticleAction(payload);
@@ -743,12 +798,38 @@ export default function AdminArticlesClient({
           setEditorError(res.error);
           return;
         }
-        if (publish && res.id) {
-          await publishArticleAction(res.id);
+        articleId = res.id;
+      }
+
+      if (publish && articleId) {
+        // canPublish === true → /publish endpoint goes straight to PUBLICADO.
+        // canPublish === false → /submit goes to EM_REVISAO.
+        // We also catch the backend-side fallback (publish() converts to
+        // submitForReview for non-publishers) but doing the right call
+        // upfront keeps the UX honest.
+        const transitionRes = canPublish
+          ? await publishArticleAction(articleId)
+          : await submitArticleAction(articleId);
+        if (!transitionRes.ok) {
+          setEditorError(transitionRes.error);
+          return;
         }
       }
+
       setEditorOpen(false);
       setEditorState(null);
+      router.refresh();
+    });
+  };
+
+  /** Approver-only: reject an article in review with optional reason. */
+  const rejectArticle = (id: string, reason: string) => {
+    startTransition(async () => {
+      const res = await rejectArticleAction(id, reason);
+      if (!res.ok) {
+        alert(res.error);
+        return;
+      }
       router.refresh();
     });
   };
@@ -765,6 +846,7 @@ export default function AdminArticlesClient({
         }}
         saving={pending}
         error={editorError}
+        canPublish={canPublish}
       />
     );
   }
@@ -788,13 +870,19 @@ export default function AdminArticlesClient({
         </button>
       </div>
 
-      <div className="mb-5 grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <div className="mb-5 grid grid-cols-2 gap-3 xl:grid-cols-5">
         {[
           {
             label: "Publicados",
             value: counts.publicado,
             color: "text-green-600",
             bg: "bg-green-50 border-green-100",
+          },
+          {
+            label: "Em revisão",
+            value: counts.em_revisao,
+            color: "text-purple-600",
+            bg: "bg-purple-50 border-purple-100",
           },
           {
             label: "Rascunhos",
@@ -1015,6 +1103,29 @@ export default function AdminArticlesClient({
                   </td>
                   <td className="px-4 py-3.5">
                     <div className="flex items-center justify-end gap-1.5">
+                      {a.status === "EM_REVISAO" && canApprove && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => publishArticleAction(a.id).then(() => router.refresh())}
+                            disabled={pending}
+                            className="whitespace-nowrap rounded-lg bg-green-600 px-2.5 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-green-700 disabled:opacity-50"
+                          >
+                            Aprovar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRejectReason("");
+                              setRejectTarget(a);
+                            }}
+                            disabled={pending}
+                            className="whitespace-nowrap rounded-lg border border-red-200 px-2.5 py-1.5 text-[11px] font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
+                          >
+                            Recusar
+                          </button>
+                        </>
+                      )}
                       <button
                         type="button"
                         onClick={() => openEdit(a)}
@@ -1054,6 +1165,65 @@ export default function AdminArticlesClient({
           </span>
         </div>
       </div>
+
+      {rejectTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+          onClick={() => setRejectTarget(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-black text-[#0F2C6B]">
+              Recusar artigo
+            </h2>
+            <p className="mt-1 truncate text-sm text-gray-500">
+              “{rejectTarget.title}”
+            </p>
+            <label className="mt-5 mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">
+              Motivo (opcional)
+            </label>
+            <textarea
+              autoFocus
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              maxLength={500}
+              rows={4}
+              placeholder="Ex.: faltam fontes oficiais, título ambíguo, etc."
+              className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:border-[#0F2C6B] focus:outline-none"
+            />
+            <p className="mt-1 text-right text-[10px] text-gray-300">
+              {rejectReason.length}/500
+            </p>
+            <p className="mt-3 text-[11px] text-gray-500">
+              O artigo volta para os rascunhos do autor com este motivo
+              anotado. Acção registada no histórico.
+            </p>
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setRejectTarget(null)}
+                className="flex-1 rounded-lg border border-gray-200 py-2.5 text-sm font-semibold text-gray-500 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => {
+                  const target = rejectTarget;
+                  setRejectTarget(null);
+                  if (target) rejectArticle(target.id, rejectReason);
+                }}
+                className="flex-1 rounded-lg bg-red-600 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                Recusar artigo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

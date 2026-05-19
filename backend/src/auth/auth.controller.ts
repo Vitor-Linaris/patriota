@@ -10,13 +10,17 @@ import {
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService, type AuthUser } from './auth.service';
+import { RbacService } from '../rbac/rbac.service';
 import { LoginDto } from './dto/login.dto';
 import { Public } from './public.decorator';
 import { CurrentUser } from './current-user.decorator';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly rbac: RbacService,
+  ) {}
 
   @Public()
   @Post('login')
@@ -29,7 +33,8 @@ export class AuthController {
   }
 
   @Get('me')
-  me(@CurrentUser() user: AuthUser) {
-    return user;
+  async me(@CurrentUser() user: AuthUser) {
+    const permissions = await this.rbac.getPermissionsForRole(user.role);
+    return { ...user, permissions };
   }
 }
