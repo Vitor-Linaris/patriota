@@ -1,3 +1,5 @@
+import { imageVariant } from "@/lib/images";
+
 interface FeaturedArticleProps {
   category: string;
   title: string;
@@ -6,6 +8,8 @@ interface FeaturedArticleProps {
   publishedAt: string;
   time: string;
   readMinutes: number;
+  coverImageUrl?: string | null;
+  slug?: string;
 }
 
 export function FeaturedArticle({
@@ -16,20 +20,31 @@ export function FeaturedArticle({
   publishedAt,
   time,
   readMinutes,
+  coverImageUrl,
+  slug,
 }: FeaturedArticleProps) {
   return (
     <article className="overflow-hidden rounded-[12px] border border-[#f3f4f6] bg-white shadow-[0px_1px_3px_0px_rgba(0,0,0,0.1),0px_1px_2px_-1px_rgba(0,0,0,0.1)]">
-      {/* Hero (primary/pure blue with subtle yellow corner + dark bottom fade) */}
+      {/* Hero (cover image when present, otherwise the patterned blue fallback) */}
       <div className="relative h-[224px] overflow-hidden bg-patriota-pure">
-        <div
-          aria-hidden
-          className="absolute inset-0"
-          style={{
-            background:
-              "linear-gradient(15.68deg, rgba(255,204,102,1) 0%, rgba(255,204,102,1) 3.54%, rgba(255,204,102,0) 3.54%, rgba(255,204,102,0) 50%)",
-            opacity: 0.2,
-          }}
-        />
+        {coverImageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={imageVariant(coverImageUrl, "large") ?? coverImageUrl}
+            alt={title}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        ) : (
+          <div
+            aria-hidden
+            className="absolute inset-0"
+            style={{
+              background:
+                "linear-gradient(15.68deg, rgba(255,204,102,1) 0%, rgba(255,204,102,1) 3.54%, rgba(255,204,102,0) 3.54%, rgba(255,204,102,0) 50%)",
+              opacity: 0.2,
+            }}
+          />
+        )}
         <div
           aria-hidden
           className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"
@@ -64,7 +79,7 @@ export function FeaturedArticle({
             </div>
           </div>
           <a
-            href="#"
+            href={slug ? `/artigo/${slug}` : "#"}
             className="text-[12px] font-bold text-patriota-pure hover:opacity-80"
           >
             Ler artigo →

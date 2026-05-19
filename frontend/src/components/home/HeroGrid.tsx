@@ -4,6 +4,7 @@ import {
   type ArticleSummary,
   type ArticleDetail,
 } from "@/lib/public-api";
+import { imageVariant } from "@/lib/images";
 
 const CATEGORY_COLOR: Record<string, string> = {
   Política: "bg-red-600",
@@ -38,10 +39,22 @@ export function HeroGrid({ featured, side }: Props) {
     <section className="grid grid-cols-1 gap-5 lg:grid-cols-12">
       {/* Big hero card */}
       <article className="relative col-span-1 overflow-hidden rounded-xl bg-patriota-dark text-white shadow-sm lg:col-span-8">
-        <div
-          className="aspect-[16/9] w-full bg-gradient-to-br from-slate-700 via-patriota-medium to-patriota-dark"
-          aria-hidden
-        />
+        {featured?.coverImageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={
+              imageVariant(featured.coverImageUrl, "large") ??
+              featured.coverImageUrl
+            }
+            alt={featured.title}
+            className="aspect-[16/9] w-full object-cover"
+          />
+        ) : (
+          <div
+            className="aspect-[16/9] w-full bg-gradient-to-br from-slate-700 via-patriota-medium to-patriota-dark"
+            aria-hidden
+          />
+        )}
         <div className="absolute inset-0 bg-gradient-to-t from-patriota-dark via-patriota-dark/85 to-transparent" />
         <div className="absolute inset-x-0 bottom-0 flex flex-col gap-3 p-6 lg:p-8">
           <div className="flex items-center gap-3 text-[12px] text-white/80">
@@ -105,7 +118,19 @@ export function HeroGrid({ featured, side }: Props) {
                 </Link>
               </h3>
             </div>
-            <div className="hidden h-16 w-20 shrink-0 rounded-md bg-gradient-to-br from-slate-200 to-slate-300 sm:block" />
+            {card.coverImageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={
+                  imageVariant(card.coverImageUrl, "small") ??
+                  card.coverImageUrl
+                }
+                alt=""
+                className="hidden h-16 w-20 shrink-0 rounded-md object-cover sm:block"
+              />
+            ) : (
+              <div className="hidden h-16 w-20 shrink-0 rounded-md bg-gradient-to-br from-slate-200 to-slate-300 sm:block" />
+            )}
           </article>
         ))}
         {side.length === 0 && (

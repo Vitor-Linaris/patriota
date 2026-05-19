@@ -2,6 +2,7 @@ import { SectionHeading } from "./SectionHeading";
 import { listMostRead, listPublicArticles } from "@/lib/public-api";
 import { NewsletterForm } from "./NewsletterForm";
 import { FEATURES } from "@/lib/features";
+import { imageVariant } from "@/lib/images";
 
 function initialsOf(name: string | null): string {
   if (!name) return "—";
@@ -57,6 +58,17 @@ export async function Sidebar() {
                 <span className="text-2xl font-black leading-none text-slate-300">
                   {i + 1}
                 </span>
+                {m.coverImageUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={
+                      imageVariant(m.coverImageUrl, "small") ??
+                      m.coverImageUrl
+                    }
+                    alt=""
+                    className="h-12 w-16 shrink-0 rounded-md object-cover"
+                  />
+                )}
                 <div className="min-w-0">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-orange-600">
                     {m.category.name}

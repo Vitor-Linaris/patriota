@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { SectionHeading } from "./SectionHeading";
 import type { ArticleSummary } from "@/lib/public-api";
+import { imageVariant } from "@/lib/images";
 
 const ACCENTS = ["bg-red-600", "bg-amber-600"];
 
@@ -17,8 +18,19 @@ export function InvestigationSection({ items }: Props) {
         {items.slice(0, 2).map((c, i) => (
           <article
             key={c.id}
-            className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-6 transition hover:shadow-md"
+            className="flex flex-col gap-4 overflow-hidden rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white transition hover:shadow-md"
           >
+            {c.coverImageUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={
+                  imageVariant(c.coverImageUrl, "medium") ?? c.coverImageUrl
+                }
+                alt=""
+                className="aspect-[16/9] w-full object-cover"
+              />
+            )}
+            <div className={c.coverImageUrl ? "flex flex-col gap-4 px-6 pb-6" : "flex flex-col gap-4 p-6"}>
             <span
               className={`inline-flex w-fit rounded px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white ${ACCENTS[i % ACCENTS.length]}`}
             >
@@ -43,6 +55,7 @@ export function InvestigationSection({ items }: Props) {
             >
               {c.readMinutes} min leitura →
             </Link>
+            </div>
           </article>
         ))}
       </div>

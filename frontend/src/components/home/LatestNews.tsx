@@ -2,6 +2,7 @@ import Link from "next/link";
 import { SectionHeading } from "./SectionHeading";
 import { CATEGORY_COLOR } from "./HeroGrid";
 import { timeAgo, type ArticleSummary } from "@/lib/public-api";
+import { imageVariant } from "@/lib/images";
 
 interface Props {
   items: ArticleSummary[];
@@ -18,7 +19,19 @@ export function LatestNews({ items }: Props) {
               href={`/artigo/${item.slug}`}
               className="flex gap-4 rounded-xl border border-slate-200 bg-white p-4 transition hover:shadow-md"
             >
-              <div className="hidden h-20 w-28 shrink-0 rounded-md bg-gradient-to-br from-slate-200 to-slate-300 sm:block" />
+              {item.coverImageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={
+                    imageVariant(item.coverImageUrl, "medium") ??
+                    item.coverImageUrl
+                  }
+                  alt=""
+                  className="hidden h-20 w-28 shrink-0 rounded-md object-cover sm:block"
+                />
+              ) : (
+                <div className="hidden h-20 w-28 shrink-0 rounded-md bg-gradient-to-br from-slate-200 to-slate-300 sm:block" />
+              )}
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
                   <span

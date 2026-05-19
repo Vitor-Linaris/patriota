@@ -201,19 +201,32 @@ export default async function ArticlePage({
                       <li key={r.id}>
                         <Link
                           href={`/artigo/${r.slug}`}
-                          className="block rounded-xl border border-slate-200 bg-white p-4 transition hover:shadow-md"
+                          className="block overflow-hidden rounded-xl border border-slate-200 bg-white transition hover:shadow-md"
                         >
-                          <p className="text-[11px] font-bold uppercase tracking-wider text-orange-600">
-                            {r.category.name}
-                          </p>
-                          <h3 className="mt-1 text-[16px] font-bold leading-snug text-slate-900">
-                            {r.title}
-                          </h3>
-                          {r.summary && (
-                            <p className="mt-2 line-clamp-2 text-[13px] text-slate-600">
-                              {r.summary}
-                            </p>
+                          {r.coverImageUrl && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={
+                                imageVariant(r.coverImageUrl, "small") ??
+                                r.coverImageUrl
+                              }
+                              alt=""
+                              className="aspect-[16/9] w-full object-cover"
+                            />
                           )}
+                          <div className="p-4">
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-orange-600">
+                              {r.category.name}
+                            </p>
+                            <h3 className="mt-1 text-[16px] font-bold leading-snug text-slate-900">
+                              {r.title}
+                            </h3>
+                            {r.summary && (
+                              <p className="mt-2 line-clamp-2 text-[13px] text-slate-600">
+                                {r.summary}
+                              </p>
+                            )}
+                          </div>
                         </Link>
                       </li>
                     ))}

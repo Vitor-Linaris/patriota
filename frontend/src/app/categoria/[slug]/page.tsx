@@ -58,6 +58,7 @@ export default async function CategoryPage({
     authorName: a.author.name ?? "Redação",
     date: timeAgo(a.publishedAt),
     slug: a.slug,
+    coverImageUrl: a.coverImageUrl,
   }));
 
   return (
@@ -109,6 +110,8 @@ export default async function CategoryPage({
                       publishedAt={timeAgo(featured.publishedAt)}
                       time={timeAgo(featured.publishedAt)}
                       readMinutes={featured.readMinutes}
+                      coverImageUrl={featured.coverImageUrl}
+                      slug={featured.slug}
                     />
                   </div>
                 </>

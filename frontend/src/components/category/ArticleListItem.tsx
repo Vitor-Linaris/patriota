@@ -1,3 +1,5 @@
+import { imageVariant } from "@/lib/images";
+
 export interface ArticleListItemData {
   number: number;
   category: string;
@@ -9,6 +11,7 @@ export interface ArticleListItemData {
   authorName: string;
   date: string;
   slug?: string;
+  coverImageUrl?: string | null;
 }
 
 export function ArticleListItem({ item }: { item: ArticleListItemData }) {
@@ -47,14 +50,23 @@ export function ArticleListItem({ item }: { item: ArticleListItemData }) {
           <span className="text-[#99a1af]">{item.date}</span>
         </div>
       </div>
-      <div
-        aria-hidden
-        className="hidden h-20 w-28 shrink-0 rounded-[8px] sm:block"
-        style={{
-          background:
-            "linear-gradient(144.46deg, rgba(15,44,107,0.1) 0%, rgba(255,204,102,0.15) 100%)",
-        }}
-      />
+      {item.coverImageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={imageVariant(item.coverImageUrl, "small") ?? item.coverImageUrl}
+          alt=""
+          className="hidden h-20 w-28 shrink-0 rounded-[8px] object-cover sm:block"
+        />
+      ) : (
+        <div
+          aria-hidden
+          className="hidden h-20 w-28 shrink-0 rounded-[8px] sm:block"
+          style={{
+            background:
+              "linear-gradient(144.46deg, rgba(15,44,107,0.1) 0%, rgba(255,204,102,0.15) 100%)",
+          }}
+        />
+      )}
     </a>
   );
 }
