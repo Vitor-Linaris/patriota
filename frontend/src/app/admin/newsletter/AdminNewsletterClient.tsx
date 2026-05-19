@@ -1,15 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import {
+  createCampaignAction,
+  sendCampaignAction,
+  updateCampaignAction,
+  type CampaignPayload,
+} from "./actions";
 
 type CampaignStatus = "enviada" | "rascunho" | "agendada";
 
-interface Campaign {
-  id: number;
+export interface Campaign {
+  id: string;
   subject: string;
   preview: string;
+  segment: string;
+  header: string;
+  body: string;
+  ctaText: string;
+  ctaUrl: string;
+  footer: string;
   status: CampaignStatus;
   date: string;
+  scheduledAt: string | null;
+  sentAt: string | null;
   opens: number;
   clicks: number;
   recipients: number;
@@ -17,8 +32,8 @@ interface Campaign {
   clickRate: number;
 }
 
-interface Subscriber {
-  id: number;
+export interface Subscriber {
+  id: string;
   email: string;
   name: string;
   joinedAt: string;
@@ -26,25 +41,6 @@ interface Subscriber {
   segment: string;
   opens: number;
 }
-
-const SAMPLE_CAMPAIGNS: Campaign[] = [
-  { id: 1, subject: "📰 Destaques da Semana — 12 Maio 2026", preview: "Orçamento, FMI e as últimas do parlamento", status: "enviada", date: "12 Mai 2026", opens: 4820, clicks: 612, recipients: 9400, openRate: 51.3, clickRate: 6.5 },
-  { id: 2, subject: "🇵🇹 Especial Eleições Autárquicas", preview: "Tudo o que precisa de saber antes de votar", status: "enviada", date: "05 Mai 2026", opens: 5200, clicks: 890, recipients: 9200, openRate: 56.5, clickRate: 9.7 },
-  { id: 3, subject: "💶 Análise económica — Abril 2026", preview: "PIB, inflação e perspetivas para o segundo trimestre", status: "enviada", date: "28 Abr 2026", opens: 3900, clicks: 430, recipients: 9100, openRate: 42.9, clickRate: 4.7 },
-  { id: 4, subject: "🌿 Ambiente & Energia — Newsletter Mensal", preview: "Metas climáticas e o novo pacote de energias renováveis", status: "rascunho", date: "—", opens: 0, clicks: 0, recipients: 0, openRate: 0, clickRate: 0 },
-  { id: 5, subject: "📊 Destaques da Semana — 19 Maio 2026", preview: "As notícias que marcaram esta semana em Portugal", status: "agendada", date: "19 Mai 2026", opens: 0, clicks: 0, recipients: 9450, openRate: 0, clickRate: 0 },
-];
-
-const SAMPLE_SUBSCRIBERS: Subscriber[] = [
-  { id: 1, email: "maria.santos@gmail.com", name: "Maria Santos", joinedAt: "Jan 2024", status: "ativo", segment: "Premium", opens: 89 },
-  { id: 2, email: "joao.ferreira@outlook.pt", name: "João Ferreira", joinedAt: "Mar 2024", status: "ativo", segment: "Geral", opens: 52 },
-  { id: 3, email: "ana.costa@sapo.pt", name: "Ana Costa", joinedAt: "Jun 2024", status: "ativo", segment: "Política", opens: 71 },
-  { id: 4, email: "pedro.oliveira@gmail.com", name: "Pedro Oliveira", joinedAt: "Ago 2024", status: "inativo", segment: "Geral", opens: 8 },
-  { id: 5, email: "sofia.lopes@gmail.com", name: "Sofia Lopes", joinedAt: "Out 2024", status: "ativo", segment: "Economia", opens: 44 },
-  { id: 6, email: "rui.mendes@hotmail.com", name: "Rui Mendes", joinedAt: "Nov 2024", status: "cancelado", segment: "Geral", opens: 0 },
-  { id: 7, email: "catarina.silva@gmail.com", name: "Catarina Silva", joinedAt: "Dez 2024", status: "ativo", segment: "Premium", opens: 93 },
-  { id: 8, email: "tiago.rodrigues@sapo.pt", name: "Tiago Rodrigues", joinedAt: "Fev 2025", status: "ativo", segment: "Geral", opens: 31 },
-];
 
 const STATUS_STYLES: Record<CampaignStatus, string> = {
   enviada: "bg-green-100 text-green-700",
@@ -82,19 +78,34 @@ interface EditorState {
 
 const SEGMENTS = ["Todos (9.450)", "Geral (5.800)", "Premium (2.100)", "Política (800)", "Economia (750)"];
 
-export default function AdminNewsletterClient() {
+export default function AdminNewsletterClient({
+  initialCampaigns,
+  initialSubscribers,
+}: {
+  initialCampaigns: Campaign[];
+  initialSubscribers: Subscriber[];
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
   const [tab, setTab] = useState<Tab>("campanhas");
-  const [campaigns, setCampaigns] = useState<Campaign[]>(SAMPLE_CAMPAIGNS);
-  const subscribers = SAMPLE_SUBSCRIBERS;
-  const [subFilter, setSubFilter] = useState<"todos" | "ativo" | "inativo" | "cancelado">("todos");
+  const campaigns = initialCampaigns;
+  const subscribers = initialSubscribers;
+  const [subFilter, setSubFilter] = useState<
+    "todos" | "ativo" | "inativo" | "cancelado"
+  >("todos");
   const [subSearch, setSubSearch] = useState("");
   const [camSearch, setCamSearch] = useState("");
-  const [camFilter, setCamFilter] = useState<"todos" | CampaignStatus>("todos");
+  const [camFilter, setCamFilter] = useState<"todos" | CampaignStatus>(
+    "todos",
+  );
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorStep, setEditorStep] = useState<EditorStep>("assunto");
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editorError, setEditorError] = useState<string | null>(null);
   const [sendConfirm, setSendConfirm] = useState<Campaign | null>(null);
-  const [previewCampaign, setPreviewCampaign] = useState<Campaign | null>(null);
+  const [previewCampaign, setPreviewCampaign] = useState<Campaign | null>(
+    null,
+  );
 
   const [editor, setEditor] = useState<EditorState>({
     subject: "",
@@ -131,101 +142,114 @@ export default function AdminNewsletterClient() {
       scheduleTime: "08:00",
     });
     setEditingId(null);
+    setEditorError(null);
     setEditorStep("assunto");
     setEditorOpen(true);
   }
 
-  function saveDraft() {
-    if (!editor.subject.trim()) return;
-    if (editingId) {
-      setCampaigns((cs) =>
-        cs.map((c) =>
-          c.id === editingId
-            ? { ...c, subject: editor.subject, preview: editor.preview, status: "rascunho" }
-            : c,
-        ),
-      );
-    } else {
-      const newC: Campaign = {
-        id: Date.now(),
-        subject: editor.subject,
-        preview: editor.preview,
-        status: "rascunho",
-        date: "—",
-        opens: 0,
-        clicks: 0,
-        recipients: 0,
-        openRate: 0,
-        clickRate: 0,
-      };
-      setCampaigns((cs) => [newC, ...cs]);
+  function openEdit(c: Campaign) {
+    let scheduleDate = "";
+    let scheduleTime = "08:00";
+    if (c.scheduledAt) {
+      const d = new Date(c.scheduledAt);
+      scheduleDate = d.toISOString().slice(0, 10);
+      scheduleTime = `${String(d.getHours()).padStart(2, "0")}:${String(
+        d.getMinutes(),
+      ).padStart(2, "0")}`;
     }
-    setEditorOpen(false);
+    setEditor({
+      subject: c.subject,
+      preview: c.preview,
+      segment: c.segment || SEGMENTS[0],
+      header: c.header,
+      body: c.body,
+      cta: c.ctaText,
+      ctaUrl: c.ctaUrl,
+      footer: c.footer,
+      scheduleDate,
+      scheduleTime,
+    });
+    setEditingId(c.id);
+    setEditorError(null);
+    setEditorStep("assunto");
+    setEditorOpen(true);
+  }
+
+  function buildPayload(scheduledAt?: string): CampaignPayload {
+    return {
+      subject: editor.subject.trim(),
+      preview: editor.preview,
+      segment: editor.segment,
+      header: editor.header,
+      body: editor.body,
+      ctaText: editor.cta,
+      ctaUrl: editor.ctaUrl,
+      footer: editor.footer,
+      scheduledAt,
+    };
+  }
+
+  function saveDraft() {
+    if (!editor.subject.trim()) {
+      setEditorError("Assunto obrigatório.");
+      return;
+    }
+    setEditorError(null);
+    const payload = buildPayload();
+    startTransition(async () => {
+      const res = editingId
+        ? await updateCampaignAction(editingId, payload)
+        : await createCampaignAction(payload);
+      if (!res.ok) {
+        setEditorError(res.error);
+        return;
+      }
+      setEditorOpen(false);
+      setEditingId(null);
+      router.refresh();
+    });
   }
 
   function schedule() {
-    if (!editor.subject.trim() || !editor.scheduleDate) return;
-    const dateStr = new Date(editor.scheduleDate).toLocaleDateString("pt-PT", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
-    if (editingId) {
-      setCampaigns((cs) =>
-        cs.map((c) =>
-          c.id === editingId
-            ? {
-                ...c,
-                subject: editor.subject,
-                preview: editor.preview,
-                status: "agendada",
-                date: dateStr,
-                recipients: 9450,
-              }
-            : c,
-        ),
-      );
-    } else {
-      const newC: Campaign = {
-        id: Date.now(),
-        subject: editor.subject,
-        preview: editor.preview,
-        status: "agendada",
-        date: dateStr,
-        opens: 0,
-        clicks: 0,
-        recipients: 9450,
-        openRate: 0,
-        clickRate: 0,
-      };
-      setCampaigns((cs) => [newC, ...cs]);
+    if (!editor.subject.trim()) {
+      setEditorError("Assunto obrigatório.");
+      return;
     }
-    setEditorOpen(false);
+    if (!editor.scheduleDate) {
+      setEditorError("Escolha uma data de envio.");
+      return;
+    }
+    setEditorError(null);
+    const iso = new Date(
+      `${editor.scheduleDate}T${editor.scheduleTime || "08:00"}:00`,
+    ).toISOString();
+    const payload = buildPayload(iso);
+    startTransition(async () => {
+      const res = editingId
+        ? await updateCampaignAction(editingId, payload)
+        : await createCampaignAction(payload);
+      if (!res.ok) {
+        setEditorError(res.error);
+        return;
+      }
+      setEditorOpen(false);
+      setEditingId(null);
+      router.refresh();
+    });
   }
 
   function sendNow() {
     if (!sendConfirm) return;
-    setCampaigns((cs) =>
-      cs.map((c) =>
-        c.id === sendConfirm.id
-          ? {
-              ...c,
-              status: "enviada",
-              date: "Hoje",
-              recipients: 9450,
-              opens: 0,
-              clicks: 0,
-              openRate: 0,
-              clickRate: 0,
-            }
-          : c,
-      ),
-    );
-    setSendConfirm(null);
-  }
-
-  function deleteCampaign(id: number) {
-    setCampaigns((cs) => cs.filter((c) => c.id !== id));
+    const id = sendConfirm.id;
+    startTransition(async () => {
+      const res = await sendCampaignAction(id);
+      if (!res.ok) {
+        alert(res.error);
+        return;
+      }
+      setSendConfirm(null);
+      router.refresh();
+    });
   }
 
   const filteredCampaigns = campaigns.filter((c) => {
@@ -737,25 +761,55 @@ export default function AdminNewsletterClient() {
                   <button
                     type="button"
                     onClick={() => {
-                      saveDraft();
-                      const fake: Campaign = {
-                        id: Date.now(),
-                        subject: editor.subject,
-                        preview: editor.preview,
-                        status: "rascunho",
-                        date: "—",
-                        opens: 0,
-                        clicks: 0,
-                        recipients: 9450,
-                        openRate: 0,
-                        clickRate: 0,
-                      };
-                      setSendConfirm(fake);
-                      setEditorOpen(false);
+                      if (editingId) {
+                        // Existing campaign: persist edits then send.
+                        startTransition(async () => {
+                          const upd = await updateCampaignAction(
+                            editingId,
+                            buildPayload(),
+                          );
+                          if (!upd.ok) {
+                            setEditorError(upd.error);
+                            return;
+                          }
+                          const send = await sendCampaignAction(editingId);
+                          if (!send.ok) {
+                            setEditorError(send.error);
+                            return;
+                          }
+                          setEditorOpen(false);
+                          setEditingId(null);
+                          router.refresh();
+                        });
+                        return;
+                      }
+                      // New campaign: create draft then send.
+                      if (!editor.subject.trim()) {
+                        setEditorError("Assunto obrigatório.");
+                        return;
+                      }
+                      startTransition(async () => {
+                        const created = await createCampaignAction(
+                          buildPayload(),
+                        );
+                        if (!created.ok) {
+                          setEditorError(created.error);
+                          return;
+                        }
+                        const send = await sendCampaignAction(created.id);
+                        if (!send.ok) {
+                          setEditorError(send.error);
+                          return;
+                        }
+                        setEditorOpen(false);
+                        setEditingId(null);
+                        router.refresh();
+                      });
                     }}
-                    className="rounded-lg bg-[#0F2C6B] px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#0A1F4E]"
+                    disabled={pending}
+                    className="rounded-lg bg-[#0F2C6B] px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#0A1F4E] disabled:opacity-50"
                   >
-                    ● Enviar agora
+                    {pending ? "A enviar…" : "● Enviar agora"}
                   </button>
                 </div>
               </div>
@@ -1046,13 +1100,7 @@ export default function AdminNewsletterClient() {
                               Ver stats
                             </button>
                           )}
-                          <button
-                            type="button"
-                            onClick={() => deleteCampaign(c.id)}
-                            className="rounded px-1.5 py-1 text-xs text-gray-300 transition-colors hover:bg-red-50 hover:text-red-400"
-                          >
-                            ✕
-                          </button>
+                          {/* Delete intentionally disabled — campaigns are append-only for audit. */}
                         </div>
                       </td>
                     </tr>
