@@ -24,6 +24,12 @@ export interface ArticleFormPayload {
   premium?: boolean;
   readMinutes?: number;
   tags?: string[];
+  /** Up to 8 short bullets shown in the yellow "Essencial" box. */
+  essentials?: string[];
+  /** Up to 4 labelled columns for the "Contexto" box. */
+  context?: { columns: { label: string; body: string }[] };
+  /** Pull-quote block. */
+  pullQuote?: { quote: string; cite: string };
   metaTitle?: string;
   metaDescription?: string;
   coverImageUrl?: string;

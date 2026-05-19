@@ -4,6 +4,10 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { RichTextEditor } from "@/components/admin/RichTextEditor";
 import { CoverImagePicker } from "@/components/admin/CoverImagePicker";
+import {
+  ArticleBoxesEditor,
+  type ArticleContextBoxes,
+} from "@/components/admin/ArticleBoxesEditor";
 import { imageVariant } from "@/lib/images";
 import {
   archiveArticleAction,
@@ -40,6 +44,9 @@ export interface AdminArticle {
   views: number;
   readMinutes: number;
   tags: string[];
+  essentials: string[];
+  context: { columns: { label: string; body: string }[] } | null;
+  pullQuote: { quote: string; cite: string } | null;
   metaTitle: string;
   metaDescription: string;
   coverImage: string;
@@ -153,6 +160,9 @@ interface EditorState {
   premium: boolean;
   readMinutes: number;
   tags: string[];
+  essentials: string[];
+  context: ArticleContextBoxes["context"];
+  pullQuote: ArticleContextBoxes["pullQuote"];
   metaTitle: string;
   metaDescription: string;
   coverImage: string;
@@ -176,6 +186,9 @@ function emptyEditor(categoryId: string): EditorState {
     premium: false,
     readMinutes: 3,
     tags: [],
+    essentials: [],
+    context: null,
+    pullQuote: null,
     metaTitle: "",
     metaDescription: "",
     coverImage: "",
@@ -196,6 +209,9 @@ function articleToEditor(a: AdminArticle): EditorState {
     premium: a.premium,
     readMinutes: a.readMinutes,
     tags: a.tags,
+    essentials: a.essentials ?? [],
+    context: a.context ?? null,
+    pullQuote: a.pullQuote ?? null,
     metaTitle: a.metaTitle,
     metaDescription: a.metaDescription,
     coverImage: a.coverImage,
@@ -454,6 +470,26 @@ function ArticleEditor({
             <p className="mt-1 text-right text-[10px] text-gray-300">
               {form.summary.length}/200 caracteres
             </p>
+          </div>
+
+          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+            <label className="mb-3 block text-xs font-bold uppercase tracking-wider text-gray-400">
+              Caixas estruturadas — opcional
+            </label>
+            <ArticleBoxesEditor
+              value={{
+                essentials: form.essentials,
+                context: form.context,
+                pullQuote: form.pullQuote,
+              }}
+              onChange={(next) =>
+                set({
+                  essentials: next.essentials,
+                  context: next.context,
+                  pullQuote: next.pullQuote,
+                })
+              }
+            />
           </div>
 
           <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
@@ -868,6 +904,9 @@ export default function AdminArticlesClient({
       premium: form.premium,
       readMinutes: form.readMinutes,
       tags: form.tags,
+      essentials: form.essentials,
+      context: form.context ?? undefined,
+      pullQuote: form.pullQuote ?? undefined,
       metaTitle: form.metaTitle || undefined,
       metaDescription: form.metaDescription || undefined,
       coverImageUrl: form.coverImage || undefined,

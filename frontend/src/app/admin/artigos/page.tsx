@@ -24,8 +24,8 @@ interface ArticleApi {
   readMinutes: number;
   tags: string[];
   essentials: string[];
-  context: unknown;
-  pullQuote: unknown;
+  context: { columns: { label: string; body: string }[] } | null;
+  pullQuote: { quote: string; cite: string } | null;
   metaTitle: string | null;
   metaDescription: string | null;
   coverImageUrl: string | null;
@@ -65,6 +65,9 @@ function toAdminArticle(a: ArticleApi): AdminArticle {
     views: a.views,
     readMinutes: a.readMinutes,
     tags: a.tags ?? [],
+    essentials: a.essentials ?? [],
+    context: a.context ?? null,
+    pullQuote: a.pullQuote ?? null,
     metaTitle: a.metaTitle ?? "",
     metaDescription: a.metaDescription ?? "",
     coverImage: a.coverImageUrl ?? "",
