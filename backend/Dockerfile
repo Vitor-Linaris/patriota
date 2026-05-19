@@ -23,7 +23,11 @@ FROM prisma AS dev
 ENV NODE_ENV=development
 COPY . .
 EXPOSE 3000
-CMD ["sh", "-c", "npx prisma migrate deploy && npx prisma db seed && npm run start:dev"]
+# `prisma generate` is re-run at startup so the client always matches
+# the schema bind-mounted from the host. Without this the container
+# can boot with a stale client whenever the schema changes between
+# `docker compose down` and `up` cycles.
+CMD ["sh", "-c", "npx prisma generate && npx prisma migrate deploy && npx prisma db seed && npm run start:dev"]
 
 # ---------- build ----------
 FROM prisma AS build
