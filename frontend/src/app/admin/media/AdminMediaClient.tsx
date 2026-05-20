@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { CopyButton } from "@/components/admin/CopyButton";
 import { createMediaAction, deleteMediaAction } from "./actions";
 
 export interface MediaItem {
@@ -37,7 +38,6 @@ export default function AdminMediaClient({
   const [uploadName, setUploadName] = useState("");
   const [uploadDimensions, setUploadDimensions] = useState("");
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
@@ -108,13 +108,6 @@ export default function AdminMediaClient({
       if (selected?.id === id) setSelected(null);
       setDeleteConfirm(null);
       router.refresh();
-    });
-  };
-
-  const copyUrl = (url: string) => {
-    void navigator.clipboard.writeText(url).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
     });
   };
 
@@ -481,13 +474,11 @@ export default function AdminMediaClient({
               </div>
 
               <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => copyUrl(selected.url)}
-                  className="flex-1 rounded-lg border border-[#0F2C6B]/20 py-2 text-xs font-bold text-[#0F2C6B] transition-colors hover:bg-[#0F2C6B]/5"
-                >
-                  {copied ? "✓ Copiado!" : "Copiar URL"}
-                </button>
+                <CopyButton
+                  value={selected.url}
+                  label="Copiar URL"
+                  className="flex-1 rounded-lg border border-[#0F2C6B]/20 py-2 text-xs font-bold text-[#0F2C6B] transition-colors hover:bg-[#0F2C6B]/5 disabled:opacity-100"
+                />
                 <button
                   type="button"
                   onClick={() => setDeleteConfirm(selected.id)}

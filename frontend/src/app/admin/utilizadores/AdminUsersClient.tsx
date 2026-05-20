@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { CopyButton } from "@/components/admin/CopyButton";
 import {
   changeUserRoleAction,
   deleteUserAction,
@@ -311,15 +312,7 @@ export default function AdminUsersClient({
                     <code className="font-mono text-sm font-bold text-[#0F2C6B]">
                       {invitedPassword}
                     </code>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void navigator.clipboard.writeText(invitedPassword);
-                      }}
-                      className="rounded-lg bg-[#0F2C6B] px-3 py-1.5 text-xs font-semibold text-white"
-                    >
-                      Copiar
-                    </button>
+                    <CopyButton value={invitedPassword} />
                   </div>
                 </div>
                 <button
@@ -753,15 +746,7 @@ export default function AdminUsersClient({
                     <code className="font-mono text-sm font-bold text-[#0F2C6B]">
                       {resetPassword}
                     </code>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void navigator.clipboard.writeText(resetPassword);
-                      }}
-                      className="rounded-lg bg-[#0F2C6B] px-3 py-1.5 text-xs font-semibold text-white"
-                    >
-                      Copiar
-                    </button>
+                    <CopyButton value={resetPassword} />
                   </div>
                 </div>
                 <button
