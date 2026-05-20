@@ -216,11 +216,19 @@ export default function AdminUsersClient({
   };
 
   const requestResetPassword = (u: AdminUser) => {
+    // Open the modal in its "ask first" state. The reset only runs
+    // when the admin clicks Confirmar — guards against accidental
+    // clicks on the row button.
     setResetTarget(u);
     setResetPassword(null);
     setResetError(null);
+  };
+
+  const confirmResetPassword = () => {
+    if (!resetTarget) return;
+    const target = resetTarget;
     startTransition(async () => {
-      const res = await resetUserPasswordAction(u.id);
+      const res = await resetUserPasswordAction(target.id);
       if (!res.ok) {
         setResetError(res.error);
         return;
@@ -667,16 +675,58 @@ export default function AdminUsersClient({
               {resetTarget.name} · {resetTarget.email}
             </p>
 
-            {resetError && (
-              <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
-                {resetError}
-              </p>
+            {/* State machine:
+                  • not pending + no result + no error → confirm step
+                  • pending → spinner copy
+                  • resetPassword set → reveal + copy + close
+                  • resetError set → show error + offer retry/close */}
+
+            {!resetPassword && !resetError && !pending && (
+              <>
+                <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  Tem a certeza? A palavra-passe actual deste utilizador
+                  vai ser <strong>invalidada</strong> e substituída por
+                  uma temporária. O utilizador perde o acesso até receber
+                  a nova senha.
+                </p>
+                <div className="mt-5 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setResetTarget(null)}
+                    className="flex-1 rounded-lg border border-gray-200 py-2.5 text-sm font-semibold text-gray-500 hover:bg-gray-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmResetPassword}
+                    className="flex-1 rounded-lg bg-[#0F2C6B] py-2.5 text-sm font-bold text-white hover:bg-[#1A3A7A]"
+                  >
+                    Confirmar reposição
+                  </button>
+                </div>
+              </>
             )}
 
-            {!resetError && !resetPassword && (
+            {pending && !resetPassword && !resetError && (
               <p className="mt-5 text-sm text-gray-500">
                 A gerar nova palavra-passe…
               </p>
+            )}
+
+            {resetError && (
+              <>
+                <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                  {resetError}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setResetTarget(null)}
+                  className="mt-5 w-full rounded-lg bg-[#0F2C6B] py-2.5 text-sm font-bold text-white hover:bg-[#1A3A7A]"
+                >
+                  Fechar
+                </button>
+              </>
             )}
 
             {resetPassword && (
@@ -704,16 +754,15 @@ export default function AdminUsersClient({
                     </button>
                   </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setResetTarget(null)}
+                  className="mt-5 w-full rounded-lg bg-[#0F2C6B] py-2.5 text-sm font-bold text-white hover:bg-[#1A3A7A]"
+                >
+                  Fechar
+                </button>
               </>
             )}
-
-            <button
-              type="button"
-              onClick={() => setResetTarget(null)}
-              className="mt-5 w-full rounded-lg bg-[#0F2C6B] py-2.5 text-sm font-bold text-white hover:bg-[#1A3A7A]"
-            >
-              Fechar
-            </button>
           </div>
         </div>
       )}
