@@ -4,6 +4,7 @@ import { useState } from "react";
 import { AdProvider, useAds, type Ad, type AdType } from "@/contexts/AdContext";
 import { CoverImagePicker } from "@/components/admin/CoverImagePicker";
 import { Toggle } from "@/components/admin/Toggle";
+import { parseAdSize } from "@/lib/ads";
 
 const pageGroups = ["Homepage", "Artigo", "Categoria"];
 
@@ -20,19 +21,23 @@ const typeColors: Record<AdType, string> = {
 
 /**
  * Card preview rendered in the slot grid AND in the modal's right
- * column. Uses `object-contain` so the user sees the ad at its true
- * aspect — letterboxed in a card-shaped container — instead of
- * cropping like the cover image of an article.
+ * column. Uses CSS aspect-ratio derived from the slot's declared
+ * dimensions so the same component handles Billboard (970×250),
+ * Leaderboard (728×90), MPU (300×250) etc. without per-size
+ * hardcoded heights. `object-contain` keeps user-uploaded images
+ * undistorted inside the frame.
  */
 function PreviewPanel({ ad }: { ad: Ad }) {
-  const isLeaderboard = ad.size.startsWith("970") || ad.size.startsWith("728");
-  const isSidebar = ad.size.startsWith("300");
-  const heightClass = isLeaderboard ? "h-[80px]" : isSidebar ? "h-[220px]" : "h-[180px]";
+  const dims = parseAdSize(ad.size);
+  const aspectStyle: React.CSSProperties = dims
+    ? { aspectRatio: `${dims.width} / ${dims.height}` }
+    : { aspectRatio: "16 / 9" };
 
   if (ad.type === "html" && ad.htmlCode) {
     return (
       <div
-        className={`w-full ${heightClass} overflow-hidden rounded-lg border border-gray-200 bg-white`}
+        style={aspectStyle}
+        className="w-full overflow-hidden rounded-lg border border-gray-200 bg-white"
         dangerouslySetInnerHTML={{ __html: ad.htmlCode }}
       />
     );
@@ -43,13 +48,15 @@ function PreviewPanel({ ad }: { ad: Ad }) {
       <img
         src={ad.imageUrl}
         alt={ad.altText || "Preview"}
-        className={`w-full ${heightClass} rounded-lg border border-gray-200 bg-gray-50 object-contain`}
+        style={aspectStyle}
+        className="w-full rounded-lg border border-gray-200 bg-gray-50 object-contain"
       />
     );
   }
   return (
     <div
-      className={`flex w-full ${heightClass} flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-gray-200 bg-gray-50`}
+      style={aspectStyle}
+      className="flex w-full flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-gray-200 bg-gray-50"
     >
       <span className="text-2xl text-gray-300">▣</span>
       <span className="font-mono text-sm font-semibold text-gray-400">{ad.size}</span>
