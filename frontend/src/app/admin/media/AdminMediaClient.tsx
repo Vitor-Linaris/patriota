@@ -1,10 +1,15 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CopyButton } from "@/components/admin/CopyButton";
 import { Pagination } from "@/components/category/Pagination";
-import { createMediaAction, deleteMediaAction } from "./actions";
+import { validateImageUpload } from "@/lib/upload-limits";
+import {
+  createMediaAction,
+  deleteMediaAction,
+  uploadMediaFileAction,
+} from "./actions";
 
 export interface MediaItem {
   id: string;
@@ -13,7 +18,11 @@ export interface MediaItem {
   uploadedAt: string;
   size?: string;
   dimensions?: string;
-  usedIn?: string[];
+  /** Number of articles referencing this media (cover or inline). */
+  articleCount?: number;
+  /** Articles using this media (first 5). Used by the delete modal
+   * to link the editor to the affected articles. */
+  usedIn?: Array<{ id: string; slug: string; title: string }>;
 }
 
 function parseDimensions(text: string): { width?: number; height?: number } {
@@ -68,29 +77,61 @@ export default function AdminMediaClient({
   const [uploadName, setUploadName] = useState("");
   const [uploadDimensions, setUploadDimensions] = useState("");
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadDragOver, setUploadDragOver] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Search is server-driven (?q=). "usadas/nao-usadas" filter is
-  // client-side for now because tracking "in use" requires joining to
-  // articles — not yet exposed. Until then it filters the current page.
+  /**
+   * Direct-file upload — same flow as the article cover picker.
+   * Validates client-side (mime + size), then POSTs FormData via the
+   * server action. On success, refreshes the page so the new item
+   * appears in the grid.
+   */
+  const uploadFile = (file: File | null | undefined) => {
+    if (!file) return;
+    const reason = validateImageUpload(file);
+    if (reason) {
+      setUploadError(reason);
+      return;
+    }
+    setUploadError(null);
+    startTransition(async () => {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await uploadMediaFileAction(fd);
+      if (!res.ok) {
+        setUploadError(res.error);
+        return;
+      }
+      setUploadOpen(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      router.refresh();
+    });
+  };
+
+  // Search is server-driven (?q=). The "usadas/nao-usadas" filter is
+  // still client-side on the current page (backend doesn't filter by
+  // usage yet) — adequate at our scale since one page is bounded.
   const filtered = useMemo(() => {
     return initialItems.filter((item) => {
+      const isUsed = (item.articleCount ?? 0) > 0;
       const matchFilter =
         filter === "todas"
           ? true
           : filter === "usadas"
-            ? (item.usedIn ?? []).length > 0
-            : (item.usedIn ?? []).length === 0;
+            ? isUsed
+            : !isUsed;
       return matchFilter;
     });
   }, [initialItems, filter]);
 
   // "Total" comes from the whole-library count (statsTotal). The
-  // usadas / naoUsadas split is still page-scoped until we track
-  // "in use" server-side — labelled as such in the UI to be honest.
+  // usadas / naoUsadas split is page-scoped (the backend doesn't
+  // aggregate usage across the whole table yet) — labelled as such
+  // in the UI to set expectations.
   const stats = useMemo(() => {
     const usadasOnPage = initialItems.filter(
-      (i) => (i.usedIn ?? []).length > 0,
+      (i) => (i.articleCount ?? 0) > 0,
     ).length;
     return {
       total: statsTotal,
@@ -145,7 +186,9 @@ export default function AdminMediaClient({
 
   return (
     <main className="bg-[#f6f7fb] p-8">
-      {/* UPLOAD MODAL */}
+      {/* UPLOAD MODAL — file dropzone first, URL paste as fallback.
+          Mirrors the article cover picker so authors get a consistent
+          upload flow across the admin. */}
       {uploadOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
@@ -161,7 +204,7 @@ export default function AdminMediaClient({
                   Adicionar imagem
                 </h2>
                 <p className="mt-0.5 text-xs text-gray-400">
-                  Cole o URL de uma imagem pública (http/https)
+                  Arraste um ficheiro ou clique para escolher
                 </p>
               </div>
               <button
@@ -173,123 +216,209 @@ export default function AdminMediaClient({
               </button>
             </div>
             <div className="space-y-4 p-6">
-              <div>
-                <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500">
-                  URL da imagem *
-                </label>
-                <input
-                  autoFocus
-                  value={uploadUrl}
-                  onChange={(e) => setUploadUrl(e.target.value)}
-                  placeholder="https://exemplo.com/foto.jpg"
-                  className="w-full rounded-lg border border-gray-200 px-4 py-2.5 font-mono text-sm focus:border-[#0F2C6B] focus:outline-none"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500">
-                    Nome do ficheiro
-                  </label>
-                  <input
-                    value={uploadName}
-                    onChange={(e) => setUploadName(e.target.value)}
-                    placeholder="foto-artigo.jpg"
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:border-[#0F2C6B] focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500">
-                    Dimensões
-                  </label>
-                  <input
-                    value={uploadDimensions}
-                    onChange={(e) => setUploadDimensions(e.target.value)}
-                    placeholder="1920×1080"
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:border-[#0F2C6B] focus:outline-none"
-                  />
-                </div>
+              {/* Dropzone — same UX as the cover picker. */}
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setUploadDragOver(true);
+                }}
+                onDragLeave={() => setUploadDragOver(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setUploadDragOver(false);
+                  uploadFile(e.dataTransfer.files?.[0]);
+                }}
+                onClick={() => fileInputRef.current?.click()}
+                className={`flex aspect-video cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed ${
+                  uploadDragOver
+                    ? "border-[#0F2C6B] bg-[#0F2C6B]/5"
+                    : "border-gray-200 bg-gray-50"
+                } transition-colors hover:border-[#0F2C6B] hover:bg-[#0F2C6B]/5`}
+              >
+                <span className="text-3xl text-gray-300">↑</span>
+                <p className="text-sm font-semibold text-gray-600">
+                  {pending
+                    ? "A enviar…"
+                    : "Arraste uma imagem ou clique para escolher"}
+                </p>
+                <p className="text-[10px] text-gray-400">
+                  JPG, PNG, WebP, GIF — até 10 MB. Processada em 3
+                  variantes WebP automaticamente.
+                </p>
               </div>
 
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => uploadFile(e.target.files?.[0])}
+              />
+
               {uploadError && (
-                <p className="text-xs font-semibold text-red-600">
+                <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
                   {uploadError}
                 </p>
               )}
 
-              {uploadUrl && (
-                <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
-                  <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-400">
-                    Pré-visualização
-                  </p>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={uploadUrl}
-                    alt=""
-                    className="aspect-video w-full rounded-lg object-cover"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = "none";
-                    }}
+              {/* External URL — kept as a collapsible fallback for
+                  importing images that live on third-party CDNs. */}
+              <details className="rounded-lg border border-gray-100 px-3 py-2">
+                <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                  …ou importar URL externo
+                </summary>
+                <div className="mt-3 space-y-3">
+                  <input
+                    value={uploadUrl}
+                    onChange={(e) => setUploadUrl(e.target.value)}
+                    placeholder="https://exemplo.com/foto.jpg"
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 font-mono text-xs focus:border-[#0F2C6B] focus:outline-none"
                   />
+                  <div className="grid grid-cols-2 gap-3">
+                    <input
+                      value={uploadName}
+                      onChange={(e) => setUploadName(e.target.value)}
+                      placeholder="Nome (opcional)"
+                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:border-[#0F2C6B] focus:outline-none"
+                    />
+                    <input
+                      value={uploadDimensions}
+                      onChange={(e) => setUploadDimensions(e.target.value)}
+                      placeholder="1920×1080 (opcional)"
+                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:border-[#0F2C6B] focus:outline-none"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addFromUrl}
+                    disabled={pending}
+                    className="w-full rounded-lg border border-[#0F2C6B]/20 py-2 text-xs font-bold text-[#0F2C6B] hover:bg-[#0F2C6B]/5 disabled:opacity-50"
+                  >
+                    {pending ? "A guardar…" : "Adicionar URL"}
+                  </button>
                 </div>
-              )}
+              </details>
 
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setUploadOpen(false)}
-                  className="flex-1 rounded-xl border border-gray-200 py-2.5 text-sm font-semibold text-gray-500 hover:bg-gray-50"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={addFromUrl}
-                  disabled={pending}
-                  className="flex-1 rounded-xl bg-[#0F2C6B] py-2.5 text-sm font-bold text-white hover:bg-[#1A3A7A] disabled:opacity-50"
-                >
-                  {pending ? "A guardar…" : "Adicionar"}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setUploadOpen(false)}
+                className="w-full rounded-xl border border-gray-200 py-2.5 text-sm font-semibold text-gray-500 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
             </div>
           </div>
         </div>
       )}
 
       {/* DELETE CONFIRM */}
-      {deleteConfirm && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-          onClick={() => setDeleteConfirm(null)}
-        >
-          <div
-            className="w-80 rounded-2xl bg-white p-6 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <p className="mb-2 font-black text-gray-800">Eliminar imagem?</p>
-            <p className="mb-5 text-sm text-gray-500">
-              Esta acção não pode ser desfeita. A imagem será removida da
-              biblioteca.
-            </p>
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => setDeleteConfirm(null)}
-                className="flex-1 rounded-xl border border-gray-200 py-2.5 text-sm font-semibold text-gray-500"
+      {deleteConfirm &&
+        (() => {
+          const target = initialItems.find((i) => i.id === deleteConfirm);
+          const inUse = (target?.articleCount ?? 0) > 0;
+          return (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+              onClick={() => setDeleteConfirm(null)}
+            >
+              <div
+                className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
               >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={() => deleteItem(deleteConfirm)}
-                disabled={pending}
-                className="flex-1 rounded-xl bg-red-600 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50"
-              >
-                Eliminar
-              </button>
+                <p className="mb-2 font-black text-gray-800">
+                  {inUse
+                    ? "Não é possível eliminar"
+                    : "Eliminar imagem?"}
+                </p>
+                {inUse ? (
+                  <>
+                    <p className="mb-3 text-sm text-gray-600">
+                      Esta imagem está a ser usada em{" "}
+                      <strong>
+                        {target?.articleCount}{" "}
+                        {target?.articleCount === 1 ? "artigo" : "artigos"}
+                      </strong>
+                      . Remova-a desses artigos antes de eliminar.
+                    </p>
+                    {(target?.usedIn ?? []).length > 0 && (
+                      <div className="mb-4 max-h-56 overflow-y-auto rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                        <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-700">
+                          Artigos a editar
+                        </p>
+                        <ul className="space-y-1 text-[12px]">
+                          {(target?.usedIn ?? []).map((a) => (
+                            <li
+                              key={a.id}
+                              className="flex items-center justify-between gap-2"
+                            >
+                              <span className="line-clamp-1 text-amber-900">
+                                {a.title}
+                              </span>
+                              <a
+                                href={`/admin/artigos?edit=${a.id}`}
+                                className="shrink-0 rounded-md bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700 ring-1 ring-amber-300 hover:bg-amber-100"
+                              >
+                                Editar →
+                              </a>
+                            </li>
+                          ))}
+                          {(target?.articleCount ?? 0) >
+                            (target?.usedIn ?? []).length && (
+                            <li className="text-[11px] italic text-amber-700">
+                              (e mais{" "}
+                              {(target?.articleCount ?? 0) -
+                                (target?.usedIn ?? []).length}{" "}
+                              artigo
+                              {(target?.articleCount ?? 0) -
+                                (target?.usedIn ?? []).length ===
+                              1
+                                ? ""
+                                : "s"}
+                              …)
+                            </li>
+                          )}
+                        </ul>
+                      </div>
+                    )}
+                    <div className="flex">
+                      <button
+                        type="button"
+                        onClick={() => setDeleteConfirm(null)}
+                        className="flex-1 rounded-xl bg-[#0F2C6B] py-2.5 text-sm font-bold text-white hover:bg-[#1A3A7A]"
+                      >
+                        Entendi
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="mb-4 text-sm text-gray-500">
+                      Esta acção não pode ser desfeita. A imagem será
+                      removida da biblioteca e dos ficheiros do servidor.
+                    </p>
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setDeleteConfirm(null)}
+                        className="flex-1 rounded-xl border border-gray-200 py-2.5 text-sm font-semibold text-gray-500"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteItem(deleteConfirm)}
+                        disabled={pending}
+                        className="flex-1 rounded-xl bg-red-600 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50"
+                      >
+                        Eliminar
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          );
+        })()}
 
       {/* HEADER */}
       <div className="mb-6 flex items-start justify-between gap-4">
@@ -425,7 +554,8 @@ export default function AdminMediaClient({
               className={`grid gap-3 ${selected ? "grid-cols-2 xl:grid-cols-3" : "grid-cols-3 md:grid-cols-4 xl:grid-cols-5"}`}
             >
               {filtered.map((item) => {
-                const used = (item.usedIn ?? []).length > 0;
+                const count = item.articleCount ?? 0;
+                const used = count > 0;
                 return (
                   <button
                     type="button"
@@ -443,9 +573,16 @@ export default function AdminMediaClient({
                     />
                     <div className="absolute inset-0 bg-black/0 transition-colors group-hover:bg-black/30" />
                     <div
-                      className={`absolute right-2 top-2 h-2 w-2 rounded-full ${used ? "bg-green-400" : "bg-gray-300"}`}
-                      title={used ? "Usada em artigo" : "Sem uso"}
-                    />
+                      className={`absolute right-2 top-2 flex h-5 items-center gap-1 rounded-full px-1.5 text-[10px] font-bold ${used ? "bg-green-500 text-white" : "bg-gray-300 text-white"}`}
+                      title={
+                        used
+                          ? `Em uso em ${count} ${count === 1 ? "artigo" : "artigos"}`
+                          : "Sem uso"
+                      }
+                    >
+                      <span className="h-2 w-2 rounded-full bg-white" />
+                      {used ? count : "0"}
+                    </div>
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 py-2 opacity-0 transition-opacity group-hover:opacity-100">
                       <p className="truncate text-[10px] font-semibold text-white">
                         {item.name}
@@ -516,6 +653,46 @@ export default function AdminMediaClient({
                   </div>
                 )}
               </div>
+
+              {/* Usage indicator + sample article titles. Helps the
+                  admin understand the consequence of deleting before
+                  they click. */}
+              {(selected.articleCount ?? 0) > 0 ? (
+                <div className="mb-4 rounded-lg border border-green-200 bg-green-50 px-3 py-2">
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-green-700">
+                    Em uso em {selected.articleCount}{" "}
+                    {selected.articleCount === 1 ? "artigo" : "artigos"}
+                  </p>
+                  {(selected.usedIn ?? []).length > 0 && (
+                    <ul className="space-y-0.5 text-[11px] text-green-900">
+                      {(selected.usedIn ?? []).map((a) => (
+                        <li key={a.id} className="line-clamp-1">
+                          ·{" "}
+                          <a
+                            href={`/admin/artigos?edit=${a.id}`}
+                            className="underline decoration-green-400 hover:decoration-green-700"
+                          >
+                            {a.title}
+                          </a>
+                        </li>
+                      ))}
+                      {(selected.articleCount ?? 0) >
+                        (selected.usedIn ?? []).length && (
+                        <li className="text-[10px] italic text-green-700">
+                          (e mais{" "}
+                          {(selected.articleCount ?? 0) -
+                            (selected.usedIn ?? []).length}
+                          …)
+                        </li>
+                      )}
+                    </ul>
+                  )}
+                </div>
+              ) : (
+                <div className="mb-4 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-[11px] text-gray-500">
+                  Esta imagem não está em uso em nenhum artigo.
+                </div>
+              )}
 
               <div className="mb-4 rounded-lg bg-gray-50 px-3 py-2">
                 <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">

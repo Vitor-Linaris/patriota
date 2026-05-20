@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
@@ -90,8 +91,74 @@ export class MediaService {
       }),
       this.prisma.media.count({ where }),
     ]);
+
+    // Compute "in use" for each item on the current page.
+    //
+    // An image is in use when:
+    //   • some article's coverImageUrl matches one of the variant URLs, OR
+    //   • some article's HTML content embeds one of the variant URLs.
+    //
+    // We do it in ONE bounded query (only articles that reference at
+    // least one URL on this page) instead of N+1 per item. With ~24
+    // media per page that's a single Postgres scan with an OR list.
+    const variantUrls = items
+      .flatMap((m) => [m.url, m.urlMedium, m.urlSmall])
+      .filter((u): u is string => Boolean(u));
+
+    type UsedArticle = { id: string; slug: string; title: string };
+    const usage = new Map<
+      string,
+      { articleCount: number; usedIn: UsedArticle[] }
+    >();
+    for (const m of items) usage.set(m.id, { articleCount: 0, usedIn: [] });
+
+    if (variantUrls.length > 0) {
+      // Cover-image equality is cheap (indexed string column).
+      // Content `contains` is sequential scan — fine at our scale; if
+      // the corpus grows we'll add a separate MediaUsage join table.
+      const refs = await this.prisma.article.findMany({
+        where: {
+          OR: [
+            { coverImageUrl: { in: variantUrls } },
+            ...variantUrls.map((u) => ({ content: { contains: u } })),
+          ],
+        },
+        select: {
+          id: true,
+          title: true,
+          slug: true,
+          coverImageUrl: true,
+          content: true,
+        },
+      });
+
+      for (const m of items) {
+        const variants = [m.url, m.urlMedium, m.urlSmall].filter(
+          (u): u is string => Boolean(u),
+        );
+        const usedBy = refs.filter((a) =>
+          variants.some(
+            (u) =>
+              a.coverImageUrl === u || (a.content ?? '').includes(u),
+          ),
+        );
+        usage.set(m.id, {
+          articleCount: usedBy.length,
+          usedIn: usedBy.slice(0, 5).map((a) => ({
+            id: a.id,
+            slug: a.slug,
+            title: a.title,
+          })),
+        });
+      }
+    }
+
     return {
-      items,
+      items: items.map((m) => ({
+        ...m,
+        articleCount: usage.get(m.id)?.articleCount ?? 0,
+        usedIn: usage.get(m.id)?.usedIn ?? [],
+      })),
       total,
       page: query.page ?? 1,
       pageSize: query.pageSize ?? 20,
@@ -207,6 +274,38 @@ export class MediaService {
   }
 
   async remove(id: string, userId: string) {
+    // Defense-in-depth: refuse to delete media that's still in use.
+    // The frontend already blocks the UI but a direct API call would
+    // bypass it and leave articles with 404 covers/inline images.
+    const media = await this.prisma.media.findUnique({ where: { id } });
+    if (!media) throw new NotFoundException('Imagem não encontrada.');
+
+    const variants = [media.url, media.urlMedium, media.urlSmall].filter(
+      (u): u is string => Boolean(u),
+    );
+
+    const refs = await this.prisma.article.findMany({
+      where: {
+        OR: [
+          { coverImageUrl: { in: variants } },
+          ...variants.map((u) => ({ content: { contains: u } })),
+        ],
+      },
+      select: { id: true, slug: true, title: true },
+      take: 50,
+    });
+
+    if (refs.length > 0) {
+      throw new ConflictException({
+        statusCode: 409,
+        error: 'Conflict',
+        message:
+          'Imagem em uso. Remova-a dos artigos abaixo antes de eliminar.',
+        articleCount: refs.length,
+        usedIn: refs,
+      });
+    }
+
     try {
       const deleted = await this.prisma.media.delete({ where: { id } });
       void this.activity.record({

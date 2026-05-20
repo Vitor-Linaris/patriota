@@ -12,12 +12,18 @@ interface PageResult<T> {
 interface MediaApi {
   id: string;
   url: string;
+  urlMedium: string | null;
+  urlSmall: string | null;
   name: string;
   mimeType: string | null;
   size: number | null;
   width: number | null;
   height: number | null;
   uploadedAt: string;
+  /** Count of articles that reference this media (cover or inline). */
+  articleCount: number;
+  /** First 5 articles using this media, with link info. */
+  usedIn: Array<{ id: string; slug: string; title: string }>;
 }
 
 const dateFmt = new Intl.DateTimeFormat("pt-PT", {
@@ -42,7 +48,8 @@ function toMediaItem(m: MediaApi): MediaItem {
     size: humanSize(m.size),
     dimensions:
       m.width && m.height ? `${m.width}×${m.height}` : undefined,
-    usedIn: [],
+    articleCount: m.articleCount ?? 0,
+    usedIn: m.usedIn ?? [],
   };
 }
 
