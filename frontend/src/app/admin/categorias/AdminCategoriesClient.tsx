@@ -283,14 +283,33 @@ export default function AdminCategoriesClient({ initial }: Props) {
                 <div className="ml-auto flex shrink-0 items-center gap-2">
                   <button
                     type="button"
+                    role="switch"
+                    aria-checked={cat.visible}
+                    aria-label={
+                      cat.visible
+                        ? "Ocultar do menu público"
+                        : "Mostrar no menu público"
+                    }
                     onClick={() => toggleVisible(cat.id, cat.visible)}
                     disabled={isPending}
-                    className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${cat.visible ? "bg-green-500" : "bg-gray-200"}`}
+                    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[#0F2C6B]/30 disabled:opacity-50 ${
+                      cat.visible
+                        ? "border-green-600 bg-green-500"
+                        : "border-gray-300 bg-gray-200"
+                    }`}
                   >
                     <span
-                      className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${cat.visible ? "translate-x-4" : "translate-x-0.5"}`}
+                      aria-hidden
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition-transform duration-200 ease-in-out ${
+                        cat.visible ? "translate-x-5" : "translate-x-0.5"
+                      }`}
                     />
                   </button>
+                  <span
+                    className={`text-[11px] font-semibold ${cat.visible ? "text-green-700" : "text-gray-400"}`}
+                  >
+                    {cat.visible ? "Visível" : "Oculta"}
+                  </span>
 
                   {isEditing ? (
                     <>

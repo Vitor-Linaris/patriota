@@ -55,6 +55,18 @@ export function DashboardActions({
   return (
     <>
       <div className="flex shrink-0 items-center gap-2">
+        {/* "Ver" opens the admin preview in a new tab so the approver
+            can read the full article before deciding — without losing
+            their place in the queue. */}
+        <a
+          href={`/admin/artigos/preview/${articleId}`}
+          target="_blank"
+          rel="noopener"
+          className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 transition-colors hover:border-[#0F2C6B]/40 hover:text-[#0F2C6B]"
+          title="Pré-visualizar"
+        >
+          Ver
+        </a>
         <button
           type="button"
           disabled={pending}

@@ -100,17 +100,21 @@ async function main() {
     });
   }
 
-  // Default editorial categories — idempotent via upsert by slug
+  // Default editorial categories — idempotent via upsert by slug.
+  // `order` controls the left-to-right order in the public top menu.
   const CATEGORIES = [
-    { slug: 'politica', name: 'Política', description: 'Parlamento, governo, partidos e eleições em Portugal.', icon: '◆', color: '#1e40af', order: 1, subtopics: ['Orçamento 2026', 'Parlamento', 'Governo', 'Partidos', 'Eleições', 'Diplomacia'] },
-    { slug: 'economia', name: 'Economia', description: 'Análise económica, mercados, empresas e finanças públicas.', icon: '◈', color: '#065f46', order: 2, subtopics: ['Mercados', 'Empresas', 'Habitação', 'Turismo', 'Trabalho'] },
-    { slug: 'sociedade', name: 'Sociedade', description: 'Habitação, trabalho, saúde e os temas do dia a dia.', icon: '◎', color: '#7c3aed', order: 3, subtopics: ['Educação', 'Saúde', 'Ambiente', 'Imigração'] },
-    { slug: 'investigacao', name: 'Investigação', description: 'Jornalismo de investigação e dados em profundidade.', icon: '◉', color: '#991b1b', order: 4, subtopics: ['Corrupção', 'Justiça', 'Contratos públicos'] },
-    { slug: 'mundo', name: 'Mundo', description: 'Política internacional, conflitos e diplomacia global.', icon: '◇', color: '#0e7490', order: 5, subtopics: ['Europa', 'EUA', 'Brasil', 'Conflitos'] },
-    { slug: 'tecnologia', name: 'Tecnologia', description: 'IA, startups, regulação digital e telecomunicações.', icon: '▣', color: '#0891b2', order: 6, subtopics: ['IA', 'Startups', 'Cibersegurança'] },
-    { slug: 'saude', name: 'Saúde', description: 'SNS, doenças, prevenção e políticas de saúde.', icon: '◑', color: '#059669', order: 7, subtopics: ['SNS', 'Medicamentos', 'Saúde Mental'] },
-    { slug: 'cultura', name: 'Cultura', description: 'Livros, cinema, música e espetáculos.', icon: '◈', color: '#b45309', order: 8, subtopics: ['Cinema', 'Literatura', 'Música', 'Teatro'] },
-    { slug: 'desporto', name: 'Desporto', description: 'Futebol, modalidades e cobertura olímpica.', icon: '◎', color: '#dc2626', order: 9, subtopics: ['Futebol', 'Modalidades', 'Olimpíadas'] },
+    { slug: 'portugal', name: 'Portugal', description: 'O país hoje: política, sociedade e regiões.', icon: '◆', color: '#dc2626', order: 1, subtopics: ['Norte', 'Centro', 'Lisboa', 'Sul', 'Ilhas'] },
+    { slug: 'politica', name: 'Política', description: 'Parlamento, governo, partidos e eleições em Portugal.', icon: '◆', color: '#1e40af', order: 2, subtopics: ['Orçamento 2026', 'Parlamento', 'Governo', 'Partidos', 'Eleições', 'Diplomacia'] },
+    { slug: 'economia', name: 'Economia', description: 'Análise económica, mercados, empresas e finanças públicas.', icon: '◈', color: '#065f46', order: 3, subtopics: ['Mercados', 'Empresas', 'Habitação', 'Turismo', 'Trabalho'] },
+    { slug: 'sociedade', name: 'Sociedade', description: 'Habitação, trabalho, saúde e os temas do dia a dia.', icon: '◎', color: '#7c3aed', order: 4, subtopics: ['Educação', 'Saúde', 'Ambiente', 'Imigração'] },
+    { slug: 'investigacao', name: 'Investigação', description: 'Jornalismo de investigação e dados em profundidade.', icon: '◉', color: '#991b1b', order: 5, subtopics: ['Corrupção', 'Justiça', 'Contratos públicos'] },
+    { slug: 'mundo', name: 'Mundo', description: 'Política internacional, conflitos e diplomacia global.', icon: '◇', color: '#0e7490', order: 6, subtopics: ['Europa', 'EUA', 'Brasil', 'Conflitos'] },
+    { slug: 'tecnologia', name: 'Tecnologia', description: 'IA, startups, regulação digital e telecomunicações.', icon: '▣', color: '#0891b2', order: 7, subtopics: ['IA', 'Startups', 'Cibersegurança'] },
+    { slug: 'saude', name: 'Saúde', description: 'SNS, doenças, prevenção e políticas de saúde.', icon: '◑', color: '#059669', order: 8, subtopics: ['SNS', 'Medicamentos', 'Saúde Mental'] },
+    { slug: 'cultura', name: 'Cultura', description: 'Livros, cinema, música e espetáculos.', icon: '◈', color: '#b45309', order: 9, subtopics: ['Cinema', 'Literatura', 'Música', 'Teatro'] },
+    { slug: 'desporto', name: 'Desporto', description: 'Futebol, modalidades e cobertura olímpica.', icon: '◎', color: '#dc2626', order: 10, subtopics: ['Futebol', 'Modalidades', 'Olimpíadas'] },
+    { slug: 'multimedia', name: 'Multimédia', description: 'Reportagens em vídeo, podcasts e galerias.', icon: '▶', color: '#7c2d12', order: 11, subtopics: ['Vídeo', 'Podcast', 'Fotorreportagem'] },
+    { slug: 'opiniao', name: 'Opinião', description: 'Análise, colunas e editoriais.', icon: '◌', color: '#4b5563', order: 12, subtopics: ['Editorial', 'Convidados', 'Colunistas'] },
   ];
 
   for (const c of CATEGORIES) {

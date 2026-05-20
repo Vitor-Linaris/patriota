@@ -1267,6 +1267,22 @@ export default function AdminArticlesClient({
                           </button>
                         </>
                       )}
+                      {/*
+                        "Ver" opens the admin preview in a new tab so
+                        the reviewer can see exactly how the article
+                        will render — works for any status (RASCUNHO,
+                        EM_REVISAO, ...), the public /artigo/:slug
+                        route only serves PUBLICADO.
+                      */}
+                      <a
+                        href={`/admin/artigos/preview/${a.id}`}
+                        target="_blank"
+                        rel="noopener"
+                        className="whitespace-nowrap rounded-lg border border-gray-200 px-2.5 py-1.5 text-[11px] font-semibold text-gray-600 transition-colors hover:border-[#0F2C6B]/40 hover:text-[#0F2C6B]"
+                        title="Ver pré-visualização"
+                      >
+                        Ver
+                      </a>
                       <button
                         type="button"
                         onClick={() => openEdit(a)}
