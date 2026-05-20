@@ -171,6 +171,19 @@ export default function AdminMediaClient({
     });
   };
 
+  // Centralises navigation to the article editor from any link in the
+  // media library. We close the modal + detail panel BEFORE pushing so
+  // that the next paint doesn't carry over stale UI state, and we use
+  // router.push (not <a>) so the back button restores the library page
+  // with a clean React tree instead of a stuck overlay.
+  const openArticleEditor = (articleId: string) => {
+    setDeleteConfirm(null);
+    setSelected(null);
+    startTransition(() => {
+      router.push(`/admin/artigos?edit=${articleId}`);
+    });
+  };
+
   const deleteItem = (id: string) => {
     startTransition(async () => {
       const res = await deleteMediaAction(id);
@@ -354,12 +367,13 @@ export default function AdminMediaClient({
                               <span className="line-clamp-1 text-amber-900">
                                 {a.title}
                               </span>
-                              <a
-                                href={`/admin/artigos?edit=${a.id}`}
+                              <button
+                                type="button"
+                                onClick={() => openArticleEditor(a.id)}
                                 className="shrink-0 rounded-md bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700 ring-1 ring-amber-300 hover:bg-amber-100"
                               >
                                 Editar →
-                              </a>
+                              </button>
                             </li>
                           ))}
                           {(target?.articleCount ?? 0) >
@@ -668,12 +682,13 @@ export default function AdminMediaClient({
                       {(selected.usedIn ?? []).map((a) => (
                         <li key={a.id} className="line-clamp-1">
                           ·{" "}
-                          <a
-                            href={`/admin/artigos?edit=${a.id}`}
+                          <button
+                            type="button"
+                            onClick={() => openArticleEditor(a.id)}
                             className="underline decoration-green-400 hover:decoration-green-700"
                           >
                             {a.title}
-                          </a>
+                          </button>
                         </li>
                       ))}
                       {(selected.articleCount ?? 0) >

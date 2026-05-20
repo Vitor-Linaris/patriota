@@ -48,6 +48,14 @@ interface SizeSpec {
 }
 
 /** Read the size widths from env at boot. Defaults match the plan. */
+/** Drop the trailing file extension (`.png`, `.JPEG`, etc.). Returns
+ *  the input unchanged if no extension is found. */
+function stripExtension(name: string | undefined | null): string {
+  if (!name) return '';
+  const i = name.lastIndexOf('.');
+  return i > 0 ? name.slice(0, i) : name;
+}
+
 function loadSizes(): SizeSpec[] {
   return [
     { key: 'small', width: Number(process.env.IMAGE_SIZE_SMALL ?? 400) },
@@ -250,7 +258,11 @@ export class MediaService {
         url: urls.large,
         urlMedium: urls.medium,
         urlSmall: urls.small,
-        name: file.originalname || `${baseId}.webp`,
+        // The original filename can be `foo.png` / `foo.jpg`, but the
+        // stored file is always WebP after the sharp pipeline. Strip
+        // the original extension so the library shows just `foo` —
+        // less misleading when authors look at the tooltip.
+        name: stripExtension(file.originalname) || baseId,
         mimeType: 'image/webp',
         size: largeBytes,
         width: metadata.width ?? null,

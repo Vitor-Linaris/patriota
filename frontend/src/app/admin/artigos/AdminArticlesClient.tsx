@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { RichTextEditor } from "@/components/admin/RichTextEditor";
 import { CoverImagePicker } from "@/components/admin/CoverImagePicker";
@@ -755,6 +755,7 @@ export default function AdminArticlesClient({
   categories,
   canPublish,
   canApprove,
+  initialEditArticle,
 }: {
   initialArticles: AdminArticle[];
   /** Matches the current view (page + filters) — drives the
@@ -778,6 +779,10 @@ export default function AdminArticlesClient({
   categories: CategoryOption[];
   canPublish: boolean;
   canApprove: boolean;
+  /** When the URL carries `?edit=<id>`, the server pre-loaded that
+   *  article so we can open the editor on first render. Deep links
+   *  from /admin/media use this. */
+  initialEditArticle?: AdminArticle | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -792,6 +797,29 @@ export default function AdminArticlesClient({
   const [editorError, setEditorError] = useState<string | null>(null);
   const [rejectTarget, setRejectTarget] = useState<AdminArticle | null>(null);
   const [rejectReason, setRejectReason] = useState("");
+
+  // Deep-link from /admin/media (or any `?edit=<id>` URL): on the
+  // first render where the server hydrated `initialEditArticle`,
+  // open the editor and clean the query param so refresh/back
+  // doesn't re-open the editor over the user's current work.
+  useEffect(() => {
+    if (initialEditArticle) {
+      setEditorState(articleToEditor(initialEditArticle));
+      setEditorError(null);
+      setEditorOpen(true);
+      const params = new URLSearchParams(window.location.search);
+      params.delete("edit");
+      const qs = params.toString();
+      window.history.replaceState(
+        null,
+        "",
+        qs ? `/admin/artigos?${qs}` : "/admin/artigos",
+      );
+    }
+    // Run once per `initialEditArticle?.id` change — if the user
+    // navigates back with a different id, we want to honor it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialEditArticle?.id]);
 
   // The articles ARE the page from the server; no client-side filter.
   const filtered = initialArticles;

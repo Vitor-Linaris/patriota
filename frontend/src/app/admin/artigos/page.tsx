@@ -101,9 +101,16 @@ interface StatsResponse {
 export default async function AdminArticlesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; q?: string; status?: string }>;
+  searchParams: Promise<{
+    page?: string;
+    q?: string;
+    status?: string;
+    /** When set, the client opens the editor on mount with this
+     *  article loaded. Used by deep links from /admin/media. */
+    edit?: string;
+  }>;
 }) {
-  const { page: pageParam, q: qParam, status: statusParam } =
+  const { page: pageParam, q: qParam, status: statusParam, edit: editParam } =
     await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
   const q = (qParam ?? "").trim();
@@ -157,6 +164,25 @@ export default async function AdminArticlesPage({
         totalViews: 0,
       };
 
+  // Deep-link from /admin/media: fetch the requested article so the
+  // client can open the editor immediately. We only fetch when the
+  // article isn't already on the current page to avoid a redundant
+  // round-trip.
+  let initialEditArticle: AdminArticle | null = null;
+  if (editParam) {
+    const onPage = articles.find((a) => a.id === editParam);
+    if (onPage) {
+      initialEditArticle = onPage;
+    } else {
+      const oneRes = await apiFetch(`/admin/articles/${editParam}`);
+      if (oneRes.ok) {
+        initialEditArticle = toAdminArticle(
+          (await oneRes.json()) as ArticleApi,
+        );
+      }
+    }
+  }
+
   return (
     <AdminShell active="/admin/artigos">
       <AdminArticlesClient
@@ -172,6 +198,7 @@ export default async function AdminArticlesPage({
         categories={categories}
         canPublish={canPublish}
         canApprove={canApprove}
+        initialEditArticle={initialEditArticle}
       />
     </AdminShell>
   );
