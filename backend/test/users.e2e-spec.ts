@@ -137,6 +137,33 @@ describe('Users (e2e)', () => {
     expect(res.body.email).toBe(target.email);
   });
 
+  it('the new temp password actually authenticates against /auth/login', async () => {
+    const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+    const target = await makeUser(app, {
+      role: 'JORNALISTA',
+      password: 'OldPassw0rd!',
+    });
+    const reset = await request(app.getHttpServer())
+      .post(`/admin/users/${target.id}/reset-password`)
+      .set(bearer(admin))
+      .expect(201);
+    const newPassword = reset.body.temporaryPassword as string;
+
+    // The old password must no longer work.
+    await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ email: target.email, password: 'OldPassw0rd!' })
+      .expect(401);
+
+    // The new temp password must work.
+    const login = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ email: target.email, password: newPassword })
+      .expect(200);
+    expect(login.body.accessToken).toBeDefined();
+    expect(login.body.user.email).toBe(target.email);
+  });
+
   it('EDITOR_CHEFE cannot reset a SUPER_ADMIN password', async () => {
     const chefe = await makeUser(app, { role: 'EDITOR_CHEFE' });
     const admin = await makeUser(app, { role: 'SUPER_ADMIN' });

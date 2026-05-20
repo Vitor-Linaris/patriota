@@ -28,6 +28,25 @@ interface ActingUser {
   role: Role;
 }
 
+/**
+ * Generates a temporary password that's:
+ *   • cryptographically random (uses randomBytes, not Math.random)
+ *   • safe to read aloud / copy by hand — no characters that look
+ *     alike (0/O, 1/l/I, ambiguous symbols like + / =).
+ * 12 chars × log2(55) ≈ 69 bits of entropy — well above the threshold
+ * for "one-time admin handout" passwords.
+ */
+function generateTempPassword(): string {
+  const ALPHABET =
+    'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  const bytes = randomBytes(12);
+  let out = '';
+  for (let i = 0; i < bytes.length; i++) {
+    out += ALPHABET[bytes[i] % ALPHABET.length];
+  }
+  return out;
+}
+
 const USER_PUBLIC_SELECT = {
   id: true,
   email: true,
@@ -81,7 +100,7 @@ export class UsersService {
       );
     }
     const email = dto.email.toLowerCase();
-    const temporaryPassword = randomBytes(8).toString('base64url');
+    const temporaryPassword = generateTempPassword();
     const hash = await bcrypt.hash(temporaryPassword, 12);
     try {
       const created = await this.prisma.user.create({
@@ -217,7 +236,7 @@ export class UsersService {
         'Use /users/me/password para alterar a sua própria palavra-passe.',
       );
     }
-    const temporaryPassword = randomBytes(8).toString('base64url');
+    const temporaryPassword = generateTempPassword();
     const hash = await bcrypt.hash(temporaryPassword, 12);
     await this.prisma.user.update({
       where: { id },

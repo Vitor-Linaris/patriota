@@ -693,14 +693,24 @@ export default function AdminUsersClient({
                   <button
                     type="button"
                     onClick={() => setResetTarget(null)}
-                    className="flex-1 rounded-lg border border-gray-200 py-2.5 text-sm font-semibold text-gray-500 hover:bg-gray-50"
+                    disabled={pending}
+                    className="flex-1 rounded-lg border border-gray-200 py-2.5 text-sm font-semibold text-gray-500 hover:bg-gray-50 disabled:opacity-50"
                   >
                     Cancelar
                   </button>
                   <button
                     type="button"
+                    // Critical: disable while pending so a double-click
+                    // can't fire the action twice. Two parallel
+                    // resets would each rotate the password but only
+                    // ONE of the plaintext values gets shown — the
+                    // user copies one, the DB stored the other, login
+                    // fails ("the new password doesn't work"). The
+                    // useTransition's pending flag flips the moment
+                    // confirmResetPassword runs.
                     onClick={confirmResetPassword}
-                    className="flex-1 rounded-lg bg-[#0F2C6B] py-2.5 text-sm font-bold text-white hover:bg-[#1A3A7A]"
+                    disabled={pending}
+                    className="flex-1 rounded-lg bg-[#0F2C6B] py-2.5 text-sm font-bold text-white hover:bg-[#1A3A7A] disabled:opacity-50"
                   >
                     Confirmar reposição
                   </button>
