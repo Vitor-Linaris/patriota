@@ -18,6 +18,20 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # Healthcheck so docker compose knows when Nest is actually
+    # listening — not just when the container process exists. The web
+    # service uses `condition: service_healthy` on api so server-side
+    # apiFetch calls don't ECONNREFUSED during the prisma boot dance.
+    # 90s start_period covers `prisma generate + migrate deploy +
+    # db seed + nest start` even on a cold image.
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "node -e \"fetch('http://localhost:8585/public/categories').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))\""
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 90s
     volumes:
       - ./src:/usr/src/app/src
       - ./prisma:/usr/src/app/prisma

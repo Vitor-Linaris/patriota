@@ -7,5 +7,10 @@ include:
 services:
   web:
     depends_on:
+      # service_healthy waits for the api healthcheck (defined in
+      # backend/docker-compose.yml) to report "healthy" — i.e. Nest is
+      # already listening on :8585. With plain `service_started`, the
+      # web container could call apiFetch during the api's prisma boot
+      # phase and crash with ECONNREFUSED.
       api:
-        condition: service_started
+        condition: service_healthy
