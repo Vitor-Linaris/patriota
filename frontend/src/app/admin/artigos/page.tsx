@@ -82,17 +82,25 @@ function toAdminArticle(a: ArticleApi): AdminArticle {
   };
 }
 
-export default async function AdminArticlesPage() {
+const PAGE_SIZE = 20;
+
+export default async function AdminArticlesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
+  const { page: pageParam } = await searchParams;
+  const page = Math.max(1, Number(pageParam) || 1);
+
   const [articlesRes, categoriesRes, meRes] = await Promise.all([
-    apiFetch("/admin/articles?pageSize=100"),
+    apiFetch(`/admin/articles?page=${page}&pageSize=${PAGE_SIZE}`),
     apiFetch("/admin/categories"),
     apiFetch("/auth/me"),
   ]);
-  const articles = articlesRes.ok
-    ? ((await articlesRes.json()) as PageResult<ArticleApi>).items.map(
-        toAdminArticle,
-      )
-    : [];
+  const articlesBody = articlesRes.ok
+    ? ((await articlesRes.json()) as PageResult<ArticleApi>)
+    : { items: [], total: 0, page: 1, pageSize: PAGE_SIZE };
+  const articles = articlesBody.items.map(toAdminArticle);
   const categories = categoriesRes.ok
     ? ((await categoriesRes.json()) as CategoryApi[]).map<CategoryOption>(
         (c) => ({ id: c.id, name: c.name, slug: c.slug, color: c.color }),
@@ -107,11 +115,15 @@ export default async function AdminArticlesPage() {
     me?.role === "SUPER_ADMIN" ||
     me?.permissions?.includes("artigos.aprovar") ||
     false;
+  const totalPages = Math.max(1, Math.ceil(articlesBody.total / PAGE_SIZE));
 
   return (
     <AdminShell active="/admin/artigos">
       <AdminArticlesClient
         initialArticles={articles}
+        totalArticles={articlesBody.total}
+        currentPage={page}
+        totalPages={totalPages}
         categories={categories}
         canPublish={canPublish}
         canApprove={canApprove}

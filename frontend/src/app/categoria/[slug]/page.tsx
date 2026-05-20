@@ -27,21 +27,35 @@ export async function generateStaticParams() {
 const FILTERS = ["Mais Recentes", "Mais Lidas", "Mais Comentadas"] as const;
 
 
+const PAGE_SIZE = 10;
+
 export default async function CategoryPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ page?: string }>;
 }) {
   const { slug } = await params;
+  const { page: pageParam } = await searchParams;
   const category = await getCategoryBySlug(slug);
   if (!category) notFound();
 
+  // 1-based, clamp to a sane lower bound.
+  const page = Math.max(1, Number(pageParam) || 1);
+
   const [{ items: rawArticles, total }, breaking] = await Promise.all([
-    listPublicArticles({ category: slug, pageSize: 20 }),
+    listPublicArticles({ category: slug, page, pageSize: PAGE_SIZE }),
     listBreaking(3),
   ]);
-  const [featured, ...rest] = rawArticles;
+  // Only treat the first article as "featured" on page 1 — otherwise
+  // page 2+ would have a confusing oversized card from the middle of
+  // the list.
+  const featuredOnly = page === 1 && rawArticles.length > 0;
+  const featured = featuredOnly ? rawArticles[0] : null;
+  const rest = featuredOnly ? rawArticles.slice(1) : rawArticles;
   const articleCount = total;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const listItems = rest.map((a, i) => ({
     number: i + 1,
     category: a.category.name.toUpperCase(),
@@ -165,7 +179,15 @@ export default async function CategoryPage({
                 )}
               </ul>
 
-              <Pagination current={1} total={5} />
+              <Pagination
+                current={page}
+                totalPages={totalPages}
+                hrefForPage={(p) =>
+                  p === 1
+                    ? `/categoria/${slug}`
+                    : `/categoria/${slug}?page=${p}`
+                }
+              />
             </div>
 
             {/* Sidebar */}

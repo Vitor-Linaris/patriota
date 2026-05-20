@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { Pagination } from "@/components/category/Pagination";
 import {
   addSubtopicAction,
   createCategoryAction,
@@ -33,10 +34,23 @@ interface Props {
   initial: Category[];
 }
 
-export default function AdminCategoriesClient({ initial }: Props) {
+const PAGE_SIZE = 20;
+
+export default function AdminCategoriesClient({
+  initial,
+  currentPage,
+}: Props & { currentPage: number }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const categories = initial;
+
+  // Client-side pagination — the categories endpoint returns the
+  // whole catalogue in one go (typically ≤30 items) so we slice
+  // here rather than refetching per page.
+  const totalPages = Math.max(1, Math.ceil(categories.length / PAGE_SIZE));
+  const safePage = Math.min(Math.max(1, currentPage), totalPages);
+  const start = (safePage - 1) * PAGE_SIZE;
+  const paged = categories.slice(start, start + PAGE_SIZE);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Partial<Category>>({});
   const [showNew, setShowNew] = useState(false);
@@ -214,7 +228,7 @@ export default function AdminCategoriesClient({ initial }: Props) {
       )}
 
       <div className="space-y-3">
-        {categories.map((cat) => {
+        {paged.map((cat) => {
           const isEditing = editingId === cat.id;
           return (
             <div
@@ -388,6 +402,16 @@ export default function AdminCategoriesClient({ initial }: Props) {
           );
         })}
       </div>
+
+      {totalPages > 1 && (
+        <Pagination
+          current={safePage}
+          totalPages={totalPages}
+          hrefForPage={(p) =>
+            p === 1 ? "/admin/categorias" : `/admin/categorias?page=${p}`
+          }
+        />
+      )}
     </main>
   );
 }

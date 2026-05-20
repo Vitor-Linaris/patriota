@@ -9,6 +9,7 @@ import {
   type ArticleContextBoxes,
 } from "@/components/admin/ArticleBoxesEditor";
 import { imageVariant } from "@/lib/images";
+import { Pagination } from "@/components/category/Pagination";
 import {
   archiveArticleAction,
   createArticleAction,
@@ -743,11 +744,20 @@ function ArticleEditor({
 
 export default function AdminArticlesClient({
   initialArticles,
+  totalArticles,
+  currentPage,
+  totalPages,
   categories,
   canPublish,
   canApprove,
 }: {
   initialArticles: AdminArticle[];
+  /** Total across all pages — drives the "Mostrando X de Y" footer. */
+  totalArticles: number;
+  /** 1-based current page from ?page= query param. */
+  currentPage: number;
+  /** Total number of pages (already computed server-side). */
+  totalPages: number;
   categories: CategoryOption[];
   canPublish: boolean;
   canApprove: boolean;
@@ -1315,11 +1325,19 @@ export default function AdminArticlesClient({
             )}
           </tbody>
         </table>
-        <div className="flex items-center justify-between border-t border-gray-100 px-5 py-3 text-xs text-gray-400">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-5 py-3 text-xs text-gray-400">
           <span>
-            Mostrando {intFmt.format(filtered.length)} de{" "}
-            {intFmt.format(initialArticles.length)} artigos
+            Página {currentPage} de {totalPages} · {intFmt.format(totalArticles)}{" "}
+            {totalArticles === 1 ? "artigo" : "artigos"} no total
           </span>
+          <Pagination
+            current={currentPage}
+            totalPages={totalPages}
+            hrefForPage={(p) =>
+              p === 1 ? "/admin/artigos" : `/admin/artigos?page=${p}`
+            }
+            className="flex items-center gap-1 py-0"
+          />
         </div>
       </div>
 

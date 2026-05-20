@@ -65,14 +65,25 @@ interface MeWithRoles {
   assignableRoles: UserApi["role"][];
 }
 
-export default async function AdminUsersPage() {
+const PAGE_SIZE = 20;
+
+export default async function AdminUsersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
+  const { page: pageParam } = await searchParams;
+  const page = Math.max(1, Number(pageParam) || 1);
+
   const [res, meRes] = await Promise.all([
-    apiFetch("/admin/users?pageSize=100"),
+    apiFetch(`/admin/users?page=${page}&pageSize=${PAGE_SIZE}`),
     apiFetch("/auth/me"),
   ]);
-  const users = res.ok
-    ? ((await res.json()) as PageResult<UserApi>).items.map(toAdminUser)
-    : [];
+  const body = res.ok
+    ? ((await res.json()) as PageResult<UserApi>)
+    : { items: [], total: 0, page: 1, pageSize: PAGE_SIZE };
+  const users = body.items.map(toAdminUser);
+  const totalPages = Math.max(1, Math.ceil(body.total / PAGE_SIZE));
   const me = meRes.ok ? ((await meRes.json()) as MeWithRoles) : null;
   const assignableRoles = (me?.assignableRoles ?? []).map(
     (r) => ROLE_API_TO_UI[r],
@@ -85,6 +96,9 @@ export default async function AdminUsersPage() {
     <AdminShell active="/admin/utilizadores">
       <AdminUsersClient
         initialUsers={users}
+        totalUsers={body.total}
+        currentPage={page}
+        totalPages={totalPages}
         assignableRoles={assignableRoles}
         myRole={myRole}
         myUserId={me?.id ?? null}

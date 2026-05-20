@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CopyButton } from "@/components/admin/CopyButton";
+import { Pagination } from "@/components/category/Pagination";
 import {
   changeUserRoleAction,
   deleteUserAction,
@@ -107,6 +108,9 @@ function getRoleInfo(roleId: RoleId) {
 
 export default function AdminUsersClient({
   initialUsers,
+  totalUsers,
+  currentPage,
+  totalPages,
   assignableRoles,
   myRole,
   myUserId,
@@ -114,6 +118,9 @@ export default function AdminUsersClient({
   canDelete,
 }: {
   initialUsers: AdminUser[];
+  totalUsers: number;
+  currentPage: number;
+  totalPages: number;
   /** Roles the current actor is allowed to assign — drives the
    *  invite modal and the role-change dropdown so users never see
    *  options they can't pick. */
@@ -646,6 +653,22 @@ export default function AdminUsersClient({
             )}
           </tbody>
         </table>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-5 py-3 text-xs text-gray-400">
+          <span>
+            Página {currentPage} de {totalPages} · {totalUsers}{" "}
+            {totalUsers === 1 ? "utilizador" : "utilizadores"} no total
+          </span>
+          <Pagination
+            current={currentPage}
+            totalPages={totalPages}
+            hrefForPage={(p) =>
+              p === 1
+                ? "/admin/utilizadores"
+                : `/admin/utilizadores?page=${p}`
+            }
+            className="flex items-center gap-1 py-0"
+          />
+        </div>
       </div>
 
       {/* Password-reset modal: opens with a spinner, then reveals the

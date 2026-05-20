@@ -46,14 +46,31 @@ function toMediaItem(m: MediaApi): MediaItem {
   };
 }
 
-export default async function Page() {
-  const res = await apiFetch("/admin/media?pageSize=100");
-  const items = res.ok
-    ? ((await res.json()) as PageResult<MediaApi>).items.map(toMediaItem)
-    : [];
+const PAGE_SIZE = 24;
+
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
+  const { page: pageParam } = await searchParams;
+  const page = Math.max(1, Number(pageParam) || 1);
+  const res = await apiFetch(
+    `/admin/media?page=${page}&pageSize=${PAGE_SIZE}`,
+  );
+  const body = res.ok
+    ? ((await res.json()) as PageResult<MediaApi>)
+    : { items: [], total: 0, page: 1, pageSize: PAGE_SIZE };
+  const items = body.items.map(toMediaItem);
+  const totalPages = Math.max(1, Math.ceil(body.total / PAGE_SIZE));
   return (
     <AdminShell active="/admin/media">
-      <AdminMediaClient initialItems={items} />
+      <AdminMediaClient
+        initialItems={items}
+        totalItems={body.total}
+        currentPage={page}
+        totalPages={totalPages}
+      />
     </AdminShell>
   );
 }

@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CopyButton } from "@/components/admin/CopyButton";
+import { Pagination } from "@/components/category/Pagination";
 import { createMediaAction, deleteMediaAction } from "./actions";
 
 export interface MediaItem {
@@ -23,8 +24,14 @@ function parseDimensions(text: string): { width?: number; height?: number } {
 
 export default function AdminMediaClient({
   initialItems,
+  totalItems,
+  currentPage,
+  totalPages,
 }: {
   initialItems: MediaItem[];
+  totalItems: number;
+  currentPage: number;
+  totalPages: number;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -491,6 +498,23 @@ export default function AdminMediaClient({
           </div>
         )}
       </div>
+
+      {totalPages > 1 && (
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3 text-xs text-gray-400">
+          <span>
+            Página {currentPage} de {totalPages} · {totalItems}{" "}
+            {totalItems === 1 ? "imagem" : "imagens"} no total
+          </span>
+          <Pagination
+            current={currentPage}
+            totalPages={totalPages}
+            hrefForPage={(p) =>
+              p === 1 ? "/admin/media" : `/admin/media?page=${p}`
+            }
+            className="flex items-center gap-1 py-0"
+          />
+        </div>
+      )}
     </main>
   );
 }
