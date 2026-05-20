@@ -5,7 +5,7 @@ import { TopBar } from "@/components/home/TopBar";
 import { BreakingNews } from "@/components/home/BreakingNews";
 import { SiteHeader } from "@/components/home/SiteHeader";
 import { SecondaryNav } from "@/components/home/SecondaryNav";
-import { AdBanner } from "@/components/home/AdBanner";
+import { AdSlot } from "@/components/ads/AdSlot";
 import { SiteFooter } from "@/components/home/SiteFooter";
 import { EssentialBox } from "@/components/article/EssentialBox";
 import { ContextBox } from "@/components/article/ContextBox";
@@ -14,6 +14,7 @@ import { AuthorBio } from "@/components/article/AuthorBio";
 import { ArticleSidebar } from "@/components/article/ArticleSidebar";
 import { imageVariant } from "@/lib/images";
 import {
+  getAdsByPage,
   getArticleBySlug,
   listBreaking,
   listRelated,
@@ -28,9 +29,10 @@ export default async function ArticlePage({
   const { slug } = await params;
   const article = await getArticleBySlug(slug);
   if (!article) notFound();
-  const [related, breaking] = await Promise.all([
+  const [related, breaking, ads] = await Promise.all([
     listRelated(slug, 4),
     listBreaking(3),
+    getAdsByPage("Artigo"),
   ]);
   const authorInitials = (article.author.name ?? "??")
     .split(" ")
@@ -48,13 +50,7 @@ export default async function ArticlePage({
       <SiteHeader />
       <SecondaryNav />
 
-      <AdBanner
-        letter="M"
-        title="Millennium BCP — Conta Ordenado sem comissões"
-        description="Transfira o seu ordenado e ganhe até 4% de juro. Condições em millenniumbcp.pt"
-        cta="Saber mais"
-        palette="blue"
-      />
+      <AdSlot ad={ads["article-leaderboard"]} />
 
       <main className="bg-white py-10">
         <Container>
@@ -243,13 +239,7 @@ export default async function ArticlePage({
         </Container>
       </main>
 
-      <AdBanner
-        letter="V"
-        title="Vodafone — Tarifário RED Ilimitado"
-        description="Chamadas, SMS e dados ilimitados a partir de 24,99€/mês. Portabilidade grátis."
-        cta="Ver tarifário"
-        palette="red"
-      />
+      <AdSlot ad={ads["article-prefooter"]} />
 
       <SiteFooter />
     </div>

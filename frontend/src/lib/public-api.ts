@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { mapApiAdToUi, type Ad, type AdApi } from "./ads";
 
 export interface ArticleSummary {
   id: string;
@@ -144,6 +145,34 @@ export async function listRelated(
     return [];
   }
 }
+
+/**
+ * Fetch all enabled ads for a page bucket ("Homepage" | "Artigo" |
+ * "Categoria") and return them keyed by slot id, so consumers can do
+ * `ads["homepage-leaderboard"]` without scanning an array each time.
+ * Cached per request via `react.cache` so calling this from multiple
+ * server components in the same request doesn't multiply round-trips.
+ *
+ * Disabled / EMPTY slots are filtered out at the API layer; if they
+ * leak through we still treat them as "no ad" in <AdSlot/>.
+ */
+export const getAdsByPage = cache(
+  async (page: "Homepage" | "Artigo" | "Categoria"): Promise<Record<string, Ad>> => {
+    try {
+      const res = await fetch(
+        `${apiUrl()}/public/ads/${encodeURIComponent(page)}`,
+        { cache: "no-store" },
+      );
+      if (!res.ok) return {};
+      const raw = (await res.json()) as AdApi[];
+      const map: Record<string, Ad> = {};
+      for (const api of raw) map[api.id] = mapApiAdToUi(api);
+      return map;
+    } catch {
+      return {};
+    }
+  },
+);
 
 export function timeAgo(iso: string | null): string {
   if (!iso) return "—";

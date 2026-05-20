@@ -13,6 +13,7 @@ const DEFAULT_ADS = [
   { id: 'article-prefooter', name: 'Artigo — Pré-rodapé', page: 'Artigo', position: 'Antes do rodapé', size: '970×90', sizeLabel: 'Leaderboard' },
   { id: 'category-leaderboard', name: 'Categoria — Leaderboard topo', page: 'Categoria', position: 'Topo da página', size: '970×90', sizeLabel: 'Leaderboard' },
   { id: 'category-sidebar', name: 'Categoria — Sidebar', page: 'Categoria', position: 'Coluna lateral', size: '300×250', sizeLabel: 'Rectangle' },
+  { id: 'category-prefooter', name: 'Categoria — Pré-rodapé', page: 'Categoria', position: 'Antes do rodapé', size: '970×90', sizeLabel: 'Leaderboard' },
 ];
 
 interface UpdateAdInput {

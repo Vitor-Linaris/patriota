@@ -8,42 +8,17 @@ import {
   useTransition,
   type ReactNode,
 } from "react";
+import { updateAdAction } from "@/app/admin/publicidade/actions";
 import {
-  updateAdAction,
-  type AdTypeApi,
-} from "@/app/admin/publicidade/actions";
+  TYPE_UI_TO_API,
+  type Ad,
+  type AdType,
+} from "@/lib/ads";
 
-export type AdType = "empty" | "image" | "html";
-
-export interface Ad {
-  id: string;
-  name: string;
-  page: string;
-  position: string;
-  size: string;
-  sizeLabel: string;
-  type: AdType;
-  enabled: boolean;
-  imageUrl?: string;
-  linkUrl?: string;
-  linkTarget?: "_blank" | "_self";
-  altText?: string;
-  htmlCode?: string;
-  label?: string;
-  updatedAt?: string;
-}
-
-const TYPE_API_TO_UI: Record<AdTypeApi, AdType> = {
-  EMPTY: "empty",
-  IMAGE: "image",
-  HTML: "html",
-};
-
-const TYPE_UI_TO_API: Record<AdType, AdTypeApi> = {
-  empty: "EMPTY",
-  image: "IMAGE",
-  html: "HTML",
-};
+// Re-export the shared types so existing imports from this file still
+// work (the admin client and other consumers).
+export type { Ad, AdType, AdTypeApi } from "@/lib/ads";
+export { mapApiAdToUi } from "@/lib/ads";
 
 interface AdContextValue {
   ads: Ad[];
@@ -108,41 +83,4 @@ export function useAds() {
   const ctx = useContext(AdContext);
   if (!ctx) throw new Error("useAds must be used inside AdProvider");
   return ctx;
-}
-
-export function mapApiAdToUi(api: {
-  id: string;
-  name: string;
-  page: string;
-  position: string;
-  size: string;
-  sizeLabel: string;
-  type: AdTypeApi;
-  enabled: boolean;
-  imageUrl: string | null;
-  linkUrl: string | null;
-  linkTarget: string | null;
-  altText: string | null;
-  htmlCode: string | null;
-  updatedAt: string;
-}): Ad {
-  return {
-    id: api.id,
-    name: api.name,
-    page: api.page,
-    position: api.position,
-    size: api.size,
-    sizeLabel: api.sizeLabel,
-    type: TYPE_API_TO_UI[api.type],
-    enabled: api.enabled,
-    imageUrl: api.imageUrl ?? undefined,
-    linkUrl: api.linkUrl ?? undefined,
-    linkTarget:
-      api.linkTarget === "_blank" || api.linkTarget === "_self"
-        ? api.linkTarget
-        : undefined,
-    altText: api.altText ?? undefined,
-    htmlCode: api.htmlCode ?? undefined,
-    updatedAt: api.updatedAt,
-  };
 }

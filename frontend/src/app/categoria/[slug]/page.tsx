@@ -4,7 +4,7 @@ import { TopBar } from "@/components/home/TopBar";
 import { BreakingNews } from "@/components/home/BreakingNews";
 import { SiteHeader } from "@/components/home/SiteHeader";
 import { SecondaryNav } from "@/components/home/SecondaryNav";
-import { AdBanner } from "@/components/home/AdBanner";
+import { AdSlot } from "@/components/ads/AdSlot";
 import { SiteFooter } from "@/components/home/SiteFooter";
 import { CategoryHero } from "@/components/category/CategoryHero";
 import { FeaturedArticle } from "@/components/category/FeaturedArticle";
@@ -16,7 +16,12 @@ import { Pagination } from "@/components/category/Pagination";
 import { CategorySidebar } from "@/components/category/CategorySidebar";
 import { SectionMarker } from "@/components/category/SectionMarker";
 import { getCategoryBySlug, getCategories } from "@/lib/categories";
-import { listBreaking, listPublicArticles, timeAgo } from "@/lib/public-api";
+import {
+  getAdsByPage,
+  listBreaking,
+  listPublicArticles,
+  timeAgo,
+} from "@/lib/public-api";
 
 // Pre-render the category routes that we know about at build time.
 export async function generateStaticParams() {
@@ -44,9 +49,10 @@ export default async function CategoryPage({
   // 1-based, clamp to a sane lower bound.
   const page = Math.max(1, Number(pageParam) || 1);
 
-  const [{ items: rawArticles, total }, breaking] = await Promise.all([
+  const [{ items: rawArticles, total }, breaking, ads] = await Promise.all([
     listPublicArticles({ category: slug, page, pageSize: PAGE_SIZE }),
     listBreaking(3),
+    getAdsByPage("Categoria"),
   ]);
   // Only treat the first article as "featured" on page 1 — otherwise
   // page 2+ would have a confusing oversized card from the middle of
@@ -91,13 +97,7 @@ export default async function CategoryPage({
         articleCount={articleCount}
       />
 
-      <AdBanner
-        letter="M"
-        title="Millennium BCP — Conta Ordenado sem comissões"
-        description="Transfira o seu ordenado e ganhe até 4% de juro. Condições em millenniumbcp.pt"
-        cta="Saber mais"
-        palette="blue"
-      />
+      <AdSlot ad={ads["category-leaderboard"]} />
 
       <main className="bg-slate-50 py-10">
         <Container>
@@ -201,13 +201,7 @@ export default async function CategoryPage({
         </Container>
       </main>
 
-      <AdBanner
-        letter="V"
-        title="Vodafone — Tarifário RED Ilimitado"
-        description="Chamadas, SMS e dados ilimitados a partir de 24,99€/mês. Portabilidade grátis."
-        cta="Ver tarifário"
-        palette="red"
-      />
+      <AdSlot ad={ads["category-prefooter"]} />
 
       <SiteFooter />
     </div>

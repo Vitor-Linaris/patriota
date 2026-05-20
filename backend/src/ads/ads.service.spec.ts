@@ -23,9 +23,9 @@ describe('AdsService', () => {
     service = moduleRef.get(AdsService);
   });
 
-  it('ensureDefaults() upserts 10 known slots', async () => {
+  it('ensureDefaults() upserts the full set of known slots', async () => {
     await service.ensureDefaults();
-    expect(prisma.ad.upsert).toHaveBeenCalledTimes(10);
+    expect(prisma.ad.upsert).toHaveBeenCalledTimes(11);
   });
 
   it('listByPage() filters by page + enabled', async () => {
