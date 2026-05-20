@@ -73,8 +73,10 @@ export const MODULES: ModuleDef[] = [
       { key: 'utilizadores.ver', label: 'Ver utilizadores', description: 'Listar utilizadores da plataforma' },
       { key: 'utilizadores.criar', label: 'Criar utilizador', description: 'Registar novos utilizadores' },
       { key: 'utilizadores.editar', label: 'Editar utilizador', description: 'Atualizar dados de utilizadores' },
-      { key: 'utilizadores.suspender', label: 'Suspender/Eliminar', description: 'Bloquear ou remover contas' },
+      { key: 'utilizadores.suspender', label: 'Suspender/Activar', description: 'Bloquear ou reactivar contas' },
       { key: 'utilizadores.atribuir_roles', label: 'Atribuir roles', description: 'Mudar o papel de um utilizador' },
+      { key: 'utilizadores.resetar_password', label: 'Repor palavra-passe', description: 'Gerar nova palavra-passe temporária para outros' },
+      { key: 'utilizadores.eliminar', label: 'Eliminar utilizador', description: 'Apagar conta permanentemente' },
     ],
   },
   {

@@ -59,3 +59,46 @@ export async function setUserStatusAction(id: string, isActive: boolean) {
   revalidatePath("/admin/utilizadores");
   return { ok: true as const };
 }
+
+/**
+ * Force-reset another user's password to a freshly generated temporary
+ * value. The plaintext is only ever returned here once — the admin
+ * must communicate it to the user out-of-band.
+ */
+export async function resetUserPasswordAction(id: string) {
+  const res = await apiFetch(`/admin/users/${id}/reset-password`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { message?: string };
+    return {
+      ok: false as const,
+      error: body.message ?? "Falha ao repor palavra-passe.",
+    };
+  }
+  const created = (await res.json()) as {
+    id: string;
+    email: string;
+    temporaryPassword: string;
+  };
+  revalidatePath("/admin/utilizadores");
+  return { ok: true as const, temporaryPassword: created.temporaryPassword };
+}
+
+/**
+ * Permanently delete a user. The backend rejects when the user still
+ * owns articles (409 with a clear message), surfaces self-delete and
+ * cross-hierarchy attempts as 403.
+ */
+export async function deleteUserAction(id: string) {
+  const res = await apiFetch(`/admin/users/${id}`, { method: "DELETE" });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { message?: string };
+    return {
+      ok: false as const,
+      error: body.message ?? "Falha ao eliminar utilizador.",
+    };
+  }
+  revalidatePath("/admin/utilizadores");
+  return { ok: true as const };
+}

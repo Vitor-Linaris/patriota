@@ -61,6 +61,7 @@ function toAdminUser(u: UserApi): AdminUser {
 interface MeWithRoles {
   id: string;
   role: UserApi["role"];
+  permissions: string[];
   assignableRoles: UserApi["role"][];
 }
 
@@ -77,6 +78,9 @@ export default async function AdminUsersPage() {
     (r) => ROLE_API_TO_UI[r],
   );
   const myRole = me ? ROLE_API_TO_UI[me.role] : null;
+  const perms = new Set(me?.permissions ?? []);
+  const canResetPassword = perms.has("utilizadores.resetar_password");
+  const canDelete = perms.has("utilizadores.eliminar");
   return (
     <AdminShell active="/admin/utilizadores">
       <AdminUsersClient
@@ -84,6 +88,8 @@ export default async function AdminUsersPage() {
         assignableRoles={assignableRoles}
         myRole={myRole}
         myUserId={me?.id ?? null}
+        canResetPassword={canResetPassword}
+        canDelete={canDelete}
       />
     </AdminShell>
   );

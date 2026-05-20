@@ -4,7 +4,9 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   changeUserRoleAction,
+  deleteUserAction,
   inviteUserAction,
+  resetUserPasswordAction,
   setUserStatusAction,
 } from "./actions";
 
@@ -107,6 +109,8 @@ export default function AdminUsersClient({
   assignableRoles,
   myRole,
   myUserId,
+  canResetPassword,
+  canDelete,
 }: {
   initialUsers: AdminUser[];
   /** Roles the current actor is allowed to assign — drives the
@@ -117,6 +121,10 @@ export default function AdminUsersClient({
   myRole: RoleId | null;
   /** Logged-in user's id (so we never hide self-actions). */
   myUserId: string | null;
+  /** True when the actor has utilizadores.resetar_password. */
+  canResetPassword: boolean;
+  /** True when the actor has utilizadores.eliminar. */
+  canDelete: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -133,6 +141,17 @@ export default function AdminUsersClient({
   );
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [invitedPassword, setInvitedPassword] = useState<string | null>(null);
+
+  // Password reset modal: shows the freshly generated temp password
+  // once so the admin can copy it. `target` keeps the affected user
+  // around for the success-state title.
+  const [resetTarget, setResetTarget] = useState<AdminUser | null>(null);
+  const [resetPassword, setResetPassword] = useState<string | null>(null);
+  const [resetError, setResetError] = useState<string | null>(null);
+
+  // Delete confirm modal.
+  const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Filter ROLE_OPTIONS to what the actor can actually assign. Used in
   // the invite modal and the row-level "Alterar role" dropdown.
@@ -192,6 +211,34 @@ export default function AdminUsersClient({
         alert(res.error);
         return;
       }
+      router.refresh();
+    });
+  };
+
+  const requestResetPassword = (u: AdminUser) => {
+    setResetTarget(u);
+    setResetPassword(null);
+    setResetError(null);
+    startTransition(async () => {
+      const res = await resetUserPasswordAction(u.id);
+      if (!res.ok) {
+        setResetError(res.error);
+        return;
+      }
+      setResetPassword(res.temporaryPassword);
+    });
+  };
+
+  const confirmDelete = () => {
+    if (!deleteTarget) return;
+    setDeleteError(null);
+    startTransition(async () => {
+      const res = await deleteUserAction(deleteTarget.id);
+      if (!res.ok) {
+        setDeleteError(res.error);
+        return;
+      }
+      setDeleteTarget(null);
       router.refresh();
     });
   };
@@ -550,6 +597,31 @@ export default function AdminUsersClient({
                           >
                             {u.status === "active" ? "Desactivar" : "Activar"}
                           </button>
+                          {canResetPassword && u.id !== myUserId && (
+                            <button
+                              type="button"
+                              onClick={() => requestResetPassword(u)}
+                              disabled={pending}
+                              className="rounded-lg border border-blue-200 px-2.5 py-1.5 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-50 disabled:opacity-50"
+                              title="Gerar nova palavra-passe temporária"
+                            >
+                              Repor senha
+                            </button>
+                          )}
+                          {canDelete && u.id !== myUserId && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDeleteError(null);
+                                setDeleteTarget(u);
+                              }}
+                              disabled={pending}
+                              className="rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
+                              title="Eliminar permanentemente"
+                            >
+                              Eliminar
+                            </button>
+                          )}
                         </>
                       ) : (
                         <span className="text-[10px] italic text-gray-300">
@@ -574,6 +646,123 @@ export default function AdminUsersClient({
           </tbody>
         </table>
       </div>
+
+      {/* Password-reset modal: opens with a spinner, then reveals the
+          newly generated temp password with a copy button. Closing it
+          discards the value — the backend's bcrypt hash is the only
+          remaining store. */}
+      {resetTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+          onClick={() => setResetTarget(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-black text-[#0F2C6B]">
+              Repor palavra-passe
+            </h2>
+            <p className="mt-1 truncate text-sm text-gray-500">
+              {resetTarget.name} · {resetTarget.email}
+            </p>
+
+            {resetError && (
+              <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                {resetError}
+              </p>
+            )}
+
+            {!resetError && !resetPassword && (
+              <p className="mt-5 text-sm text-gray-500">
+                A gerar nova palavra-passe…
+              </p>
+            )}
+
+            {resetPassword && (
+              <>
+                <p className="mt-5 text-sm text-gray-600">
+                  Partilhe esta palavra-passe temporária. O utilizador
+                  deve alterá-la no primeiro acesso.
+                </p>
+                <div className="mt-4 rounded-lg bg-[#F0F2F7] p-4">
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                    Nova palavra-passe temporária
+                  </p>
+                  <div className="flex items-center justify-between gap-3">
+                    <code className="font-mono text-sm font-bold text-[#0F2C6B]">
+                      {resetPassword}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void navigator.clipboard.writeText(resetPassword);
+                      }}
+                      className="rounded-lg bg-[#0F2C6B] px-3 py-1.5 text-xs font-semibold text-white"
+                    >
+                      Copiar
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setResetTarget(null)}
+              className="mt-5 w-full rounded-lg bg-[#0F2C6B] py-2.5 text-sm font-bold text-white hover:bg-[#1A3A7A]"
+            >
+              Fechar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirm modal */}
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+          onClick={() => setDeleteTarget(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-black text-red-700">
+              Eliminar utilizador
+            </h2>
+            <p className="mt-1 text-sm text-gray-500">
+              {deleteTarget.name} · {deleteTarget.email}
+            </p>
+            <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Esta acção é irreversível. Considere primeiro desactivar
+              a conta — só elimine quando tiver a certeza.
+            </p>
+            {deleteError && (
+              <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                {deleteError}
+              </p>
+            )}
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                className="flex-1 rounded-lg border border-gray-200 py-2.5 text-sm font-semibold text-gray-500 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                disabled={pending}
+                className="flex-1 rounded-lg bg-red-600 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {pending ? "A eliminar…" : "Eliminar definitivamente"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

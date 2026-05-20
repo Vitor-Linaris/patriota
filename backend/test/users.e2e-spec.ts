@@ -126,6 +126,66 @@ describe('Users (e2e)', () => {
     expect(res.body.role).toBe('EDITOR_CHEFE');
   });
 
+  it('POST /admin/users/:id/reset-password returns a new temp password', async () => {
+    const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+    const target = await makeUser(app, { role: 'JORNALISTA' });
+    const res = await request(app.getHttpServer())
+      .post(`/admin/users/${target.id}/reset-password`)
+      .set(bearer(admin))
+      .expect(201);
+    expect(res.body.temporaryPassword).toMatch(/^\S{8,}$/);
+    expect(res.body.email).toBe(target.email);
+  });
+
+  it('EDITOR_CHEFE cannot reset a SUPER_ADMIN password', async () => {
+    const chefe = await makeUser(app, { role: 'EDITOR_CHEFE' });
+    const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+    await request(app.getHttpServer())
+      .post(`/admin/users/${admin.id}/reset-password`)
+      .set(bearer(chefe))
+      .expect(403);
+  });
+
+  it('JORNALISTA cannot reset anyone (lacks utilizadores.resetar_password)', async () => {
+    const j = await makeUser(app, { role: 'JORNALISTA' });
+    const other = await makeUser(app, { role: 'JORNALISTA' });
+    await request(app.getHttpServer())
+      .post(`/admin/users/${other.id}/reset-password`)
+      .set(bearer(j))
+      .expect(403);
+  });
+
+  it('DELETE /admin/users/:id removes a user without content', async () => {
+    const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+    const target = await makeUser(app, { role: 'JORNALISTA' });
+    await request(app.getHttpServer())
+      .delete(`/admin/users/${target.id}`)
+      .set(bearer(admin))
+      .expect(200);
+    const list = await request(app.getHttpServer())
+      .get('/admin/users')
+      .set(bearer(admin));
+    const ids = (list.body.items as { id: string }[]).map((u) => u.id);
+    expect(ids).not.toContain(target.id);
+  });
+
+  it('DELETE refuses self-deletion', async () => {
+    const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+    await request(app.getHttpServer())
+      .delete(`/admin/users/${admin.id}`)
+      .set(bearer(admin))
+      .expect(403);
+  });
+
+  it('EDITOR_CHEFE cannot delete a SUPER_ADMIN', async () => {
+    const chefe = await makeUser(app, { role: 'EDITOR_CHEFE' });
+    const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+    await request(app.getHttpServer())
+      .delete(`/admin/users/${admin.id}`)
+      .set(bearer(chefe))
+      .expect(403);
+  });
+
   it('GET /auth/me exposes assignableRoles for the current user', async () => {
     const chefe = await makeUser(app, { role: 'EDITOR_CHEFE' });
     const res = await request(app.getHttpServer())

@@ -12,7 +12,14 @@ function makePrismaMock() {
       findUnique: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      delete: jest.fn(),
       count: jest.fn(),
+    },
+    article: {
+      count: jest.fn(),
+    },
+    activityLog: {
+      deleteMany: jest.fn(),
     },
   };
 }
@@ -172,6 +179,87 @@ describe('UsersService', () => {
           { id: 'chefe', role: 'EDITOR_CHEFE' },
         ),
       ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe('resetPassword()', () => {
+    it('refuses to reset your own password (use /users/me/password instead)', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: 'self', email: 's@x.pt', role: 'SUPER_ADMIN',
+      });
+      await expect(
+        service.resetPassword('self', { id: 'self', role: 'SUPER_ADMIN' }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('forbids EDITOR_CHEFE from resetting a SUPER_ADMIN password', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: 'admin', email: 'admin@x.pt', role: 'SUPER_ADMIN',
+      });
+      await expect(
+        service.resetPassword('admin', { id: 'chefe', role: 'EDITOR_CHEFE' }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('rotates the bcrypt hash, logs the action and returns the new temp password', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: 'u1', email: 'u@x.pt', role: 'JORNALISTA',
+      });
+      prisma.user.update.mockResolvedValueOnce({});
+      const res = await service.resetPassword('u1', {
+        id: 'admin',
+        role: 'SUPER_ADMIN',
+      });
+      expect(res.temporaryPassword.length).toBeGreaterThan(8);
+      const args = prisma.user.update.mock.calls[0][0];
+      expect(typeof args.data.password).toBe('string');
+      expect(args.data.password.startsWith('$2')).toBe(true); // bcrypt hash
+      expect(activity.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'password-reset' }),
+      );
+    });
+  });
+
+  describe('remove()', () => {
+    it('refuses self-deletion', async () => {
+      await expect(
+        service.remove('me', { id: 'me', role: 'SUPER_ADMIN' }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('forbids EDITOR_CHEFE from deleting a SUPER_ADMIN', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: 'admin', email: 'admin@x.pt', role: 'SUPER_ADMIN',
+      });
+      await expect(
+        service.remove('admin', { id: 'chefe', role: 'EDITOR_CHEFE' }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('blocks delete when the user still owns articles', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: 'u1', email: 'u@x.pt', role: 'JORNALISTA',
+      });
+      prisma.article.count.mockResolvedValueOnce(3);
+      await expect(
+        service.remove('u1', { id: 'admin', role: 'SUPER_ADMIN' }),
+      ).rejects.toThrow(/3 artigos? associados/i);
+    });
+
+    it('deletes when nothing blocks it and logs the action', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: 'u1', email: 'u@x.pt', role: 'JORNALISTA',
+      });
+      prisma.article.count.mockResolvedValueOnce(0);
+      prisma.activityLog.deleteMany.mockResolvedValueOnce({ count: 2 });
+      prisma.user.delete.mockResolvedValueOnce({});
+      const res = await service.remove('u1', {
+        id: 'admin', role: 'SUPER_ADMIN',
+      });
+      expect(res.ok).toBe(true);
+      expect(activity.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'deleted', targetType: 'user' }),
+      );
     });
   });
 

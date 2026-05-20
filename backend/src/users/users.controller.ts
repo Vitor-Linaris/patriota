@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -52,6 +53,21 @@ export class UsersController {
     @CurrentUser() actor: AuthUser,
   ) {
     return this.users.setActive(id, dto.isActive, { id: actor.id, role: actor.role });
+  }
+
+  @Post('admin/users/:id/reset-password')
+  @RequirePermissions('utilizadores.resetar_password')
+  resetPassword(@Param('id') id: string, @CurrentUser() actor: AuthUser) {
+    return this.users.resetPassword(id, {
+      id: actor.id,
+      role: actor.role,
+    });
+  }
+
+  @Delete('admin/users/:id')
+  @RequirePermissions('utilizadores.eliminar')
+  remove(@Param('id') id: string, @CurrentUser() actor: AuthUser) {
+    return this.users.remove(id, { id: actor.id, role: actor.role });
   }
 
   // ── Self-service (authenticated) ──────────────────────────────────

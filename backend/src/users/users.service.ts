@@ -194,6 +194,102 @@ export class UsersService {
     }
   }
 
+  /**
+   * Generate a new random temporary password for another user and
+   * return it once (the admin needs to share it manually). Used for
+   * "forgot password / locked out" flows. Permission gating is done
+   * on the controller (utilizadores.resetar_password); the hierarchy
+   * guard here prevents a chief from resetting a super-admin's pw.
+   */
+  async resetPassword(id: string, actor: ActingUser) {
+    const target = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, email: true, role: true },
+    });
+    if (!target) throw new NotFoundException('Utilizador não encontrado.');
+    if (!canManageUser(actor.role, target.role)) {
+      throw new ForbiddenException(
+        `Não tem permissão para repor a palavra-passe de utilizadores com role ${target.role}.`,
+      );
+    }
+    if (target.id === actor.id) {
+      throw new ForbiddenException(
+        'Use /users/me/password para alterar a sua própria palavra-passe.',
+      );
+    }
+    const temporaryPassword = randomBytes(8).toString('base64url');
+    const hash = await bcrypt.hash(temporaryPassword, 12);
+    await this.prisma.user.update({
+      where: { id },
+      data: { password: hash },
+    });
+    void this.activity.record({
+      userId: actor.id,
+      action: 'password-reset',
+      targetType: 'user',
+      targetId: target.id,
+      targetLabel: target.email,
+    });
+    return { id: target.id, email: target.email, temporaryPassword };
+  }
+
+  /**
+   * Permanently delete a user. Blocked when the user still owns
+   * articles (FK constraint would fail anyway — we surface a
+   * friendly error instead). Self-delete is blocked unconditionally.
+   */
+  async remove(id: string, actor: ActingUser) {
+    if (id === actor.id) {
+      throw new ForbiddenException(
+        'Não pode eliminar a sua própria conta.',
+      );
+    }
+    const target = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, email: true, role: true },
+    });
+    if (!target) throw new NotFoundException('Utilizador não encontrado.');
+    if (!canManageUser(actor.role, target.role)) {
+      throw new ForbiddenException(
+        `Não tem permissão para eliminar utilizadores com role ${target.role}.`,
+      );
+    }
+    const articleCount = await this.prisma.article.count({
+      where: { authorId: id },
+    });
+    if (articleCount > 0) {
+      throw new ConflictException(
+        `Não é possível eliminar: ${target.email} tem ${articleCount} artigo${articleCount === 1 ? '' : 's'} associados. Reatribua ou elimine os artigos primeiro, ou desactive a conta.`,
+      );
+    }
+    try {
+      // Activity log entries authored by this user keep the userId
+      // reference; the user row itself is removed. Doing the log
+      // BEFORE delete so it doesn't get orphaned by the cascade.
+      await this.prisma.activityLog.deleteMany({ where: { userId: id } });
+      await this.prisma.user.delete({ where: { id } });
+    } catch (e) {
+      if (isPrismaCode(e, 'P2025')) {
+        throw new NotFoundException('Utilizador não encontrado.');
+      }
+      if (isPrismaCode(e, 'P2003')) {
+        throw new ConflictException(
+          'Não é possível eliminar: utilizador tem conteúdo associado.',
+        );
+      }
+      throw e;
+    }
+    // Recorded under the actor's id (the deleted target's id is gone now).
+    void this.activity.record({
+      userId: actor.id,
+      action: 'deleted',
+      targetType: 'user',
+      targetId: target.id,
+      targetLabel: target.email,
+    });
+    return { ok: true as const, id: target.id, email: target.email };
+  }
+
   async getOwn(id: string) {
     const u = await this.prisma.user.findUnique({
       where: { id },
