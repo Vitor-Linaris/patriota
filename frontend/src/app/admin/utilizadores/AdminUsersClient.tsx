@@ -104,8 +104,19 @@ function getRoleInfo(roleId: RoleId) {
 
 export default function AdminUsersClient({
   initialUsers,
+  assignableRoles,
+  myRole,
+  myUserId,
 }: {
   initialUsers: AdminUser[];
+  /** Roles the current actor is allowed to assign — drives the
+   *  invite modal and the role-change dropdown so users never see
+   *  options they can't pick. */
+  assignableRoles: RoleId[];
+  /** Logged-in user's role (for peer-level checks on row actions). */
+  myRole: RoleId | null;
+  /** Logged-in user's id (so we never hide self-actions). */
+  myUserId: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -117,9 +128,28 @@ export default function AdminUsersClient({
   const [showInvite, setShowInvite] = useState(false);
   const [newEmail, setNewEmail] = useState("");
   const [newName, setNewName] = useState("");
-  const [newRole, setNewRole] = useState<RoleId>("jornalista");
+  const [newRole, setNewRole] = useState<RoleId>(
+    assignableRoles[0] ?? "jornalista",
+  );
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [invitedPassword, setInvitedPassword] = useState<string | null>(null);
+
+  // Filter ROLE_OPTIONS to what the actor can actually assign. Used in
+  // the invite modal and the row-level "Alterar role" dropdown.
+  const assignableRoleOptions = useMemo(
+    () => ROLE_OPTIONS.filter((r) => assignableRoles.includes(r.id)),
+    [assignableRoles],
+  );
+
+  /** True when the current actor can change/suspend this row. */
+  const canManageRow = (u: AdminUser): boolean => {
+    if (!myRole) return false;
+    if (myRole === "super_admin") return true;
+    // Same-level peers can't manage each other (server-side guard);
+    // hide the buttons too so users don't try and get a 403.
+    if (u.role === myRole && u.id !== myUserId) return false;
+    return assignableRoles.includes(u.role);
+  };
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -285,7 +315,7 @@ export default function AdminUsersClient({
                       Role inicial
                     </label>
                     <div className="grid grid-cols-2 gap-2">
-                      {ROLE_OPTIONS.map((r) => (
+                      {assignableRoleOptions.map((r) => (
                         <button
                           key={r.id}
                           type="button"
@@ -301,6 +331,11 @@ export default function AdminUsersClient({
                         </button>
                       ))}
                     </div>
+                    {assignableRoleOptions.length === 0 && (
+                      <p className="text-xs italic text-gray-400">
+                        O seu role não permite criar novos utilizadores.
+                      </p>
+                    )}
                   </div>
                   {inviteError && (
                     <p className="text-xs font-semibold text-red-600">
@@ -449,7 +484,7 @@ export default function AdminUsersClient({
                         autoFocus
                         className="rounded-lg border border-[#0F2C6B] bg-white px-2 py-1.5 text-xs font-semibold focus:outline-none"
                       >
-                        {ROLE_OPTIONS.map((r) => (
+                        {assignableRoleOptions.map((r) => (
                           <option key={r.id} value={r.id}>
                             {r.label}
                           </option>
@@ -498,7 +533,7 @@ export default function AdminUsersClient({
                             Confirmar
                           </button>
                         </>
-                      ) : (
+                      ) : canManageRow(u) ? (
                         <>
                           <button
                             type="button"
@@ -516,6 +551,10 @@ export default function AdminUsersClient({
                             {u.status === "active" ? "Desactivar" : "Activar"}
                           </button>
                         </>
+                      ) : (
+                        <span className="text-[10px] italic text-gray-300">
+                          Sem permissão
+                        </span>
                       )}
                     </div>
                   </td>

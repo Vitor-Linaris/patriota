@@ -131,6 +131,64 @@ export const ALL_PERMISSIONS: string[] = MODULES.flatMap((m) =>
  * Default permission set per role. SUPER_ADMIN bypasses checks and has all.
  * EDITOR_CHEFE has everything except editing the RBAC matrix itself.
  */
+/**
+ * Role-assignment hierarchy. A user can only invite or change another
+ * user's role to a role that appears in this list for their own role.
+ *
+ * The shape "actor → allowed targets" makes the rules explicit:
+ *   • SUPER_ADMIN is the only role that can assign SUPER_ADMIN. Without
+ *     this guard, an EDITOR_CHEFE that gained utilizadores.atribuir_roles
+ *     could escalate themselves.
+ *   • EDITOR_CHEFE can promote peers and everyone below.
+ *   • EDITOR can only promote down to JORNALISTA (and only if they ever
+ *     get utilizadores.criar — currently they don't, so this is dormant
+ *     defence in depth).
+ *   • Everyone else cannot assign roles.
+ *
+ * For role CHANGE, an actor must additionally be allowed to manage the
+ * target's CURRENT role — see canManageUser() below — so an EDITOR_CHEFE
+ * cannot demote a SUPER_ADMIN.
+ */
+export const ASSIGNABLE_ROLES: Record<Role, Role[]> = {
+  SUPER_ADMIN: [
+    'SUPER_ADMIN',
+    'EDITOR_CHEFE',
+    'EDITOR',
+    'JORNALISTA',
+    'REVISOR',
+    'MODERADOR',
+    'ANALISTA',
+  ],
+  EDITOR_CHEFE: [
+    'EDITOR_CHEFE',
+    'EDITOR',
+    'JORNALISTA',
+    'REVISOR',
+    'MODERADOR',
+    'ANALISTA',
+  ],
+  EDITOR: ['JORNALISTA'],
+  JORNALISTA: [],
+  REVISOR: [],
+  MODERADOR: [],
+  ANALISTA: [],
+};
+
+/** True when `actor` is allowed to assign `target` as a role to anyone. */
+export function canAssignRole(actor: Role, target: Role): boolean {
+  return ASSIGNABLE_ROLES[actor]?.includes(target) ?? false;
+}
+
+/**
+ * True when `actor` is allowed to manage a user that currently holds
+ * `targetCurrentRole` — useful for the role-change path so an
+ * EDITOR_CHEFE cannot demote a SUPER_ADMIN.
+ */
+export function canManageUser(actor: Role, targetCurrentRole: Role): boolean {
+  if (actor === 'SUPER_ADMIN') return true;
+  return ASSIGNABLE_ROLES[actor]?.includes(targetCurrentRole) ?? false;
+}
+
 export const DEFAULT_ROLE_PERMISSIONS: Record<Role, string[]> = {
   SUPER_ADMIN: [...ALL_PERMISSIONS],
   EDITOR_CHEFE: ALL_PERMISSIONS.filter((p) => p !== 'configuracoes.permissoes'),

@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -13,7 +14,11 @@ import {
   PageResult,
   toSkipTake,
 } from '../common/dto/pagination.dto';
-import type { Role } from '../rbac/rbac.constants';
+import {
+  canAssignRole,
+  canManageUser,
+  type Role,
+} from '../rbac/rbac.constants';
 import { InviteUserDto } from './dto/invite-user.dto';
 import { UpdateOwnDto } from './dto/update-own.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
@@ -70,6 +75,11 @@ export class UsersService {
   }
 
   async invite(dto: InviteUserDto, actor: ActingUser) {
+    if (!canAssignRole(actor.role, dto.role)) {
+      throw new ForbiddenException(
+        `O seu role (${actor.role}) não pode criar utilizadores com role ${dto.role}.`,
+      );
+    }
     const email = dto.email.toLowerCase();
     const temporaryPassword = randomBytes(8).toString('base64url');
     const hash = await bcrypt.hash(temporaryPassword, 12);
@@ -103,6 +113,31 @@ export class UsersService {
   }
 
   async changeRole(id: string, role: Role, actor: ActingUser) {
+    if (!canAssignRole(actor.role, role)) {
+      throw new ForbiddenException(
+        `O seu role (${actor.role}) não pode atribuir o role ${role}.`,
+      );
+    }
+    // Load the target FIRST so we can also check that the actor is
+    // allowed to manage the user's *current* role — without this
+    // an EDITOR_CHEFE could "rewrite" a SUPER_ADMIN's role.
+    const target = await this.prisma.user.findUnique({
+      where: { id },
+      select: { role: true, email: true },
+    });
+    if (!target) throw new NotFoundException('Utilizador não encontrado.');
+    if (!canManageUser(actor.role, target.role)) {
+      throw new ForbiddenException(
+        `Não tem permissão para gerir utilizadores com role ${target.role}.`,
+      );
+    }
+    if (target.role === actor.role && actor.role !== 'SUPER_ADMIN' && id !== actor.id) {
+      // Prevent peer demotions: two EDITOR_CHEFEs can't fight over
+      // each other's roles, only a SUPER_ADMIN can intervene.
+      throw new ForbiddenException(
+        'Não pode alterar o role de um utilizador do mesmo nível que o seu.',
+      );
+    }
     try {
       const updated = await this.prisma.user.update({
         where: { id },
@@ -126,6 +161,17 @@ export class UsersService {
   }
 
   async setActive(id: string, isActive: boolean, actor: ActingUser) {
+    // Same hierarchy guard: an EDITOR_CHEFE cannot suspend a SUPER_ADMIN.
+    const target = await this.prisma.user.findUnique({
+      where: { id },
+      select: { role: true },
+    });
+    if (!target) throw new NotFoundException('Utilizador não encontrado.');
+    if (!canManageUser(actor.role, target.role)) {
+      throw new ForbiddenException(
+        `Não tem permissão para gerir utilizadores com role ${target.role}.`,
+      );
+    }
     try {
       const updated = await this.prisma.user.update({
         where: { id },

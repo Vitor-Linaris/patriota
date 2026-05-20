@@ -96,4 +96,47 @@ describe('Users (e2e)', () => {
       .expect(200);
     expect(res.body.role).toBe('EDITOR');
   });
+
+  it('EDITOR_CHEFE cannot invite a SUPER_ADMIN', async () => {
+    const chefe = await makeUser(app, { role: 'EDITOR_CHEFE' });
+    await request(app.getHttpServer())
+      .post('/admin/users')
+      .set(bearer(chefe))
+      .send({ email: 'pwn@x.pt', role: 'SUPER_ADMIN' })
+      .expect(403);
+  });
+
+  it('EDITOR_CHEFE cannot demote a SUPER_ADMIN', async () => {
+    const chefe = await makeUser(app, { role: 'EDITOR_CHEFE' });
+    const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+    await request(app.getHttpServer())
+      .patch(`/admin/users/${admin.id}/role`)
+      .set(bearer(chefe))
+      .send({ role: 'JORNALISTA' })
+      .expect(403);
+  });
+
+  it('EDITOR_CHEFE can invite another EDITOR_CHEFE (peer level)', async () => {
+    const chefe = await makeUser(app, { role: 'EDITOR_CHEFE' });
+    const res = await request(app.getHttpServer())
+      .post('/admin/users')
+      .set(bearer(chefe))
+      .send({ email: 'peer@x.pt', role: 'EDITOR_CHEFE' })
+      .expect(201);
+    expect(res.body.role).toBe('EDITOR_CHEFE');
+  });
+
+  it('GET /auth/me exposes assignableRoles for the current user', async () => {
+    const chefe = await makeUser(app, { role: 'EDITOR_CHEFE' });
+    const res = await request(app.getHttpServer())
+      .get('/auth/me')
+      .set(bearer(chefe))
+      .expect(200);
+    expect(res.body.assignableRoles).toEqual(
+      expect.arrayContaining([
+        'EDITOR_CHEFE', 'EDITOR', 'JORNALISTA', 'REVISOR', 'MODERADOR', 'ANALISTA',
+      ]),
+    );
+    expect(res.body.assignableRoles).not.toContain('SUPER_ADMIN');
+  });
 });

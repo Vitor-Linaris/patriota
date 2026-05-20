@@ -58,14 +58,33 @@ function toAdminUser(u: UserApi): AdminUser {
   };
 }
 
+interface MeWithRoles {
+  id: string;
+  role: UserApi["role"];
+  assignableRoles: UserApi["role"][];
+}
+
 export default async function AdminUsersPage() {
-  const res = await apiFetch("/admin/users?pageSize=100");
+  const [res, meRes] = await Promise.all([
+    apiFetch("/admin/users?pageSize=100"),
+    apiFetch("/auth/me"),
+  ]);
   const users = res.ok
     ? ((await res.json()) as PageResult<UserApi>).items.map(toAdminUser)
     : [];
+  const me = meRes.ok ? ((await meRes.json()) as MeWithRoles) : null;
+  const assignableRoles = (me?.assignableRoles ?? []).map(
+    (r) => ROLE_API_TO_UI[r],
+  );
+  const myRole = me ? ROLE_API_TO_UI[me.role] : null;
   return (
     <AdminShell active="/admin/utilizadores">
-      <AdminUsersClient initialUsers={users} />
+      <AdminUsersClient
+        initialUsers={users}
+        assignableRoles={assignableRoles}
+        myRole={myRole}
+        myUserId={me?.id ?? null}
+      />
     </AdminShell>
   );
 }

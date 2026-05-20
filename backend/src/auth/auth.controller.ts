@@ -11,6 +11,7 @@ import {
 import { Throttle } from '@nestjs/throttler';
 import { AuthService, type AuthUser } from './auth.service';
 import { RbacService } from '../rbac/rbac.service';
+import { ASSIGNABLE_ROLES } from '../rbac/rbac.constants';
 import { LoginDto } from './dto/login.dto';
 import { Public } from './public.decorator';
 import { CurrentUser } from './current-user.decorator';
@@ -35,6 +36,9 @@ export class AuthController {
   @Get('me')
   async me(@CurrentUser() user: AuthUser) {
     const permissions = await this.rbac.getPermissionsForRole(user.role);
-    return { ...user, permissions };
+    // Roles this user is allowed to assign to others — drives the UI's
+    // role pickers so a JORNALISTA never sees a SUPER_ADMIN option.
+    const assignableRoles = ASSIGNABLE_ROLES[user.role] ?? [];
+    return { ...user, permissions, assignableRoles };
   }
 }

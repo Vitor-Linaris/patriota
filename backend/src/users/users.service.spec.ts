@@ -54,6 +54,37 @@ describe('UsersService', () => {
       expect(result.temporaryPassword).toBeDefined();
       expect(activity.record).toHaveBeenCalled();
     });
+
+    it('forbids EDITOR_CHEFE from creating a SUPER_ADMIN', async () => {
+      await expect(
+        service.invite(
+          { email: 'x@y.pt', role: 'SUPER_ADMIN' },
+          { id: 'chefe', role: 'EDITOR_CHEFE' },
+        ),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.user.create).not.toHaveBeenCalled();
+    });
+
+    it('allows EDITOR_CHEFE to create another EDITOR_CHEFE (peer level)', async () => {
+      prisma.user.create.mockResolvedValueOnce({
+        id: 'u2', email: 'peer@x.pt', role: 'EDITOR_CHEFE',
+      });
+      await expect(
+        service.invite(
+          { email: 'peer@x.pt', role: 'EDITOR_CHEFE' },
+          { id: 'chefe', role: 'EDITOR_CHEFE' },
+        ),
+      ).resolves.toBeDefined();
+    });
+
+    it('forbids EDITOR from creating an EDITOR (only JORNALISTA)', async () => {
+      await expect(
+        service.invite(
+          { email: 'x@y.pt', role: 'EDITOR' },
+          { id: 'ed', role: 'EDITOR' },
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
   });
 
   describe('changeOwnPassword()', () => {
@@ -84,6 +115,10 @@ describe('UsersService', () => {
 
   describe('changeRole()', () => {
     it('records an activity entry when role changes', async () => {
+      // findUnique now precedes update for the hierarchy check.
+      prisma.user.findUnique.mockResolvedValueOnce({
+        role: 'JORNALISTA', email: 'a@b.pt',
+      });
       prisma.user.update.mockResolvedValueOnce({
         id: 'u2',
         email: 'a@b.pt',
@@ -100,6 +135,43 @@ describe('UsersService', () => {
           targetType: 'user',
         }),
       );
+    });
+
+    it('forbids EDITOR_CHEFE from demoting a SUPER_ADMIN', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        role: 'SUPER_ADMIN', email: 'admin@x.pt',
+      });
+      await expect(
+        service.changeRole(
+          'super',
+          'EDITOR',
+          { id: 'chefe', role: 'EDITOR_CHEFE' },
+        ),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('forbids EDITOR_CHEFE from changing a peer EDITOR_CHEFE', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        role: 'EDITOR_CHEFE', email: 'peer@x.pt',
+      });
+      await expect(
+        service.changeRole(
+          'peer-id',
+          'EDITOR',
+          { id: 'self-id', role: 'EDITOR_CHEFE' },
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('forbids assigning a role outside the actor allow-list', async () => {
+      await expect(
+        service.changeRole(
+          'u2',
+          'SUPER_ADMIN',
+          { id: 'chefe', role: 'EDITOR_CHEFE' },
+        ),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 
@@ -130,8 +202,4 @@ describe('UsersService', () => {
     });
   });
 
-  // Just to keep the variable used so ForbiddenException import is intentional
-  it('has ForbiddenException imported for downstream guards', () => {
-    expect(ForbiddenException).toBeDefined();
-  });
 });

@@ -9,19 +9,79 @@ interface MeResponse {
   email: string;
   name: string | null;
   role: string;
+  permissions: string[];
 }
 
-const NAV = [
+interface NavItem {
+  href: string;
+  label: string;
+  icon: string;
+  /**
+   * Which permission(s) gate this nav item. If `requires` is omitted
+   * the item is always visible (Dashboard + Perfil). When more than one
+   * permission is listed, ANY one of them is enough.
+   */
+  requires?: readonly string[];
+}
+
+const NAV: readonly NavItem[] = [
+  // Dashboard is the safe landing for everyone with admin access.
   { href: "/admin", label: "Dashboard", icon: "▦" },
-  { href: "/admin/artigos", label: "Artigos", icon: "▤" },
-  { href: "/admin/utilizadores", label: "Utilizadores", icon: "○" },
-  { href: "/admin/permissions", label: "Permissões RBAC", icon: "⚿" },
-  { href: "/admin/categorias", label: "Categorias", icon: "◉" },
-  { href: "/admin/media", label: "Media", icon: "▣" },
-  { href: "/admin/publicidade", label: "Publicidade", icon: "◈" },
-  { href: "/admin/newsletter", label: "Newsletter", icon: "✉" },
-  { href: "/admin/configuracoes", label: "Configurações", icon: "⚙" },
+  {
+    href: "/admin/artigos",
+    label: "Artigos",
+    icon: "▤",
+    requires: ["artigos.ler", "artigos.criar"],
+  },
+  {
+    href: "/admin/utilizadores",
+    label: "Utilizadores",
+    icon: "○",
+    requires: ["utilizadores.ver"],
+  },
+  {
+    href: "/admin/permissions",
+    label: "Permissões RBAC",
+    icon: "⚿",
+    requires: ["configuracoes.permissoes"],
+  },
+  {
+    href: "/admin/categorias",
+    label: "Categorias",
+    icon: "◉",
+    requires: ["categorias.ver"],
+  },
+  {
+    href: "/admin/media",
+    label: "Media",
+    icon: "▣",
+    requires: ["media.carregar", "media.editar_metadados"],
+  },
+  {
+    href: "/admin/publicidade",
+    label: "Publicidade",
+    icon: "◈",
+    requires: ["configuracoes.editar"],
+  },
+  {
+    href: "/admin/newsletter",
+    label: "Newsletter",
+    icon: "✉",
+    requires: ["newsletter.listas", "newsletter.enviar"],
+  },
+  {
+    href: "/admin/configuracoes",
+    label: "Configurações",
+    icon: "⚙",
+    requires: ["configuracoes.aceder", "configuracoes.editar"],
+  },
 ];
+
+/** True when the user is allowed to see this nav entry. */
+function canSeeNav(item: NavItem, perms: Set<string>): boolean {
+  if (!item.requires || item.requires.length === 0) return true;
+  return item.requires.some((p) => perms.has(p));
+}
 
 const ROLE_LABEL: Record<string, string> = {
   SUPER_ADMIN: "Super Admin",
@@ -58,6 +118,16 @@ export async function AdminShell({
   const displayName = me.name ?? me.email;
   const initials = getInitials(me.name, me.email);
 
+  // Filter sidebar entries the user cannot access. SUPER_ADMIN bypasses
+  // the check (their permissions list already contains everything, but
+  // making it explicit avoids a future regression if perms ever become
+  // optional for them).
+  const permSet = new Set(me.permissions ?? []);
+  const visibleNav =
+    me.role === "SUPER_ADMIN"
+      ? NAV.slice()
+      : NAV.filter((n) => canSeeNav(n, permSet));
+
   const activeItem = NAV.find((n) => n.href === active);
   const isProfile = active === "/admin/perfil";
 
@@ -76,7 +146,7 @@ export async function AdminShell({
             />
           </div>
           <nav className="mt-2 flex flex-col gap-1 px-3">
-            {NAV.map((item) => {
+            {visibleNav.map((item) => {
               const isActive = item.href === active;
               return (
                 <Link
