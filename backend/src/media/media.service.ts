@@ -70,15 +70,25 @@ export class MediaService {
     private readonly activity: ActivityLogService,
   ) {}
 
-  async list(query: PageQueryDto): Promise<PageResult<unknown>> {
+  async list(
+    query: PageQueryDto & { q?: string },
+  ): Promise<PageResult<unknown>> {
     const { skip, take } = toSkipTake(query);
+    // Free-text search across the filename — keeps the implementation
+    // simple while covering the common case ("where's that header.jpg
+    // I uploaded last week?"). For URL/mimeType/dimension search we'd
+    // need a more involved schema; OOS for now.
+    const where = query.q
+      ? { name: { contains: query.q, mode: 'insensitive' as const } }
+      : {};
     const [items, total] = await Promise.all([
       this.prisma.media.findMany({
+        where,
         skip,
         take,
         orderBy: { uploadedAt: 'desc' },
       }),
-      this.prisma.media.count(),
+      this.prisma.media.count({ where }),
     ]);
     return {
       items,

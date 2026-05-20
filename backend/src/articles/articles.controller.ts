@@ -44,6 +44,16 @@ export class ArticlesController {
     return this.service.list(query);
   }
 
+  // Counts across the WHOLE corpus, used by the stats row on
+  // /admin/artigos so the numbers don't reflect just the current
+  // pagination window. Note: placed BEFORE /:id so the static path
+  // wins over the dynamic param.
+  @Get('admin/articles/stats')
+  @RequirePermissions('artigos.ler')
+  stats() {
+    return this.service.getStats();
+  }
+
   @Get('admin/articles/:id')
   @RequirePermissions('artigos.ler')
   findOne(@Param('id') id: string) {

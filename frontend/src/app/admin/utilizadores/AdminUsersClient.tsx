@@ -106,11 +106,27 @@ function getRoleInfo(roleId: RoleId) {
   return ROLE_OPTIONS.find((r) => r.id === roleId) ?? ROLE_OPTIONS[3];
 }
 
+// Map UI role keys ↔ API role keys for the by-role pill counts.
+const UI_TO_API_ROLE = {
+  super_admin: "SUPER_ADMIN",
+  editor_chefe: "EDITOR_CHEFE",
+  editor: "EDITOR",
+  jornalista: "JORNALISTA",
+  revisor: "REVISOR",
+  moderador: "MODERADOR",
+  analista: "ANALISTA",
+} as const;
+type ApiRole = (typeof UI_TO_API_ROLE)[keyof typeof UI_TO_API_ROLE];
+
 export default function AdminUsersClient({
   initialUsers,
   totalUsers,
   currentPage,
   totalPages,
+  searchQuery,
+  statsTotal,
+  statsActive,
+  statsByRole,
   assignableRoles,
   myRole,
   myUserId,
@@ -121,6 +137,14 @@ export default function AdminUsersClient({
   totalUsers: number;
   currentPage: number;
   totalPages: number;
+  /** Current ?q= from the URL, hydrates the search input. */
+  searchQuery: string;
+  /** WHOLE-table user count (ignores filters and pagination). */
+  statsTotal: number;
+  /** WHOLE-table active count. */
+  statsActive: number;
+  /** WHOLE-table per-role counts. */
+  statsByRole: Record<ApiRole, number>;
   /** Roles the current actor is allowed to assign — drives the
    *  invite modal and the role-change dropdown so users never see
    *  options they can't pick. */
@@ -138,8 +162,8 @@ export default function AdminUsersClient({
   const [pending, startTransition] = useTransition();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingRole, setEditingRole] = useState<RoleId | null>(null);
-  const [search, setSearch] = useState("");
-  const [filterRole, setFilterRole] = useState<RoleId | "all">("all");
+  // Mirror of the URL ?q= — typing is local, push to URL on Enter/blur.
+  const [searchDraft, setSearchDraft] = useState(searchQuery);
 
   const [showInvite, setShowInvite] = useState(false);
   const [newEmail, setNewEmail] = useState("");
@@ -178,15 +202,26 @@ export default function AdminUsersClient({
     return assignableRoles.includes(u.role);
   };
 
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    return initialUsers.filter((u) => {
-      const matchSearch =
-        u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
-      const matchRole = filterRole === "all" || u.role === filterRole;
-      return matchSearch && matchRole;
+  // Backend has already filtered/paged via ?q=&page=. No client filter.
+  const filtered = initialUsers;
+
+  // URL helper that keeps q and page in sync.
+  const buildUrl = (updates: { q?: string | null; page?: number | null }) => {
+    const params = new URLSearchParams();
+    const q = updates.q !== undefined ? updates.q : searchQuery;
+    const page = updates.page !== undefined ? updates.page : currentPage;
+    if (q) params.set("q", q);
+    if (page && page > 1) params.set("page", String(page));
+    const qs = params.toString();
+    return qs ? `/admin/utilizadores?${qs}` : "/admin/utilizadores";
+  };
+
+  const applySearch = (value: string) => {
+    setSearchDraft(value);
+    startTransition(() => {
+      router.push(buildUrl({ q: value || null, page: 1 }));
     });
-  }, [initialUsers, search, filterRole]);
+  };
 
   const startEdit = (u: AdminUser) => {
     setEditingId(u.id);
@@ -427,8 +462,7 @@ export default function AdminUsersClient({
         <div>
           <h1 className="text-2xl font-black text-[#0F2C6B]">Utilizadores</h1>
           <p className="mt-1 text-sm text-gray-500">
-            {initialUsers.length} membros da equipa ·{" "}
-            {initialUsers.filter((u) => u.status === "active").length} activos
+            {statsTotal} membros da equipa · {statsActive} activos
           </p>
         </div>
         <button
@@ -440,45 +474,54 @@ export default function AdminUsersClient({
         </button>
       </div>
 
-      {/* ROLE PILLS */}
+      {/* ROLE COUNT CHIPS — display only, counts come from the
+          whole-table stats endpoint so they don't shrink when paging
+          or searching. */}
       <div className="mb-5 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => setFilterRole("all")}
-          className={`rounded-full border px-3 py-1.5 text-xs font-bold transition-all ${filterRole === "all" ? "border-[#0F2C6B] bg-[#0F2C6B] text-white" : "border-gray-200 bg-white text-gray-500 hover:border-gray-400"}`}
-        >
-          Todos ({initialUsers.length})
-        </button>
+        <span className="rounded-full border border-[#0F2C6B] bg-[#0F2C6B] px-3 py-1.5 text-xs font-bold text-white">
+          Total ({statsTotal})
+        </span>
         {ROLE_OPTIONS.map((r) => {
-          const count = initialUsers.filter((u) => u.role === r.id).length;
+          const count = statsByRole[UI_TO_API_ROLE[r.id]] ?? 0;
           if (count === 0) return null;
           return (
-            <button
+            <span
               key={r.id}
-              type="button"
-              onClick={() => setFilterRole(filterRole === r.id ? "all" : r.id)}
-              className={`rounded-full border-2 px-2.5 py-1.5 text-[10px] font-black transition-all ${filterRole === r.id ? `${r.color} border-current` : `${r.color} border-transparent hover:border-current`}`}
+              className={`rounded-full border-2 px-2.5 py-1.5 text-[10px] font-black ${r.color} border-transparent`}
             >
               {r.label} ({count})
-            </button>
+            </span>
           );
         })}
       </div>
 
-      {/* SEARCH */}
+      {/* SEARCH — drives the URL ?q= which the server uses to filter
+          the entire users table (not just the current page). */}
       <div className="mb-4 flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4">
         <span className="text-gray-400">🔍</span>
         <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Pesquisar por nome ou e-mail…"
+          value={searchDraft}
+          onChange={(e) => setSearchDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              applySearch(searchDraft.trim());
+            }
+          }}
+          onBlur={() => {
+            if (searchDraft.trim() !== searchQuery) {
+              applySearch(searchDraft.trim());
+            }
+          }}
+          placeholder="Pesquisar por nome ou e-mail (Enter)…"
           className="flex-1 bg-transparent py-3 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none"
         />
-        {search && (
+        {searchDraft && (
           <button
             type="button"
-            onClick={() => setSearch("")}
+            onClick={() => applySearch("")}
             className="text-xs text-gray-300 hover:text-gray-500"
+            aria-label="Limpar pesquisa"
           >
             ✕
           </button>
@@ -661,11 +704,7 @@ export default function AdminUsersClient({
           <Pagination
             current={currentPage}
             totalPages={totalPages}
-            hrefForPage={(p) =>
-              p === 1
-                ? "/admin/utilizadores"
-                : `/admin/utilizadores?page=${p}`
-            }
+            hrefForPage={(p) => buildUrl({ page: p })}
             className="flex items-center gap-1 py-0"
           />
         </div>

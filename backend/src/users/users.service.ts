@@ -22,6 +22,7 @@ import {
 import { InviteUserDto } from './dto/invite-user.dto';
 import { UpdateOwnDto } from './dto/update-own.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { ListUsersQueryDto } from './dto/list-users.query.dto';
 
 interface ActingUser {
   id: string;
@@ -74,16 +75,29 @@ export class UsersService {
     private readonly activity: ActivityLogService,
   ) {}
 
-  async list(query: PageQueryDto): Promise<PageResult<unknown>> {
+  async list(query: ListUsersQueryDto): Promise<PageResult<unknown>> {
     const { skip, take } = toSkipTake(query);
+    // Free-text search: matches partial name or email
+    // (case-insensitive, single substring). Surfaces in the URL as
+    // ?q= on /admin/utilizadores so it's both bookmarkable and
+    // back-button-safe.
+    const where = query.q
+      ? {
+          OR: [
+            { name: { contains: query.q, mode: 'insensitive' as const } },
+            { email: { contains: query.q, mode: 'insensitive' as const } },
+          ],
+        }
+      : {};
     const [items, total] = await Promise.all([
       this.prisma.user.findMany({
+        where,
         skip,
         take,
         orderBy: { createdAt: 'desc' },
         select: USER_PUBLIC_SELECT,
       }),
-      this.prisma.user.count(),
+      this.prisma.user.count({ where }),
     ]);
     return {
       items,
@@ -91,6 +105,33 @@ export class UsersService {
       page: query.page ?? 1,
       pageSize: query.pageSize ?? 20,
     };
+  }
+
+  /**
+   * Aggregate counts across the whole user table. Used by the admin
+   * /utilizadores stats so the numbers (total / active / by role)
+   * reflect the corpus, not just the visible page.
+   */
+  async getStats() {
+    const [total, active, byRoleRows] = await Promise.all([
+      this.prisma.user.count(),
+      this.prisma.user.count({ where: { isActive: true } }),
+      this.prisma.user.groupBy({
+        by: ['role'],
+        _count: { _all: true },
+      }),
+    ]);
+    const byRole: Record<string, number> = {
+      SUPER_ADMIN: 0,
+      EDITOR_CHEFE: 0,
+      EDITOR: 0,
+      JORNALISTA: 0,
+      REVISOR: 0,
+      MODERADOR: 0,
+      ANALISTA: 0,
+    };
+    for (const row of byRoleRows) byRole[row.role] = row._count._all;
+    return { total, active, byRole };
   }
 
   async invite(dto: InviteUserDto, actor: ActingUser) {

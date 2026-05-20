@@ -67,17 +67,32 @@ interface MeWithRoles {
 
 const PAGE_SIZE = 20;
 
+interface UsersStats {
+  total: number;
+  active: number;
+  byRole: Record<UserApi["role"], number>;
+}
+
 export default async function AdminUsersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; q?: string }>;
 }) {
-  const { page: pageParam } = await searchParams;
+  const { page: pageParam, q: qParam } = await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
+  const q = (qParam ?? "").trim();
 
-  const [res, meRes] = await Promise.all([
-    apiFetch(`/admin/users?page=${page}&pageSize=${PAGE_SIZE}`),
+  const listParams = new URLSearchParams();
+  listParams.set("page", String(page));
+  listParams.set("pageSize", String(PAGE_SIZE));
+  if (q) listParams.set("q", q);
+
+  const [res, meRes, statsRes] = await Promise.all([
+    apiFetch(`/admin/users?${listParams.toString()}`),
     apiFetch("/auth/me"),
+    // Whole-table totals so the header subtitle and role filter chips
+    // don't shrink when paginating or searching.
+    apiFetch("/admin/users/stats"),
   ]);
   const body = res.ok
     ? ((await res.json()) as PageResult<UserApi>)
@@ -92,6 +107,13 @@ export default async function AdminUsersPage({
   const perms = new Set(me?.permissions ?? []);
   const canResetPassword = perms.has("utilizadores.resetar_password");
   const canDelete = perms.has("utilizadores.eliminar");
+  const stats = statsRes.ok
+    ? ((await statsRes.json()) as UsersStats)
+    : {
+        total: 0,
+        active: 0,
+        byRole: {} as Record<UserApi["role"], number>,
+      };
   return (
     <AdminShell active="/admin/utilizadores">
       <AdminUsersClient
@@ -99,6 +121,10 @@ export default async function AdminUsersPage({
         totalUsers={body.total}
         currentPage={page}
         totalPages={totalPages}
+        searchQuery={q}
+        statsTotal={stats.total}
+        statsActive={stats.active}
+        statsByRole={stats.byRole}
         assignableRoles={assignableRoles}
         myRole={myRole}
         myUserId={me?.id ?? null}

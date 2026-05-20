@@ -31,6 +31,14 @@ const MAX_UPLOAD_BYTES = Number(
   process.env.MEDIA_MAX_UPLOAD_BYTES ?? 10 * 1024 * 1024,
 );
 
+/** Admin list query: page/pageSize + optional `q` filename search. */
+class ListMediaQueryDto extends PageQueryDto {
+  @IsOptional()
+  @IsString()
+  @Length(0, 100)
+  q?: string;
+}
+
 class CreateMediaDto {
   @IsUrl()
   url!: string;
@@ -66,7 +74,7 @@ export class MediaController {
 
   @Get()
   @RequirePermissions('media.carregar')
-  list(@Query() query: PageQueryDto) {
+  list(@Query() query: ListMediaQueryDto) {
     return this.service.list(query);
   }
 

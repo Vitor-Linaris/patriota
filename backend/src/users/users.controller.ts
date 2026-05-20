@@ -12,11 +12,11 @@ import { UsersService } from './users.service';
 import { RequirePermissions } from '../auth/permissions.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthUser } from '../auth/auth.service';
-import { PageQueryDto } from '../common/dto/pagination.dto';
 import { InviteUserDto } from './dto/invite-user.dto';
 import { UpdateOwnDto } from './dto/update-own.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { ChangeRoleDto, ChangeStatusDto } from './dto/change-role.dto';
+import { ListUsersQueryDto } from './dto/list-users.query.dto';
 
 @Controller()
 export class UsersController {
@@ -25,8 +25,17 @@ export class UsersController {
   // ── Admin ─────────────────────────────────────────────────────────
   @Get('admin/users')
   @RequirePermissions('utilizadores.ver')
-  list(@Query() query: PageQueryDto) {
+  list(@Query() query: ListUsersQueryDto) {
     return this.users.list(query);
+  }
+
+  // Whole-table counts so the stats row on /admin/utilizadores
+  // doesn't shrink with pagination. Placed before /:id to avoid
+  // route-precedence issues.
+  @Get('admin/users/stats')
+  @RequirePermissions('utilizadores.ver')
+  stats() {
+    return this.users.getStats();
   }
 
   @Post('admin/users')

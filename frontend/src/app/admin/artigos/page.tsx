@@ -83,19 +83,52 @@ function toAdminArticle(a: ArticleApi): AdminArticle {
 }
 
 const PAGE_SIZE = 20;
+const STATUSES = [
+  "RASCUNHO",
+  "EM_REVISAO",
+  "AGENDADO",
+  "PUBLICADO",
+  "ARQUIVADO",
+] as const;
+type ApiStatus = (typeof STATUSES)[number];
+
+interface StatsResponse {
+  total: number;
+  byStatus: Record<ApiStatus, number>;
+  totalViews: number;
+}
 
 export default async function AdminArticlesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; q?: string; status?: string }>;
 }) {
-  const { page: pageParam } = await searchParams;
+  const { page: pageParam, q: qParam, status: statusParam } =
+    await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
+  const q = (qParam ?? "").trim();
+  const status = STATUSES.includes(statusParam as ApiStatus)
+    ? (statusParam as ApiStatus)
+    : null;
 
-  const [articlesRes, categoriesRes, meRes] = await Promise.all([
-    apiFetch(`/admin/articles?page=${page}&pageSize=${PAGE_SIZE}`),
+  // Build the list URL with all active filters so the backend can do
+  // the real work — text search across title/summary, status filter,
+  // and pagination. The previous implementation searched only the
+  // currently loaded page, which broke as soon as the corpus exceeded
+  // one page.
+  const listParams = new URLSearchParams();
+  listParams.set("page", String(page));
+  listParams.set("pageSize", String(PAGE_SIZE));
+  if (q) listParams.set("q", q);
+  if (status) listParams.set("status", status);
+
+  const [articlesRes, categoriesRes, meRes, statsRes] = await Promise.all([
+    apiFetch(`/admin/articles?${listParams.toString()}`),
     apiFetch("/admin/categories"),
     apiFetch("/auth/me"),
+    // Stats endpoint covers the WHOLE corpus regardless of paging or
+    // filters — fixes "Publicados: 20" turning into "12" on page 2.
+    apiFetch("/admin/articles/stats"),
   ]);
   const articlesBody = articlesRes.ok
     ? ((await articlesRes.json()) as PageResult<ArticleApi>)
@@ -116,6 +149,13 @@ export default async function AdminArticlesPage({
     me?.permissions?.includes("artigos.aprovar") ||
     false;
   const totalPages = Math.max(1, Math.ceil(articlesBody.total / PAGE_SIZE));
+  const stats = statsRes.ok
+    ? ((await statsRes.json()) as StatsResponse)
+    : {
+        total: 0,
+        byStatus: {} as Record<ApiStatus, number>,
+        totalViews: 0,
+      };
 
   return (
     <AdminShell active="/admin/artigos">
@@ -124,6 +164,11 @@ export default async function AdminArticlesPage({
         totalArticles={articlesBody.total}
         currentPage={page}
         totalPages={totalPages}
+        searchQuery={q}
+        activeStatus={status}
+        statsTotal={stats.total}
+        statsByStatus={stats.byStatus}
+        statsTotalViews={stats.totalViews}
         categories={categories}
         canPublish={canPublish}
         canApprove={canApprove}

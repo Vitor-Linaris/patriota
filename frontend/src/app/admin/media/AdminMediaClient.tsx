@@ -25,21 +25,44 @@ function parseDimensions(text: string): { width?: number; height?: number } {
 export default function AdminMediaClient({
   initialItems,
   totalItems,
+  statsTotal,
   currentPage,
   totalPages,
+  searchQuery,
 }: {
   initialItems: MediaItem[];
+  /** Items in the CURRENT page + search filter. */
   totalItems: number;
+  /** Whole-library count, ignoring search. */
+  statsTotal: number;
   currentPage: number;
   totalPages: number;
+  searchQuery: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [selected, setSelected] = useState<MediaItem | null>(null);
-  const [search, setSearch] = useState("");
+  const [searchDraft, setSearchDraft] = useState(searchQuery);
   const [filter, setFilter] = useState<"todas" | "usadas" | "nao-usadas">(
     "todas",
   );
+
+  const buildUrl = (updates: { q?: string | null; page?: number | null }) => {
+    const params = new URLSearchParams();
+    const q = updates.q !== undefined ? updates.q : searchQuery;
+    const page = updates.page !== undefined ? updates.page : currentPage;
+    if (q) params.set("q", q);
+    if (page && page > 1) params.set("page", String(page));
+    const qs = params.toString();
+    return qs ? `/admin/media?${qs}` : "/admin/media";
+  };
+
+  const applySearch = (value: string) => {
+    setSearchDraft(value);
+    startTransition(() => {
+      router.push(buildUrl({ q: value || null, page: 1 }));
+    });
+  };
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadUrl, setUploadUrl] = useState("");
   const [uploadName, setUploadName] = useState("");
@@ -47,32 +70,34 @@ export default function AdminMediaClient({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
+  // Search is server-driven (?q=). "usadas/nao-usadas" filter is
+  // client-side for now because tracking "in use" requires joining to
+  // articles — not yet exposed. Until then it filters the current page.
   const filtered = useMemo(() => {
-    const q = search.toLowerCase();
     return initialItems.filter((item) => {
-      const matchSearch =
-        item.name.toLowerCase().includes(q) ||
-        (item.usedIn ?? []).some((a) => a.toLowerCase().includes(q));
       const matchFilter =
         filter === "todas"
           ? true
           : filter === "usadas"
             ? (item.usedIn ?? []).length > 0
             : (item.usedIn ?? []).length === 0;
-      return matchSearch && matchFilter;
+      return matchFilter;
     });
-  }, [initialItems, search, filter]);
+  }, [initialItems, filter]);
 
+  // "Total" comes from the whole-library count (statsTotal). The
+  // usadas / naoUsadas split is still page-scoped until we track
+  // "in use" server-side — labelled as such in the UI to be honest.
   const stats = useMemo(() => {
-    const usadas = initialItems.filter(
+    const usadasOnPage = initialItems.filter(
       (i) => (i.usedIn ?? []).length > 0,
     ).length;
     return {
-      total: initialItems.length,
-      usadas,
-      naoUsadas: initialItems.length - usadas,
+      total: statsTotal,
+      usadas: usadasOnPage,
+      naoUsadas: Math.max(0, initialItems.length - usadasOnPage),
     };
-  }, [initialItems]);
+  }, [initialItems, statsTotal]);
 
   const addFromUrl = () => {
     const url = uploadUrl.trim();
@@ -349,11 +374,32 @@ export default function AdminMediaClient({
         <div className="flex min-w-48 flex-1 items-center gap-2 rounded-xl border border-gray-200 bg-white px-4">
           <span className="text-sm text-gray-400">🔍</span>
           <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Pesquisar por nome ou artigo…"
+            value={searchDraft}
+            onChange={(e) => setSearchDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                applySearch(searchDraft.trim());
+              }
+            }}
+            onBlur={() => {
+              if (searchDraft.trim() !== searchQuery) {
+                applySearch(searchDraft.trim());
+              }
+            }}
+            placeholder="Pesquisar por nome de ficheiro (Enter)…"
             className="flex-1 bg-transparent py-2.5 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none"
           />
+          {searchDraft && (
+            <button
+              type="button"
+              onClick={() => applySearch("")}
+              className="text-xs text-gray-300 hover:text-gray-500"
+              aria-label="Limpar pesquisa"
+            >
+              ✕
+            </button>
+          )}
         </div>
       </div>
 
@@ -508,9 +554,7 @@ export default function AdminMediaClient({
           <Pagination
             current={currentPage}
             totalPages={totalPages}
-            hrefForPage={(p) =>
-              p === 1 ? "/admin/media" : `/admin/media?page=${p}`
-            }
+            hrefForPage={(p) => buildUrl({ page: p })}
             className="flex items-center gap-1 py-0"
           />
         </div>

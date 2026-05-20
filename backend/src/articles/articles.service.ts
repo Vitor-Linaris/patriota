@@ -74,6 +74,43 @@ export class ArticlesService {
   }
 
   // ── admin ──────────────────────────────────────────────────────────
+  /**
+   * Returns total counts by status across the ENTIRE article corpus,
+   * regardless of any filters applied to the list view. Used by the
+   * admin /admin/artigos stats row so the numbers don't shrink to
+   * just the visible page (e.g. "33 total → 20 on page 1 → 13 on
+   * page 2" was the bug we're fixing).
+   *
+   * Single query via `groupBy` is preferred over multiple counts:
+   * Postgres scans the table once with a HashAggregate.
+   */
+  async getStats() {
+    const [groups, viewsAgg] = await Promise.all([
+      this.prisma.article.groupBy({
+        by: ['status'],
+        _count: { _all: true },
+      }),
+      this.prisma.article.aggregate({ _sum: { views: true } }),
+    ]);
+    const byStatus: Record<string, number> = {
+      RASCUNHO: 0,
+      EM_REVISAO: 0,
+      AGENDADO: 0,
+      PUBLICADO: 0,
+      ARQUIVADO: 0,
+    };
+    let total = 0;
+    for (const g of groups) {
+      byStatus[g.status] = g._count._all;
+      total += g._count._all;
+    }
+    return {
+      total,
+      byStatus,
+      totalViews: viewsAgg._sum.views ?? 0,
+    };
+  }
+
   async list(
     query: ListArticlesQueryDto,
   ): Promise<PageResult<unknown>> {

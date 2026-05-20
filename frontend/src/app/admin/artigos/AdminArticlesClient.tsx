@@ -747,27 +747,45 @@ export default function AdminArticlesClient({
   totalArticles,
   currentPage,
   totalPages,
+  searchQuery,
+  activeStatus,
+  statsTotal,
+  statsByStatus,
+  statsTotalViews,
   categories,
   canPublish,
   canApprove,
 }: {
   initialArticles: AdminArticle[];
-  /** Total across all pages — drives the "Mostrando X de Y" footer. */
+  /** Matches the current view (page + filters) — drives the
+   *  "X resultados" indicator under the table. */
   totalArticles: number;
   /** 1-based current page from ?page= query param. */
   currentPage: number;
-  /** Total number of pages (already computed server-side). */
+  /** Total number of pages for the current filter set. */
   totalPages: number;
+  /** Current text search from ?q=. Used to hydrate the search input
+   *  on first render; subsequent edits push back to the URL. */
+  searchQuery: string;
+  /** Current ?status= filter. */
+  activeStatus: ApiStatus | null;
+  /** WHOLE-corpus total, ignoring filters — for the headline stat. */
+  statsTotal: number;
+  /** WHOLE-corpus per-status counts — drives the stat cards row. */
+  statsByStatus: Record<ApiStatus, number>;
+  /** WHOLE-corpus sum of views. */
+  statsTotalViews: number;
   categories: CategoryOption[];
   canPublish: boolean;
   canApprove: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [search, setSearch] = useState("");
-  const [activeFilter, setActiveFilter] = useState<UiStatus | "todos">(
-    "todos",
-  );
+  // Local mirror of the search input so typing feels instant. We
+  // debounce-push the value to the URL (and let the server re-render
+  // with the new ?q=) — keeps the input snappy while still doing the
+  // real search across the whole corpus on the backend.
+  const [searchDraft, setSearchDraft] = useState(searchQuery);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorState, setEditorState] = useState<EditorState | null>(null);
@@ -775,32 +793,50 @@ export default function AdminArticlesClient({
   const [rejectTarget, setRejectTarget] = useState<AdminArticle | null>(null);
   const [rejectReason, setRejectReason] = useState("");
 
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    return initialArticles.filter((a) => {
-      const matchSearch =
-        a.title.toLowerCase().includes(q) ||
-        a.authorName.toLowerCase().includes(q);
-      const matchStatus =
-        activeFilter === "todos" || API_TO_UI[a.status] === activeFilter;
-      return matchSearch && matchStatus;
-    });
-  }, [initialArticles, search, activeFilter]);
+  // The articles ARE the page from the server; no client-side filter.
+  const filtered = initialArticles;
 
-  const counts: Record<string, number> = useMemo(
-    () => ({
-      todos: initialArticles.length,
-      publicado: initialArticles.filter((a) => a.status === "PUBLICADO")
-        .length,
-      em_revisao: initialArticles.filter((a) => a.status === "EM_REVISAO")
-        .length,
-      rascunho: initialArticles.filter((a) => a.status === "RASCUNHO").length,
-      agendado: initialArticles.filter((a) => a.status === "AGENDADO").length,
-      arquivado: initialArticles.filter((a) => a.status === "ARQUIVADO")
-        .length,
-    }),
-    [initialArticles],
-  );
+  // Builds the next URL with the given updates applied. Empty values
+  // are dropped so we get clean URLs (e.g. /admin/artigos instead of
+  // /admin/artigos?q=&page=1&status=todos).
+  const buildUrl = (
+    updates: { q?: string | null; status?: ApiStatus | null; page?: number | null },
+  ) => {
+    const params = new URLSearchParams();
+    const q = updates.q !== undefined ? updates.q : searchQuery;
+    const status = updates.status !== undefined ? updates.status : activeStatus;
+    const page = updates.page !== undefined ? updates.page : currentPage;
+    if (q) params.set("q", q);
+    if (status) params.set("status", status);
+    if (page && page > 1) params.set("page", String(page));
+    const qs = params.toString();
+    return qs ? `/admin/artigos?${qs}` : "/admin/artigos";
+  };
+
+  // Whenever search/filter changes we reset to page 1 (otherwise the
+  // user could land on a now-empty page 5).
+  const applySearch = (value: string) => {
+    setSearchDraft(value);
+    startTransition(() => {
+      router.push(buildUrl({ q: value || null, page: 1 }));
+    });
+  };
+
+  const applyStatus = (next: ApiStatus | null) => {
+    startTransition(() => {
+      router.push(buildUrl({ status: next, page: 1 }));
+    });
+  };
+
+  // Stat-card counts come from /admin/articles/stats — always the
+  // whole corpus, never just the current page.
+  const counts = {
+    publicado: statsByStatus.PUBLICADO ?? 0,
+    em_revisao: statsByStatus.EM_REVISAO ?? 0,
+    rascunho: statsByStatus.RASCUNHO ?? 0,
+    agendado: statsByStatus.AGENDADO ?? 0,
+    arquivado: statsByStatus.ARQUIVADO ?? 0,
+  };
 
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
@@ -1004,12 +1040,9 @@ export default function AdminArticlesClient({
         <div>
           <h1 className="text-2xl font-black text-[#0F2C6B]">Artigos</h1>
           <p className="mt-1 text-sm text-gray-500">
-            {intFmt.format(initialArticles.length)} artigos no total ·{" "}
+            {intFmt.format(statsTotal)} artigos no total ·{" "}
             {intFmt.format(counts.publicado)} publicados ·{" "}
-            {intFmt.format(
-              initialArticles.reduce((sum, a) => sum + (a.views ?? 0), 0),
-            )}{" "}
-            visitas acumuladas
+            {intFmt.format(statsTotalViews)} visitas acumuladas
           </p>
         </div>
         <button
@@ -1068,30 +1101,65 @@ export default function AdminArticlesClient({
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="flex items-center divide-x divide-gray-100 overflow-hidden rounded-xl border border-gray-200 bg-white">
-          {FILTERS.map((f) => (
-            <button
-              key={f.key}
-              type="button"
-              onClick={() => setActiveFilter(f.key)}
-              className={`whitespace-nowrap px-4 py-2 text-xs font-bold transition-colors ${activeFilter === f.key ? "bg-[#0F2C6B] text-white" : "text-gray-500 hover:bg-gray-50"}`}
-            >
-              {f.label}
-              <span
-                className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[9px] ${activeFilter === f.key ? "bg-white/20 text-white" : "bg-gray-100 text-gray-400"}`}
+          {FILTERS.map((f) => {
+            const isActive =
+              f.key === "todos"
+                ? activeStatus === null
+                : UI_TO_API[f.key as UiStatus] === activeStatus;
+            const count =
+              f.key === "todos"
+                ? statsTotal
+                : statsByStatus[UI_TO_API[f.key as UiStatus]] ?? 0;
+            return (
+              <button
+                key={f.key}
+                type="button"
+                onClick={() =>
+                  applyStatus(
+                    f.key === "todos" ? null : UI_TO_API[f.key as UiStatus],
+                  )
+                }
+                className={`whitespace-nowrap px-4 py-2 text-xs font-bold transition-colors ${isActive ? "bg-[#0F2C6B] text-white" : "text-gray-500 hover:bg-gray-50"}`}
               >
-                {counts[f.key]}
-              </span>
-            </button>
-          ))}
+                {f.label}
+                <span
+                  className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[9px] ${isActive ? "bg-white/20 text-white" : "bg-gray-100 text-gray-400"}`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
         </div>
         <div className="flex min-w-48 flex-1 items-center gap-2 rounded-xl border border-gray-200 bg-white px-4">
           <span className="text-sm text-gray-400">🔍</span>
           <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Pesquisar artigos ou autores…"
+            value={searchDraft}
+            onChange={(e) => setSearchDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                applySearch(searchDraft.trim());
+              }
+            }}
+            onBlur={() => {
+              if (searchDraft.trim() !== searchQuery) {
+                applySearch(searchDraft.trim());
+              }
+            }}
+            placeholder="Pesquisar em todo o site (Enter)…"
             className="flex-1 bg-transparent py-2.5 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none"
           />
+          {searchDraft && (
+            <button
+              type="button"
+              onClick={() => applySearch("")}
+              className="text-xs text-gray-300 hover:text-gray-500"
+              aria-label="Limpar pesquisa"
+            >
+              ✕
+            </button>
+          )}
         </div>
       </div>
 
@@ -1327,15 +1395,18 @@ export default function AdminArticlesClient({
         </table>
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-5 py-3 text-xs text-gray-400">
           <span>
-            Página {currentPage} de {totalPages} · {intFmt.format(totalArticles)}{" "}
-            {totalArticles === 1 ? "artigo" : "artigos"} no total
+            Página {currentPage} de {totalPages} ·{" "}
+            {intFmt.format(totalArticles)}{" "}
+            {totalArticles === 1 ? "resultado" : "resultados"}
+            {(searchQuery || activeStatus) &&
+              ` (de ${intFmt.format(statsTotal)} no total)`}
           </span>
           <Pagination
             current={currentPage}
             totalPages={totalPages}
-            hrefForPage={(p) =>
-              p === 1 ? "/admin/artigos" : `/admin/artigos?page=${p}`
-            }
+            // Preserves the active filter and search across page
+            // navigation so the user doesn't lose context when paging.
+            hrefForPage={(p) => buildUrl({ page: p })}
             className="flex items-center gap-1 py-0"
           />
         </div>

@@ -51,16 +51,30 @@ const PAGE_SIZE = 24;
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; q?: string }>;
 }) {
-  const { page: pageParam } = await searchParams;
+  const { page: pageParam, q: qParam } = await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
-  const res = await apiFetch(
-    `/admin/media?page=${page}&pageSize=${PAGE_SIZE}`,
-  );
+  const q = (qParam ?? "").trim();
+
+  const listParams = new URLSearchParams();
+  listParams.set("page", String(page));
+  listParams.set("pageSize", String(PAGE_SIZE));
+  if (q) listParams.set("q", q);
+
+  // Fire the page query AND a no-search count query in parallel — the
+  // latter feeds the "X imagens no total" stat (always the full
+  // library count, ignores the search filter).
+  const [res, totalRes] = await Promise.all([
+    apiFetch(`/admin/media?${listParams.toString()}`),
+    apiFetch("/admin/media?pageSize=1"),
+  ]);
   const body = res.ok
     ? ((await res.json()) as PageResult<MediaApi>)
     : { items: [], total: 0, page: 1, pageSize: PAGE_SIZE };
+  const totalLibrary = totalRes.ok
+    ? ((await totalRes.json()) as PageResult<MediaApi>).total
+    : body.total;
   const items = body.items.map(toMediaItem);
   const totalPages = Math.max(1, Math.ceil(body.total / PAGE_SIZE));
   return (
@@ -68,8 +82,10 @@ export default async function Page({
       <AdminMediaClient
         initialItems={items}
         totalItems={body.total}
+        statsTotal={totalLibrary}
         currentPage={page}
         totalPages={totalPages}
+        searchQuery={q}
       />
     </AdminShell>
   );
