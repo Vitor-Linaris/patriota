@@ -2,15 +2,35 @@ import Image from "next/image";
 import Link from "next/link";
 import { Container } from "../Container";
 
-const NAV = [
+interface NavItem {
+  href: string;
+  label: string;
+  slug?: string;
+  strong?: boolean;
+}
+
+/**
+ * Primary top navigation. Hardcoded because the editorial order
+ * matters more than the DB row order — "Última Hora" must be first,
+ * "Política" must be second, etc.
+ *
+ * `TOP_NAV_SLUGS` is exported so SecondaryNav can de-dupe — items
+ * here are filtered out of the secondary bar, otherwise the two
+ * menus repeat the same categories one above the other.
+ */
+const NAV: NavItem[] = [
   { href: "/categoria/ultima-hora", label: "Última Hora", strong: true },
-  { href: "/categoria/politica", label: "Política" },
-  { href: "/categoria/economia", label: "Economia" },
-  { href: "/categoria/sociedade", label: "Sociedade" },
-  { href: "/categoria/investigacao", label: "Investigação" },
-  { href: "/categoria/opiniao", label: "Opinião" },
-  { href: "/categoria/multimedia", label: "Multimédia" },
+  { href: "/categoria/politica", label: "Política", slug: "politica" },
+  { href: "/categoria/economia", label: "Economia", slug: "economia" },
+  { href: "/categoria/sociedade", label: "Sociedade", slug: "sociedade" },
+  { href: "/categoria/investigacao", label: "Investigação", slug: "investigacao" },
+  { href: "/categoria/opiniao", label: "Opinião", slug: "opiniao" },
+  { href: "/categoria/multimedia", label: "Multimédia", slug: "multimedia" },
 ];
+
+export const TOP_NAV_SLUGS: ReadonlySet<string> = new Set(
+  NAV.map((n) => n.slug).filter((s): s is string => Boolean(s)),
+);
 
 export function SiteHeader() {
   return (
