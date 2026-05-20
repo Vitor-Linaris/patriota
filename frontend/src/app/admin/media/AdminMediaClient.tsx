@@ -671,32 +671,48 @@ export default function AdminMediaClient({
               {/* Usage indicator + sample article titles. Helps the
                   admin understand the consequence of deleting before
                   they click. */}
+              {/* Article usage block. Mirrors the layout of the
+                  delete-confirm modal so the same "title + Editar →"
+                  affordance is available whenever the panel is open —
+                  no need to click the trash icon just to discover
+                  where the image is referenced. */}
               {(selected.articleCount ?? 0) > 0 ? (
                 <div className="mb-4 rounded-lg border border-green-200 bg-green-50 px-3 py-2">
-                  <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-green-700">
+                  <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-green-700">
                     Em uso em {selected.articleCount}{" "}
                     {selected.articleCount === 1 ? "artigo" : "artigos"}
                   </p>
                   {(selected.usedIn ?? []).length > 0 && (
-                    <ul className="space-y-0.5 text-[11px] text-green-900">
+                    <ul className="space-y-1 text-[12px]">
                       {(selected.usedIn ?? []).map((a) => (
-                        <li key={a.id} className="line-clamp-1">
-                          ·{" "}
+                        <li
+                          key={a.id}
+                          className="flex items-center justify-between gap-2"
+                        >
+                          <span className="line-clamp-1 text-green-900">
+                            {a.title}
+                          </span>
                           <button
                             type="button"
                             onClick={() => openArticleEditor(a.id)}
-                            className="underline decoration-green-400 hover:decoration-green-700"
+                            className="shrink-0 rounded-md bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-green-700 ring-1 ring-green-300 hover:bg-green-100"
                           >
-                            {a.title}
+                            Editar →
                           </button>
                         </li>
                       ))}
                       {(selected.articleCount ?? 0) >
                         (selected.usedIn ?? []).length && (
-                        <li className="text-[10px] italic text-green-700">
+                        <li className="text-[11px] italic text-green-700">
                           (e mais{" "}
                           {(selected.articleCount ?? 0) -
-                            (selected.usedIn ?? []).length}
+                            (selected.usedIn ?? []).length}{" "}
+                          artigo
+                          {(selected.articleCount ?? 0) -
+                            (selected.usedIn ?? []).length ===
+                          1
+                            ? ""
+                            : "s"}
                           …)
                         </li>
                       )}
