@@ -1,30 +1,13 @@
 import { FEATURES } from "@/lib/features";
 import { NewsletterForm } from "@/components/home/NewsletterForm";
+import { AdSlot } from "@/components/ads/AdSlot";
+import type { Ad } from "@/lib/ads";
 
-export function ArticleSidebar() {
+export function ArticleSidebar({ ad }: { ad?: Ad | null } = {}) {
   return (
     <aside className="flex flex-col gap-6">
-      {/* Santander ad */}
-      <section className="overflow-hidden rounded-lg border border-slate-200 bg-gradient-to-br from-red-50 to-orange-50 p-6 text-center shadow-sm">
-        <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-lg bg-white text-3xl font-black text-red-600 shadow">
-          S
-        </div>
-        <p className="text-[15px] font-bold text-slate-900">
-          Santander — Conta Jovem sem custos
-        </p>
-        <p className="mt-2 text-[13px] text-slate-600">
-          Para jovens até 30 anos. Cartão gratuito, transferências ilimitadas.
-        </p>
-        <a
-          href="#"
-          className="mt-4 inline-flex rounded-md bg-red-600 px-4 py-1.5 text-[13px] font-semibold text-white hover:bg-red-700"
-        >
-          Abrir conta
-        </a>
-        <p className="mt-3 text-[10px] uppercase tracking-wider text-slate-400">
-          Publicidade
-        </p>
-      </section>
+      {/* Sidebar ad slot (article-sidebar, 300×250 IAB MPU). */}
+      <AdSlot ad={ad} variant="none" />
 
       {/* Acompanhar tema — feature-flagged (requires reader accounts) */}
       {FEATURES.topicFollow && (

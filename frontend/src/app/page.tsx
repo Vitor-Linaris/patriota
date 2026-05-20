@@ -48,7 +48,7 @@ export default async function HomePage() {
               <InvestigationSection items={home.investigation} />
             </div>
             <div className="col-span-1 lg:col-span-4">
-              <Sidebar />
+              <Sidebar ad={ads["homepage-sidebar"]} />
             </div>
           </div>
         </Container>

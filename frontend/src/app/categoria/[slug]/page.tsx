@@ -195,6 +195,7 @@ export default async function CategoryPage({
               <CategorySidebar
                 currentSlug={category.slug}
                 newsletterTitle={`Receba o melhor de ${category.label}`}
+                ad={ads["category-sidebar"]}
               />
             </div>
           </div>

@@ -3,10 +3,13 @@ import { SectionMarker } from "./SectionMarker";
 import { getCategories } from "@/lib/categories";
 import { listPublicArticles } from "@/lib/public-api";
 import { NewsletterForm } from "@/components/home/NewsletterForm";
+import { AdSlot } from "@/components/ads/AdSlot";
+import type { Ad } from "@/lib/ads";
 
 interface CategorySidebarProps {
   currentSlug: string;
   newsletterTitle: string;
+  ad?: Ad | null;
 }
 
 function initialsOf(name: string | null): string {
@@ -22,6 +25,7 @@ function initialsOf(name: string | null): string {
 export async function CategorySidebar({
   currentSlug,
   newsletterTitle,
+  ad,
 }: CategorySidebarProps) {
   const [cats, opinion] = await Promise.all([
     getCategories(),
@@ -77,27 +81,8 @@ export async function CategorySidebar({
         </section>
       )}
 
-      {/* NOS Ad */}
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-gradient-to-br from-rose-50 to-amber-50 p-6 text-center shadow-sm">
-        <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-lg bg-white text-3xl font-black text-rose-500 shadow">
-          N
-        </div>
-        <p className="text-[15px] font-bold text-slate-900">
-          NOS — Internet Fibra 1 Gbps
-        </p>
-        <p className="mt-2 text-[13px] text-slate-600">
-          Velocidade máxima para toda a família. A partir de 29,99€/mês.
-        </p>
-        <a
-          href="#"
-          className="mt-4 inline-flex rounded-md bg-rose-500 px-4 py-1.5 text-[13px] font-semibold text-white hover:bg-rose-600"
-        >
-          Ver oferta
-        </a>
-        <p className="mt-3 text-[10px] uppercase tracking-wider text-slate-400">
-          Publicidade
-        </p>
-      </section>
+      {/* Sidebar ad slot (category-sidebar, 300×250 IAB MPU). */}
+      <AdSlot ad={ad} variant="none" />
 
       {/* Outras Rubricas */}
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">

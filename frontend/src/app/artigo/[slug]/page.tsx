@@ -176,6 +176,13 @@ export default async function ArticlePage({
                 Quaisquer correcções relevantes são registadas no rodapé.
               </div>
 
+              {/* In-content ad (article-incontent, 336×280 IAB Large
+                  Rectangle). Centred between the body and the author
+                  bio so it doesn't break the reading flow mid-paragraph. */}
+              <div className="mt-10 flex justify-center">
+                <AdSlot ad={ads["article-incontent"]} variant="none" />
+              </div>
+
               {/* Author bio */}
               <div className="mt-10">
                 <AuthorBio
@@ -233,7 +240,7 @@ export default async function ArticlePage({
 
             {/* Sidebar */}
             <div className="col-span-1 lg:col-span-4">
-              <ArticleSidebar />
+              <ArticleSidebar ad={ads["article-sidebar"]} />
             </div>
           </div>
         </Container>

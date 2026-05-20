@@ -3,6 +3,8 @@ import { listMostRead, listPublicArticles } from "@/lib/public-api";
 import { NewsletterForm } from "./NewsletterForm";
 import { FEATURES } from "@/lib/features";
 import { imageVariant } from "@/lib/images";
+import { AdSlot } from "@/components/ads/AdSlot";
+import type { Ad } from "@/lib/ads";
 
 function initialsOf(name: string | null): string {
   if (!name) return "—";
@@ -14,7 +16,7 @@ function initialsOf(name: string | null): string {
     .join("");
 }
 
-export async function Sidebar() {
+export async function Sidebar({ ad }: { ad?: Ad | null } = {}) {
   const [mostRead, opinion] = await Promise.all([
     listMostRead(4),
     listPublicArticles({ category: "opiniao", pageSize: 3 }),
@@ -88,27 +90,10 @@ export async function Sidebar() {
         )}
       </section>
 
-      {/* NOS Ad card */}
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-gradient-to-br from-rose-50 to-amber-50 p-6 text-center shadow-sm">
-        <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-lg bg-white text-3xl font-black text-rose-500 shadow">
-          N
-        </div>
-        <p className="text-[15px] font-bold text-slate-900">
-          NOS — Internet Fibra 1 Gbps
-        </p>
-        <p className="mt-2 text-[13px] text-slate-600">
-          Velocidade máxima para toda a família. A partir de 29,99€/mês.
-        </p>
-        <a
-          href="#"
-          className="mt-4 inline-flex rounded-md bg-rose-500 px-4 py-1.5 text-[13px] font-semibold text-white hover:bg-rose-600"
-        >
-          Ver oferta
-        </a>
-        <p className="mt-3 text-[10px] uppercase tracking-wider text-slate-400">
-          Publicidade
-        </p>
-      </section>
+      {/* Sidebar ad slot (homepage-sidebar, 300×250 IAB MPU). The
+          AdSlot collapses to nothing when the admin hasn't configured
+          a banner — no placeholder card. */}
+      <AdSlot ad={ad} variant="none" />
 
       {/* Opinion */}
       {opinion.items.length > 0 && (
