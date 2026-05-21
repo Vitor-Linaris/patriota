@@ -461,10 +461,10 @@ export class ArticlesService {
     const [featured, ...rest] = articles;
     return {
       featured: featured ?? null,
-      // Hero side stack: 4 small cards next to the big featured.
-      side: rest.slice(0, 4),
-      latest: rest.slice(4, 8),
-      investigation: rest.slice(8, 10),
+      // Hero side stack: 3 small cards next to the big featured.
+      side: rest.slice(0, 3),
+      latest: rest.slice(3, 7),
+      investigation: rest.slice(7, 9),
     };
   }
 }
