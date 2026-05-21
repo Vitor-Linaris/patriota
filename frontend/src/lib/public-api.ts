@@ -174,6 +174,36 @@ export const getAdsByPage = cache(
   },
 );
 
+export interface SocialLinks {
+  twitter?: string;
+  facebook?: string;
+  instagram?: string;
+  linkedin?: string;
+  youtube?: string;
+}
+
+/** Fetch the public `redes` settings section so the footer can
+ *  render the social icons. Returns empty object on error so the
+ *  footer simply hides every icon rather than blowing up. */
+export const getSocialLinks = cache(async (): Promise<SocialLinks> => {
+  try {
+    const res = await fetch(`${apiUrl()}/public/settings/redes`, {
+      cache: "no-store",
+    });
+    if (!res.ok) return {};
+    const data = (await res.json()) as Partial<SocialLinks>;
+    return {
+      twitter: data.twitter || undefined,
+      facebook: data.facebook || undefined,
+      instagram: data.instagram || undefined,
+      linkedin: data.linkedin || undefined,
+      youtube: data.youtube || undefined,
+    };
+  } catch {
+    return {};
+  }
+});
+
 export function timeAgo(iso: string | null): string {
   if (!iso) return "—";
   const date = new Date(iso);

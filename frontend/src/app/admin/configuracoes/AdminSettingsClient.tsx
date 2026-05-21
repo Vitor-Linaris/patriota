@@ -491,12 +491,21 @@ export default function AdminSettingsClient({
               <p className="mb-5 text-xs text-gray-400">
                 SMTP para envio de notificações e newsletters.
               </p>
-              <div className="mb-5 flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4">
-                <span className="text-lg text-blue-500">ℹ</span>
-                <p className="text-xs text-blue-700">
-                  As credenciais SMTP são encriptadas. Guarde em variáveis de
-                  ambiente para produção.
-                </p>
+              <div className="mb-5 flex items-start gap-3 rounded-xl border-l-4 border-amber-400 bg-amber-50 p-4">
+                <span className="text-lg text-amber-500">⚠</span>
+                <div className="text-sm text-amber-900">
+                  <p className="mb-1 font-bold uppercase tracking-wider text-amber-700">
+                    Funcionalidade futura
+                  </p>
+                  <p className="leading-relaxed">
+                    O envio de e-mails via SMTP <strong>ainda não está
+                    activo</strong>. Os campos abaixo são guardados na base
+                    de dados para futura integração, mas o sistema não envia
+                    nenhum e-mail no momento (convites, notificações,
+                    newsletters). Esta funcionalidade será implementada numa
+                    fase posterior.
+                  </p>
+                </div>
               </div>
               <Field label="Servidor SMTP" hint="Hostname do servidor de envio.">
                 <Input value={smtpHost} onChange={setSmtpHost} mono placeholder="smtp.exemplo.com" />
@@ -642,8 +651,16 @@ export default function AdminSettingsClient({
               <p className="mb-5 text-xs text-gray-400">
                 Perfis e integrações com redes sociais.
               </p>
+              <div className="mb-5 flex items-start gap-3 rounded-xl border-l-4 border-green-400 bg-green-50 p-4">
+                <span className="text-lg text-green-500">✓</span>
+                <p className="text-sm leading-relaxed text-green-900">
+                  Os links preenchidos abaixo aparecem como ícones no{" "}
+                  <strong>rodapé público</strong> (por baixo do logo).
+                  Deixe vazio o que não quiser mostrar.
+                </p>
+              </div>
               {[
-                { label: "Twitter / X", value: twitter, set: setTwitter, placeholder: "@handle" },
+                { label: "Twitter / X", value: twitter, set: setTwitter, placeholder: "https://twitter.com/opatriota" },
                 { label: "Facebook", value: facebook, set: setFacebook, placeholder: "https://facebook.com/..." },
                 { label: "Instagram", value: instagram, set: setInstagram, placeholder: "@handle" },
                 { label: "LinkedIn", value: linkedin, set: setLinkedin, placeholder: "https://linkedin.com/company/..." },
@@ -775,6 +792,26 @@ export default function AdminSettingsClient({
               <p className="mb-5 text-xs text-gray-400">
                 Protecção de contas e controlo de acesso.
               </p>
+              <div className="mb-5 flex items-start gap-3 rounded-xl border-l-4 border-amber-400 bg-amber-50 p-4">
+                <span className="text-lg text-amber-500">⚠</span>
+                <div className="text-sm text-amber-900">
+                  <p className="mb-1 font-bold uppercase tracking-wider text-amber-700">
+                    Estado das defesas
+                  </p>
+                  <ul className="space-y-0.5 text-xs leading-relaxed">
+                    <li>
+                      <strong>Activos</strong>: log de auditoria (todas as
+                      acções administrativas são registadas) e limite de
+                      pedidos no login (rate limit global).
+                    </li>
+                    <li>
+                      <strong>Em desenvolvimento</strong>: 2FA, timeout de
+                      sessão configurável, whitelist de IPs e reCAPTCHA — os
+                      valores são guardados mas ainda não são aplicados.
+                    </li>
+                  </ul>
+                </div>
+              </div>
               <Field
                 label="Autenticação em dois factores"
                 hint="Obriga todos os administradores a usar 2FA."

@@ -4,6 +4,9 @@ import Link from "next/link";
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { changePasswordAction, updateProfileAction } from "./actions";
+import { uploadMediaFileAction } from "@/app/admin/media/actions";
+import { validateImageUpload } from "@/lib/upload-limits";
+import { imageVariant } from "@/lib/images";
 
 interface ProfileData {
   name: string;
@@ -13,6 +16,15 @@ interface ProfileData {
   phone: string;
   avatarUrl: string;
   avatarInitials: string;
+}
+
+interface NotificationPrefs {
+  newArticle: boolean;
+  comments: boolean;
+  newsletter: boolean;
+  weeklyReport: boolean;
+  systemAlerts: boolean;
+  loginAlerts: boolean;
 }
 
 type Section = "perfil" | "seguranca" | "notificacoes" | "sessoes";
@@ -28,9 +40,10 @@ function initials(name: string) {
 
 interface Props {
   initial: ProfileData;
+  initialNotifs: NotificationPrefs;
 }
 
-export default function AdminProfileClient({ initial }: Props) {
+export default function AdminProfileClient({ initial, initialNotifs }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [section, setSection] = useState<Section>("perfil");
@@ -38,7 +51,8 @@ export default function AdminProfileClient({ initial }: Props) {
   const [draft, setDraft] = useState<ProfileData>(initial);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [avatarPreview, setAvatarPreview] = useState("");
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
@@ -50,25 +64,38 @@ export default function AdminProfileClient({ initial }: Props) {
     confirm: false,
   });
 
-  const [notifs, setNotifs] = useState({
-    newArticle: true,
-    comments: true,
-    newsletter: false,
-    weeklyReport: true,
-    systemAlerts: true,
-    loginAlerts: true,
-  });
+  const [notifs, setNotifs] = useState<NotificationPrefs>(initialNotifs);
+  const [notifsSaved, setNotifsSaved] = useState(false);
+  const [notifsError, setNotifsError] = useState<string | null>(null);
 
+  /**
+   * Avatar upload through the standard media pipeline. The file is
+   * sent to /admin/media/upload, returns the 3-variant WebP set, and
+   * we persist the canonical (large) URL on the user record. The
+   * preview here uses the medium variant to keep payload light.
+   */
   function handleAvatarFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
+    e.target.value = ""; // reset so picking the same file again still triggers
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const url = ev.target?.result as string;
-      setAvatarPreview(url);
-      setDraft((d) => ({ ...d, avatarUrl: url }));
-    };
-    reader.readAsDataURL(file);
+    const reason = validateImageUpload(file);
+    if (reason) {
+      setAvatarError(reason);
+      return;
+    }
+    setAvatarError(null);
+    setAvatarUploading(true);
+    const fd = new FormData();
+    fd.append("file", file);
+    startTransition(async () => {
+      const res = await uploadMediaFileAction(fd);
+      setAvatarUploading(false);
+      if (!res.ok) {
+        setAvatarError(res.error);
+        return;
+      }
+      setDraft((d) => ({ ...d, avatarUrl: res.media.url }));
+    });
   }
 
   function saveProfile() {
@@ -77,7 +104,7 @@ export default function AdminProfileClient({ initial }: Props) {
       name: draft.name.trim(),
       bio: draft.bio,
       phone: draft.phone,
-      avatarUrl: avatarPreview || draft.avatarUrl,
+      avatarUrl: draft.avatarUrl,
     };
     startTransition(async () => {
       const res = await updateProfileAction(payload);
@@ -87,12 +114,10 @@ export default function AdminProfileClient({ initial }: Props) {
       }
       const updated = {
         ...draft,
-        avatarUrl: payload.avatarUrl,
-        avatarInitials: initials(draft.name),
+        avatarInitials: initials(draft.name) || draft.email.slice(0, 2).toUpperCase(),
       };
       setProfile(updated);
       setDraft(updated);
-      setAvatarPreview("");
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
       router.refresh();
@@ -125,7 +150,30 @@ export default function AdminProfileClient({ initial }: Props) {
     });
   }
 
-  const avatarSrc = avatarPreview || profile.avatarUrl;
+  function saveNotifs() {
+    setNotifsError(null);
+    startTransition(async () => {
+      const res = await updateProfileAction({
+        notificationPrefs: notifs as unknown as Record<string, boolean>,
+      });
+      if (!res.ok) {
+        setNotifsError(res.error);
+        return;
+      }
+      setNotifsSaved(true);
+      setTimeout(() => setNotifsSaved(false), 3000);
+    });
+  }
+
+  // Sidebar avatar uses the small variant if available (snappy
+  // server-side render), big card uses medium.
+  const sidebarAvatar = draft.avatarUrl
+    ? imageVariant(draft.avatarUrl, "small") ?? draft.avatarUrl
+    : "";
+  const mainAvatar = draft.avatarUrl
+    ? imageVariant(draft.avatarUrl, "medium") ?? draft.avatarUrl
+    : "";
+
   const pwStrength =
     pw.next.length === 0
       ? 0
@@ -160,16 +208,13 @@ export default function AdminProfileClient({ initial }: Props) {
     { key: "perfil", label: "Informações do perfil", icon: "◎" },
     { key: "seguranca", label: "Segurança", icon: "⊛" },
     { key: "notificacoes", label: "Notificações", icon: "◈" },
-    { key: "sessoes", label: "Sessões ativas", icon: "◑" },
+    { key: "sessoes", label: "Sessão atual", icon: "◑" },
   ];
 
   return (
     <main className="bg-[#f6f7fb] p-6">
       <div className="mb-6 flex items-center gap-2 text-sm text-gray-400">
-        <Link
-          href="/admin"
-          className="transition-colors hover:text-[#0F2C6B]"
-        >
+        <Link href="/admin" className="transition-colors hover:text-[#0F2C6B]">
           Dashboard
         </Link>
         <span>/</span>
@@ -182,10 +227,10 @@ export default function AdminProfileClient({ initial }: Props) {
           {/* Avatar card */}
           <div className="rounded-2xl border border-gray-200 bg-white p-6 text-center">
             <div className="group relative mx-auto mb-4 h-20 w-20">
-              {avatarSrc ? (
+              {sidebarAvatar ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={avatarSrc}
+                  src={sidebarAvatar}
                   alt={profile.name}
                   className="h-20 w-20 rounded-full border-4 border-[#0F2C6B]/10 object-cover"
                 />
@@ -223,10 +268,14 @@ export default function AdminProfileClient({ initial }: Props) {
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="mt-4 w-full rounded-lg border border-gray-200 py-2 text-xs font-bold text-gray-600 transition-colors hover:bg-gray-50"
+              disabled={avatarUploading}
+              className="mt-4 w-full rounded-lg border border-gray-200 py-2 text-xs font-bold text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50"
             >
-              ↑ Alterar foto
+              {avatarUploading ? "A carregar…" : "↑ Alterar foto"}
             </button>
+            {avatarError && (
+              <p className="mt-2 text-[11px] text-red-500">{avatarError}</p>
+            )}
           </div>
 
           {/* Section nav */}
@@ -246,14 +295,6 @@ export default function AdminProfileClient({ initial }: Props) {
               </button>
             ))}
           </div>
-
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-            <p className="mb-0.5 text-xs font-bold text-amber-700">
-              Última sessão
-            </p>
-            <p className="text-xs text-amber-600">Hoje, 21:09 · Lisboa</p>
-            <p className="mt-0.5 text-xs text-amber-500">Chrome · macOS</p>
-          </div>
         </div>
 
         {/* Right content */}
@@ -265,58 +306,51 @@ export default function AdminProfileClient({ initial }: Props) {
                   Informações pessoais
                 </h2>
                 <div className="space-y-4">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">
+                      Nome completo
+                    </label>
+                    <input
+                      value={draft.name}
+                      onChange={(e) =>
+                        setDraft((d) => ({ ...d, name: e.target.value }))
+                      }
+                      className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm transition-colors focus:border-[#0F2C6B] focus:outline-none focus:ring-2 focus:ring-[#0F2C6B]/20"
+                      placeholder="Nome completo"
+                    />
+                  </div>
+
+                  {/* Email and role are managed by admins via the
+                      Utilizadores page — read-only here. */}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">
-                        Nome completo
+                        Endereço de email
                       </label>
                       <input
-                        value={draft.name}
-                        onChange={(e) =>
-                          setDraft((d) => ({ ...d, name: e.target.value }))
-                        }
-                        className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm transition-colors focus:border-[#0F2C6B] focus:outline-none focus:ring-2 focus:ring-[#0F2C6B]/20"
-                        placeholder="Nome completo"
+                        value={profile.email}
+                        readOnly
+                        disabled
+                        className="w-full cursor-not-allowed rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-500"
                       />
+                      <p className="mt-1.5 text-xs text-gray-400">
+                        Para alterar, contacte um administrador.
+                      </p>
                     </div>
                     <div>
                       <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">
                         Cargo / Função
                       </label>
                       <input
-                        value={draft.role}
-                        onChange={(e) =>
-                          setDraft((d) => ({ ...d, role: e.target.value }))
-                        }
-                        className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm transition-colors focus:border-[#0F2C6B] focus:outline-none focus:ring-2 focus:ring-[#0F2C6B]/20"
-                        placeholder="Ex: Jornalista, Editor..."
+                        value={profile.role}
+                        readOnly
+                        disabled
+                        className="w-full cursor-not-allowed rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-500"
                       />
+                      <p className="mt-1.5 text-xs text-gray-400">
+                        Definido pela administração.
+                      </p>
                     </div>
-                  </div>
-
-                  <div>
-                    <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">
-                      Endereço de email
-                    </label>
-                    <div className="relative">
-                      <input
-                        value={draft.email}
-                        onChange={(e) =>
-                          setDraft((d) => ({ ...d, email: e.target.value }))
-                        }
-                        type="email"
-                        className="w-full rounded-xl border border-gray-200 px-4 py-2.5 pr-24 text-sm transition-colors focus:border-[#0F2C6B] focus:outline-none focus:ring-2 focus:ring-[#0F2C6B]/20"
-                        placeholder="email@opatriota.pt"
-                      />
-                      {draft.email !== profile.email && (
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-600">
-                          alterado
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-1.5 text-xs text-gray-400">
-                      Será enviado um email de confirmação para o novo endereço.
-                    </p>
                   </div>
 
                   <div>
@@ -355,21 +389,22 @@ export default function AdminProfileClient({ initial }: Props) {
                 </div>
               </div>
 
-              {/* Photo upload */}
+              {/* Photo upload (now goes through the same WebP pipeline
+                  used everywhere else in the admin). */}
               <div className="rounded-2xl border border-gray-200 bg-white p-6">
                 <h2 className="mb-1 text-base font-black text-[#0F2C6B]">
                   Foto de perfil
                 </h2>
                 <p className="mb-4 text-xs text-gray-400">
                   Recomendado: imagem quadrada com pelo menos 200×200 px (JPG
-                  ou PNG).
+                  ou PNG, até 10 MB).
                 </p>
                 <div className="flex items-center gap-5">
                   <div className="relative h-16 w-16 shrink-0">
-                    {avatarSrc ? (
+                    {mainAvatar ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={avatarSrc}
+                        src={mainAvatar}
                         alt=""
                         className="h-16 w-16 rounded-full border-4 border-[#0F2C6B]/10 object-cover"
                       />
@@ -385,17 +420,17 @@ export default function AdminProfileClient({ initial }: Props) {
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="flex items-center gap-2 rounded-xl border border-[#0F2C6B] px-4 py-2 text-sm font-bold text-[#0F2C6B] transition-colors hover:bg-[#0F2C6B] hover:text-white"
+                      disabled={avatarUploading}
+                      className="flex items-center gap-2 rounded-xl border border-[#0F2C6B] px-4 py-2 text-sm font-bold text-[#0F2C6B] transition-colors hover:bg-[#0F2C6B] hover:text-white disabled:opacity-50"
                     >
-                      ↑ Carregar foto
+                      {avatarUploading ? "A carregar…" : "↑ Carregar foto"}
                     </button>
-                    {avatarSrc && (
+                    {mainAvatar && (
                       <button
                         type="button"
-                        onClick={() => {
-                          setAvatarPreview("");
-                          setDraft((d) => ({ ...d, avatarUrl: "" }));
-                        }}
+                        onClick={() =>
+                          setDraft((d) => ({ ...d, avatarUrl: "" }))
+                        }
                         className="rounded-xl border border-red-200 px-4 py-2 text-sm font-bold text-red-500 transition-colors hover:bg-red-50"
                       >
                         Remover
@@ -403,6 +438,9 @@ export default function AdminProfileClient({ initial }: Props) {
                     )}
                   </div>
                 </div>
+                {avatarError && (
+                  <p className="mt-3 text-xs text-red-600">{avatarError}</p>
+                )}
               </div>
 
               <div className="flex items-center justify-between">
@@ -467,7 +505,7 @@ export default function AdminProfileClient({ initial }: Props) {
                             onChange={(e) =>
                               setPw((p) => ({ ...p, [field]: e.target.value }))
                             }
-                            className="w-full rounded-xl border border-gray-200 px-4 py-2.5 pr-10 text-sm transition-colors focus:border-[#0F2C6B] focus:outline-none focus:ring-2 focus:ring-[#0F2C6B]/20"
+                            className="w-full rounded-xl border border-gray-200 px-4 py-2.5 pr-16 text-sm transition-colors focus:border-[#0F2C6B] focus:outline-none focus:ring-2 focus:ring-[#0F2C6B]/20"
                             placeholder="••••••••"
                           />
                           <button
@@ -475,9 +513,14 @@ export default function AdminProfileClient({ initial }: Props) {
                             onClick={() =>
                               setShowPw((s) => ({ ...s, [field]: !s[field] }))
                             }
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600"
+                            aria-label={
+                              showPw[field]
+                                ? "Ocultar palavra-passe"
+                                : "Mostrar palavra-passe"
+                            }
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-gray-400 hover:text-gray-700"
                           >
-                            {showPw[field] ? "ocultar" : "ver"}
+                            {showPw[field] ? "Ocultar" : "Ver"}
                           </button>
                         </div>
                         {field === "next" && pw.next.length > 0 && (
@@ -490,9 +533,7 @@ export default function AdminProfileClient({ initial }: Props) {
                                 />
                               ))}
                             </div>
-                            <p
-                              className={`text-xs font-bold ${pwStrengthText}`}
-                            >
+                            <p className={`text-xs font-bold ${pwStrengthText}`}>
                               {pwStrengthLabel}
                             </p>
                           </div>
@@ -530,60 +571,35 @@ export default function AdminProfileClient({ initial }: Props) {
                   <button
                     type="button"
                     onClick={savePassword}
-                    className="rounded-xl bg-[#0F2C6B] px-6 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#0A1F4E]"
+                    disabled={pending}
+                    className="rounded-xl bg-[#0F2C6B] px-6 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#0A1F4E] disabled:opacity-50"
                   >
-                    Atualizar palavra-passe
+                    {pending ? "A actualizar…" : "Atualizar palavra-passe"}
                   </button>
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-gray-200 bg-white p-6">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h2 className="mb-1 text-base font-black text-[#0F2C6B]">
-                      Autenticação em dois fatores
-                    </h2>
-                    <p className="max-w-sm text-xs text-gray-400">
-                      Adicione uma camada extra de segurança. Ao ativar, será
-                      pedido um código ao entrar.
+              {/* 2FA placeholder — leaves the door open for a future
+                  TOTP integration without pretending it's already
+                  working. */}
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="mb-1 flex items-center gap-2">
+                      <h2 className="text-base font-black text-amber-700">
+                        Autenticação em dois fatores
+                      </h2>
+                      <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold text-amber-700">
+                        Em breve
+                      </span>
+                    </div>
+                    <p className="max-w-md text-xs leading-relaxed text-amber-700/80">
+                      A camada extra de segurança (código TOTP via app
+                      autenticadora) será disponibilizada numa fase
+                      posterior. Para já, recomenda-se uma palavra-passe
+                      forte e única.
                     </p>
                   </div>
-                  <div className="ml-6 flex shrink-0 items-center gap-3">
-                    <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-bold text-gray-400">
-                      Inativo
-                    </span>
-                    <button
-                      type="button"
-                      className="rounded-lg bg-[#0F2C6B] px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-[#0A1F4E]"
-                    >
-                      Ativar 2FA
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-red-200 bg-white p-6">
-                <h2 className="mb-1 text-base font-black text-red-600">
-                  Zona de perigo
-                </h2>
-                <p className="mb-4 text-xs text-gray-400">
-                  Ações irreversíveis relacionadas com a sua conta.
-                </p>
-                <div className="flex items-center justify-between rounded-xl border border-red-100 bg-red-50/50 px-4 py-3">
-                  <div>
-                    <p className="text-sm font-bold text-gray-800">
-                      Terminar todas as sessões
-                    </p>
-                    <p className="mt-0.5 text-xs text-gray-400">
-                      Encerra sessão em todos os dispositivos exceto este.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="rounded-lg border border-red-200 px-4 py-2 text-xs font-bold text-red-500 transition-colors hover:bg-red-100"
-                  >
-                    Terminar sessões
-                  </button>
                 </div>
               </div>
             </>
@@ -594,9 +610,18 @@ export default function AdminProfileClient({ initial }: Props) {
               <h2 className="mb-1 text-base font-black text-[#0F2C6B]">
                 Preferências de notificação
               </h2>
-              <p className="mb-6 text-xs text-gray-400">
-                Escolha como e quando quer ser notificado.
+              <p className="mb-3 text-xs text-gray-400">
+                Escolha que avisos quer receber. As preferências ficam
+                guardadas na sua conta.
               </p>
+              <div className="mb-5 flex items-start gap-2 rounded-lg border-l-4 border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
+                <span className="text-base">⚠</span>
+                <p>
+                  As preferências são guardadas, mas o envio real de
+                  e-mails ainda não está activo — depende da integração
+                  SMTP futura.
+                </p>
+              </div>
               <div className="space-y-0 divide-y divide-gray-100">
                 {(
                   [
@@ -631,7 +656,7 @@ export default function AdminProfileClient({ initial }: Props) {
                       desc: "Notificação sempre que iniciar sessão de um novo dispositivo.",
                     },
                   ] as {
-                    key: keyof typeof notifs;
+                    key: keyof NotificationPrefs;
                     label: string;
                     desc: string;
                   }[]
@@ -654,21 +679,33 @@ export default function AdminProfileClient({ initial }: Props) {
                         setNotifs((n) => ({ ...n, [item.key]: !n[item.key] }))
                       }
                       aria-pressed={notifs[item.key]}
-                      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${notifs[item.key] ? "bg-[#0F2C6B]" : "bg-gray-200"}`}
+                      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full px-0.5 transition-colors ${notifs[item.key] ? "bg-[#0F2C6B]" : "bg-gray-300"}`}
                     >
                       <span
-                        className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${notifs[item.key] ? "translate-x-5" : ""}`}
+                        className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${notifs[item.key] ? "translate-x-5" : "translate-x-0"}`}
                       />
                     </button>
                   </div>
                 ))}
               </div>
-              <div className="mt-5 flex justify-end">
+              <div className="mt-5 flex items-center justify-end gap-3">
+                {notifsError && (
+                  <span className="text-sm font-semibold text-red-600">
+                    {notifsError}
+                  </span>
+                )}
+                {!notifsError && notifsSaved && (
+                  <span className="text-sm font-semibold text-green-600">
+                    ✓ Preferências guardadas
+                  </span>
+                )}
                 <button
                   type="button"
-                  className="rounded-xl bg-[#0F2C6B] px-6 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#0A1F4E]"
+                  onClick={saveNotifs}
+                  disabled={pending}
+                  className="rounded-xl bg-[#0F2C6B] px-6 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#0A1F4E] disabled:opacity-50"
                 >
-                  Guardar preferências
+                  {pending ? "A guardar…" : "Guardar preferências"}
                 </button>
               </div>
             </div>
@@ -677,73 +714,44 @@ export default function AdminProfileClient({ initial }: Props) {
           {section === "sessoes" && (
             <div className="rounded-2xl border border-gray-200 bg-white p-6">
               <h2 className="mb-1 text-base font-black text-[#0F2C6B]">
-                Sessões ativas
+                Sessão atual
               </h2>
               <p className="mb-5 text-xs text-gray-400">
-                Dispositivos onde a sua conta está atualmente autenticada.
+                Estado da sua autenticação neste dispositivo.
               </p>
-              <div className="space-y-3">
-                {[
-                  {
-                    device: "Chrome · macOS",
-                    location: "Lisboa, Portugal",
-                    time: "Agora · sessão atual",
-                    icon: "💻",
-                    current: true,
-                  },
-                  {
-                    device: "Safari · iPhone 15",
-                    location: "Lisboa, Portugal",
-                    time: "Há 2 horas",
-                    icon: "📱",
-                    current: false,
-                  },
-                  {
-                    device: "Chrome · Windows 11",
-                    location: "Porto, Portugal",
-                    time: "Há 3 dias",
-                    icon: "🖥",
-                    current: false,
-                  },
-                ].map((s, i) => (
-                  <div
-                    key={i}
-                    className={`flex items-center gap-4 rounded-xl border px-4 py-4 ${s.current ? "border-[#0F2C6B]/20 bg-[#0F2C6B]/5" : "border-gray-100 bg-gray-50/50"}`}
-                  >
-                    <span className="text-2xl">{s.icon}</span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-bold text-gray-800">
-                          {s.device}
-                        </p>
-                        {s.current && (
-                          <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-bold text-green-700">
-                            ● Este dispositivo
-                          </span>
-                        )}
-                      </div>
-                      <p className="mt-0.5 text-xs text-gray-400">
-                        {s.location} · {s.time}
-                      </p>
-                    </div>
-                    {!s.current && (
-                      <button
-                        type="button"
-                        className="shrink-0 rounded-lg border border-red-100 px-3 py-1.5 text-xs font-bold text-red-500 transition-colors hover:bg-red-50"
-                      >
-                        Terminar
-                      </button>
-                    )}
+
+              <div className="flex items-center gap-4 rounded-xl border border-[#0F2C6B]/20 bg-[#0F2C6B]/5 px-4 py-4">
+                <span className="text-2xl">💻</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-bold text-gray-800">
+                      Este dispositivo
+                    </p>
+                    <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-bold text-green-700">
+                      ● Ligado
+                    </span>
                   </div>
-                ))}
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    Sessão autenticada via JWT. Para terminá-la, basta
+                    fazer logout do menu superior.
+                  </p>
+                </div>
               </div>
-              <div className="mt-5 border-t border-gray-100 pt-5">
-                <button
-                  type="button"
-                  className="rounded-xl border border-red-200 px-4 py-2.5 text-sm font-bold text-red-500 transition-colors hover:bg-red-50"
-                >
-                  Terminar todas as outras sessões
-                </button>
+
+              <div className="mt-5 flex items-start gap-3 rounded-xl border-l-4 border-amber-400 bg-amber-50 p-4">
+                <span className="text-lg text-amber-500">ℹ</span>
+                <div className="text-xs text-amber-900">
+                  <p className="mb-1 font-bold uppercase tracking-wider text-amber-700">
+                    Gestão de sessões — em breve
+                  </p>
+                  <p className="leading-relaxed">
+                    A autenticação actual usa JWTs com expiração própria,
+                    sem registo central de sessões. A listagem de
+                    dispositivos activos e a opção &quot;terminar todas
+                    as sessões&quot; serão adicionadas quando a autenticação
+                    migrar para sessões com refresh-token persistente.
+                  </p>
+                </div>
               </div>
             </div>
           )}

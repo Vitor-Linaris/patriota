@@ -8,6 +8,7 @@ export interface UpdateProfilePayload {
   bio?: string;
   phone?: string;
   avatarUrl?: string;
+  notificationPrefs?: Record<string, boolean>;
 }
 
 export async function updateProfileAction(payload: UpdateProfilePayload) {
