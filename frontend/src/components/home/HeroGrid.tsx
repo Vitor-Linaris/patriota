@@ -43,7 +43,7 @@ export function HeroGrid({ featured, side }: Props) {
           without shifting any text layout. */}
       <Link
         href={featured ? `/artigo/${featured.slug}` : "#"}
-        className="group relative col-span-1 overflow-hidden rounded-xl bg-patriota-dark text-white shadow-sm transition-shadow duration-500 hover:shadow-xl lg:col-span-8"
+        className="group relative col-span-1 overflow-hidden rounded-xl bg-patriota-dark text-white shadow-sm transition-shadow duration-500 hover:shadow-[0_12px_32px_-12px_rgba(15,44,107,0.25)] lg:col-span-8"
       >
         {featured?.coverImageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -95,18 +95,19 @@ export function HeroGrid({ featured, side }: Props) {
         </div>
       </Link>
 
-      {/* Side stack of 3 small cards. Each card lifts + tilts a touch
-          on hover; the thumbnail zooms, the title shifts to the brand
-          colour, and a small arrow slides in to hint "click me". */}
-      <div className="col-span-1 flex flex-col gap-4 lg:col-span-4">
-        {side.map((card) => (
+      {/* Side stack of up to 4 small cards. Card lifts a notch on
+          hover with a soft shadow; thumbnail zooms; title shifts to
+          brand colour. No arrow indicator — the whole row is the
+          link and the colour shift is enough cue. */}
+      <div className="col-span-1 flex flex-col gap-3 lg:col-span-4">
+        {side.slice(0, 4).map((card) => (
           <Link
             key={card.id}
             href={`/artigo/${card.slug}`}
-            className="group flex gap-4 rounded-xl border border-slate-200 bg-white p-4 transition-all duration-300 hover:-translate-y-0.5 hover:border-patriota-medium hover:shadow-lg"
+            className="group flex gap-3 rounded-xl border border-slate-200 bg-white p-3 transition-all duration-300 hover:-translate-y-0.5 hover:border-patriota-medium hover:shadow-[0_6px_20px_-8px_rgba(15,44,107,0.18)]"
           >
             <div className="min-w-0 flex-1">
-              <div className="mb-2 flex items-center gap-2 text-[11px] text-slate-500">
+              <div className="mb-1.5 flex items-center gap-2 text-[11px] text-slate-500">
                 <span
                   className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white ${CATEGORY_COLOR[card.category.name] ?? "bg-slate-600"}`}
                 >
@@ -117,16 +118,10 @@ export function HeroGrid({ featured, side }: Props) {
               </div>
               <h3 className="text-[14px] font-bold leading-snug text-slate-900 transition-colors duration-200 group-hover:text-patriota-medium">
                 {card.title}
-                <span
-                  aria-hidden
-                  className="ml-1 inline-block translate-x-0 text-patriota-accent opacity-0 transition-all duration-300 group-hover:translate-x-1 group-hover:opacity-100"
-                >
-                  →
-                </span>
               </h3>
             </div>
             {card.coverImageUrl ? (
-              <div className="hidden h-16 w-20 shrink-0 overflow-hidden rounded-md sm:block">
+              <div className="hidden h-14 w-20 shrink-0 overflow-hidden rounded-md sm:block">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={
@@ -138,7 +133,7 @@ export function HeroGrid({ featured, side }: Props) {
                 />
               </div>
             ) : (
-              <div className="hidden h-16 w-20 shrink-0 rounded-md bg-gradient-to-br from-slate-200 to-slate-300 sm:block" />
+              <div className="hidden h-14 w-20 shrink-0 rounded-md bg-gradient-to-br from-slate-200 to-slate-300 sm:block" />
             )}
           </Link>
         ))}

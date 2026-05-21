@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Container } from "../Container";
 
 interface BreakingItem {
@@ -9,21 +9,41 @@ interface BreakingItem {
 }
 
 /**
- * Last-hour ticker. Shows up to 4 headlines with a dot indicator on
- * the right that doubles as a slider control:
- *   • The "active" headline is fully bright; the others dim.
- *   • Clicking a dot promotes the corresponding headline.
- *   • A 6-second auto-rotation keeps the strip alive when the user
- *     is idle; any manual interaction (dot click, headline hover)
- *     pauses it for 12 seconds so the reader has time to act.
- *   • The right edge fades to transparent via mask-image so the
- *     headlines don't visually crash into the dots.
+ * Last-hour ticker — proper sliding carousel.
+ *
+ * The whole strip of headlines is rendered side-by-side; on rotation
+ * we measure the active headline's `offsetLeft` and translate the
+ * strip by that amount, so the active headline always lands at the
+ * leftmost visible position. Headlines that already passed slide
+ * off-screen to the left (overflow-hidden clips them); upcoming ones
+ * sit to the right and the right-edge mask fades them out before
+ * they reach the dot indicator.
+ *
+ * Auto-rotates every 6s; manual interaction (dot click, hover) pauses
+ * for 12s so the reader has time to act.
  */
 export function BreakingNews({ items }: { items: BreakingItem[] }) {
   const list = items.slice(0, 4);
   const [active, setActive] = useState(0);
   const [pauseUntil, setPauseUntil] = useState(0);
+  const [offset, setOffset] = useState(0);
+  const stripRef = useRef<HTMLDivElement>(null);
+  const itemRefs = useRef<Array<HTMLAnchorElement | null>>([]);
 
+  // Measure the active headline's position once it's rendered, then
+  // translate the strip so it lands at x=0. Re-measures on resize so
+  // viewport changes don't break alignment.
+  useLayoutEffect(() => {
+    const measure = () => {
+      const el = itemRefs.current[active];
+      if (el) setOffset(el.offsetLeft);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [active, list.length]);
+
+  // Auto-rotate.
   useEffect(() => {
     if (list.length <= 1) return;
     const timer = setInterval(() => {
@@ -48,8 +68,9 @@ export function BreakingNews({ items }: { items: BreakingItem[] }) {
           Última hora
         </span>
 
-        {/* Slider track. The fade-to-transparent mask on the right
-            edge stops the text from crashing into the dot indicator. */}
+        {/* Sliding track. The mask fades the right edge so upcoming
+            headlines dissolve into the dot indicator instead of
+            crashing into it. */}
         <div
           className="relative flex-1 overflow-hidden text-[14px]"
           style={{
@@ -59,24 +80,26 @@ export function BreakingNews({ items }: { items: BreakingItem[] }) {
               "linear-gradient(to right, black 0%, black calc(100% - 48px), transparent 100%)",
           }}
         >
-          <div className="flex items-center gap-7 whitespace-nowrap">
+          <div
+            ref={stripRef}
+            className="flex items-center gap-7 whitespace-nowrap transition-transform duration-500 ease-out"
+            style={{ transform: `translateX(-${offset}px)` }}
+          >
             {list.map((item, i) => {
               const isActive = i === active;
               return (
                 <a
                   key={item.slug}
+                  ref={(el) => {
+                    itemRefs.current[i] = el;
+                  }}
                   href={`/artigo/${item.slug}`}
                   onMouseEnter={pause}
-                  className={`shrink-0 transition-all duration-500 ${
+                  className={`shrink-0 transition-opacity duration-500 ${
                     isActive
                       ? "text-white opacity-100"
-                      : "text-white/40 opacity-60 hover:text-white/70"
+                      : "text-white/55 opacity-70 hover:text-white/80"
                   }`}
-                  style={
-                    isActive
-                      ? { letterSpacing: "0.01em" }
-                      : undefined
-                  }
                 >
                   {item.title}
                 </a>
@@ -85,9 +108,7 @@ export function BreakingNews({ items }: { items: BreakingItem[] }) {
           </div>
         </div>
 
-        {/* Dot indicator — a button each, so the slider doubles as
-            navigation. Active dot is wider + amber; the rest are
-            small grey dots that grow slightly on hover. */}
+        {/* Dot indicator — clickable nav. */}
         {list.length > 1 && (
           <div className="hidden shrink-0 items-center gap-1.5 md:flex">
             {list.map((_, i) => {
