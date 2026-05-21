@@ -17,7 +17,7 @@ export function LatestNews({ items }: Props) {
           <li key={item.id}>
             <Link
               href={`/artigo/${item.slug}`}
-              className="group flex gap-4 rounded-xl border border-slate-200 bg-white p-4 transition-all duration-300 hover:-translate-y-0.5 hover:border-patriota-medium hover:shadow-lg"
+              className="group flex gap-4 rounded-xl border border-slate-200 bg-white p-4 transition-all duration-300 hover:-translate-y-0.5 hover:border-patriota-medium hover:shadow-[0_6px_20px_-8px_rgba(15,44,107,0.18)]"
             >
               {item.coverImageUrl ? (
                 <div className="hidden h-20 w-28 shrink-0 overflow-hidden rounded-md sm:block">
@@ -48,12 +48,6 @@ export function LatestNews({ items }: Props) {
                 </div>
                 <h3 className="mt-2 text-[15px] font-bold leading-snug text-slate-900 transition-colors duration-200 group-hover:text-patriota-medium">
                   {item.title}
-                  <span
-                    aria-hidden
-                    className="ml-1 inline-block text-patriota-accent opacity-0 transition-all duration-300 group-hover:translate-x-1 group-hover:opacity-100"
-                  >
-                    →
-                  </span>
                 </h3>
                 {item.summary && (
                   <p className="mt-1 line-clamp-2 text-[13px] text-slate-600">

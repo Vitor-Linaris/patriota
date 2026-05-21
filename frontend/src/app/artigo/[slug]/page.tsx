@@ -204,24 +204,26 @@ export default async function ArticlePage({
                       <li key={r.id}>
                         <Link
                           href={`/artigo/${r.slug}`}
-                          className="block overflow-hidden rounded-xl border border-slate-200 bg-white transition hover:shadow-md"
+                          className="group block overflow-hidden rounded-xl border border-slate-200 bg-white transition-all duration-300 hover:-translate-y-0.5 hover:border-patriota-medium hover:shadow-[0_6px_20px_-8px_rgba(15,44,107,0.18)]"
                         >
                           {r.coverImageUrl && (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={
-                                imageVariant(r.coverImageUrl, "small") ??
-                                r.coverImageUrl
-                              }
-                              alt=""
-                              className="aspect-[16/9] w-full object-cover"
-                            />
+                            <div className="aspect-[16/9] w-full overflow-hidden">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={
+                                  imageVariant(r.coverImageUrl, "small") ??
+                                  r.coverImageUrl
+                                }
+                                alt=""
+                                className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+                              />
+                            </div>
                           )}
                           <div className="p-4">
                             <p className="text-[11px] font-bold uppercase tracking-wider text-orange-600">
                               {r.category.name}
                             </p>
-                            <h3 className="mt-1 text-[16px] font-bold leading-snug text-slate-900">
+                            <h3 className="mt-1 text-[16px] font-bold leading-snug text-slate-900 transition-colors duration-200 group-hover:text-patriota-medium">
                               {r.title}
                             </h3>
                             {r.summary && (

@@ -1,10 +1,9 @@
 import { SectionHeading } from "./SectionHeading";
 import { listMostRead, listPublicArticles } from "@/lib/public-api";
 import { NewsletterForm } from "./NewsletterForm";
-import { FEATURES } from "@/lib/features";
-import { imageVariant } from "@/lib/images";
 import { AdSlot } from "@/components/ads/AdSlot";
 import type { Ad } from "@/lib/ads";
+import { SidebarTopList } from "./SidebarTopList";
 
 function initialsOf(name: string | null): string {
   if (!name) return "—";
@@ -17,78 +16,17 @@ function initialsOf(name: string | null): string {
 }
 
 export async function Sidebar({ ad }: { ad?: Ad | null } = {}) {
-  const [mostRead, opinion] = await Promise.all([
+  // Pre-fetch both lists server-side; the client widget just toggles
+  // between them — no extra round-trip on tab change.
+  const [mostRead, recent, opinion] = await Promise.all([
     listMostRead(4),
+    listPublicArticles({ pageSize: 4 }).then((r) => r.items),
     listPublicArticles({ category: "opiniao", pageSize: 3 }),
   ]);
 
   return (
     <aside className="flex flex-col gap-8">
-      {/* Most read */}
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <nav
-          aria-label="Mais lidas"
-          className="flex border-b border-slate-200 text-[12px]"
-        >
-          <button className="flex-1 border-b-2 border-orange-500 bg-orange-50 px-4 py-4 font-bold text-slate-900">
-            Mais Lidas
-          </button>
-          {FEATURES.comments && (
-            <button className="flex-1 px-4 py-4 font-semibold text-slate-500 hover:text-slate-700">
-              Mais Comentadas
-            </button>
-          )}
-          {FEATURES.comments && (
-            <button className="flex-1 px-4 py-4 text-center font-semibold leading-tight text-slate-500 hover:text-slate-700">
-              Escolha da
-              <br />
-              Redação
-            </button>
-          )}
-        </nav>
-        {mostRead.length === 0 ? (
-          <p className="px-4 py-6 text-center text-[12px] text-slate-400">
-            Sem artigos para mostrar.
-          </p>
-        ) : (
-          <ol className="divide-y divide-slate-100">
-            {mostRead.map((m, i) => (
-              <li
-                key={m.id}
-                className="flex gap-3 px-4 py-3 hover:bg-slate-50"
-              >
-                <span className="text-2xl font-black leading-none text-slate-300">
-                  {i + 1}
-                </span>
-                {m.coverImageUrl && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={
-                      imageVariant(m.coverImageUrl, "small") ??
-                      m.coverImageUrl
-                    }
-                    alt=""
-                    className="h-12 w-16 shrink-0 rounded-md object-cover"
-                  />
-                )}
-                <div className="min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-orange-600">
-                    {m.category.name}
-                  </p>
-                  <h4 className="mt-1 text-[13px] font-bold leading-snug text-slate-900">
-                    <a
-                      href={`/artigo/${m.slug}`}
-                      className="hover:text-patriota-medium"
-                    >
-                      {m.title}
-                    </a>
-                  </h4>
-                </div>
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
+      <SidebarTopList recent={recent} mostRead={mostRead} />
 
       {/* Sidebar ad slot (homepage-sidebar, 300×250 IAB MPU). The
           AdSlot collapses to nothing when the admin hasn't configured

@@ -113,7 +113,7 @@ export default async function SearchPage({
                   <li key={item.id}>
                     <Link
                       href={`/artigo/${item.slug}`}
-                      className="group flex gap-4 rounded-xl border border-slate-200 bg-white p-4 transition-all duration-300 hover:-translate-y-0.5 hover:border-patriota-medium hover:shadow-lg"
+                      className="group flex gap-4 rounded-xl border border-slate-200 bg-white p-4 transition-all duration-300 hover:-translate-y-0.5 hover:border-patriota-medium hover:shadow-[0_6px_20px_-8px_rgba(15,44,107,0.18)]"
                     >
                       {item.coverImageUrl ? (
                         <div className="hidden h-20 w-28 shrink-0 overflow-hidden rounded-md sm:block">

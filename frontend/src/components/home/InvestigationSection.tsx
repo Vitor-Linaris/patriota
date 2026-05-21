@@ -19,7 +19,7 @@ export function InvestigationSection({ items }: Props) {
           <Link
             key={c.id}
             href={`/artigo/${c.slug}`}
-            className="group flex flex-col gap-4 overflow-hidden rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white transition-all duration-300 hover:-translate-y-0.5 hover:border-patriota-medium hover:shadow-lg"
+            className="group flex flex-col gap-4 overflow-hidden rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white transition-all duration-300 hover:-translate-y-0.5 hover:border-patriota-medium hover:shadow-[0_6px_20px_-8px_rgba(15,44,107,0.18)]"
           >
             {c.coverImageUrl && (
               <div className="aspect-[16/9] w-full overflow-hidden">

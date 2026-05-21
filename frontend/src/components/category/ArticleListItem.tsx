@@ -18,7 +18,7 @@ export function ArticleListItem({ item }: { item: ArticleListItemData }) {
   return (
     <a
       href={item.slug ? `/artigo/${item.slug}` : "#"}
-      className="flex gap-5 rounded-[12px] border border-[#f3f4f6] bg-white p-5 shadow-[0px_1px_3px_0px_rgba(0,0,0,0.05)] transition hover:shadow-md"
+      className="group flex gap-5 rounded-[12px] border border-[#f3f4f6] bg-white p-5 shadow-[0px_1px_3px_0px_rgba(0,0,0,0.05)] transition-all duration-300 hover:-translate-y-0.5 hover:border-patriota-medium hover:shadow-[0_6px_20px_-8px_rgba(15,44,107,0.18)]"
     >
       <span className="w-6 shrink-0 text-[20px] font-black leading-none text-patriota-accent">
         {item.number}
@@ -35,7 +35,7 @@ export function ArticleListItem({ item }: { item: ArticleListItemData }) {
             {item.readMinutes} min leitura
           </span>
         </div>
-        <h3 className="mt-2 text-[16px] font-bold leading-[22px] text-[#101828]">
+        <h3 className="mt-2 text-[16px] font-bold leading-[22px] text-[#101828] transition-colors duration-200 group-hover:text-patriota-medium">
           {item.title}
         </h3>
         <p className="mt-1 line-clamp-2 text-[14px] leading-[20px] text-[#6a7282]">
@@ -51,12 +51,14 @@ export function ArticleListItem({ item }: { item: ArticleListItemData }) {
         </div>
       </div>
       {item.coverImageUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={imageVariant(item.coverImageUrl, "small") ?? item.coverImageUrl}
-          alt=""
-          className="hidden h-20 w-28 shrink-0 rounded-[8px] object-cover sm:block"
-        />
+        <div className="hidden h-20 w-28 shrink-0 overflow-hidden rounded-[8px] sm:block">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={imageVariant(item.coverImageUrl, "small") ?? item.coverImageUrl}
+            alt=""
+            className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-110"
+          />
+        </div>
       ) : (
         <div
           aria-hidden
