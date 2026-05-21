@@ -80,13 +80,13 @@ export default function AdminNewsletterClient({
     });
   };
 
-  // The export endpoints are GET — easier to trigger via a regular
-  // anchor so the browser handles the file download. The session
-  // cookie goes with the request automatically (same-origin).
-  const apiBase =
-    process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8585";
-  const csvHref = `${apiBase}/admin/newsletters/subscribers/export.csv`;
-  const xlsxHref = `${apiBase}/admin/newsletters/subscribers/export.xlsx`;
+  // Both export buttons go through a Next route handler that proxies
+  // to the backend with the session JWT attached. We can't hit the
+  // backend directly because the cookie is scoped to the frontend
+  // origin — a cross-origin <a href> would arrive unauthenticated
+  // (401). The proxy is same-origin, cookie travels with it.
+  const csvHref = "/admin/newsletter/export?format=csv";
+  const xlsxHref = "/admin/newsletter/export?format=xlsx";
 
   return (
     <main className="bg-[#f6f7fb] p-8">

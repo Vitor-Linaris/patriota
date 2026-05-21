@@ -50,6 +50,20 @@ class SubscribeDto {
   name?: string;
 }
 
+/**
+ * Extends PageQueryDto with the free-text filter used by the
+ * subscribers list. We can't use a TS intersection (`PageQueryDto &
+ * { q?: string }`) because Nest's ValidationPipe reads the
+ * decorator metadata off the concrete class — an intersection loses
+ * that and the `@Type(() => Number)` transform silently stops
+ * running, so `pageSize` arrives as a string and Prisma rejects it.
+ */
+class ListSubscribersQueryDto extends PageQueryDto {
+  @IsOptional()
+  @IsString()
+  q?: string;
+}
+
 @Controller()
 export class NewsletterController {
   constructor(private readonly service: NewsletterService) {}
@@ -80,7 +94,7 @@ export class NewsletterController {
 
   @Get('admin/newsletters/subscribers')
   @RequirePermissions('newsletter.listas')
-  listSubscribers(@Query() query: PageQueryDto & { q?: string }) {
+  listSubscribers(@Query() query: ListSubscribersQueryDto) {
     return this.service.listSubscribers(query);
   }
 
