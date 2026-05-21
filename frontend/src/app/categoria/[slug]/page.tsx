@@ -51,7 +51,7 @@ export default async function CategoryPage({
 
   const [{ items: rawArticles, total }, breaking, ads] = await Promise.all([
     listPublicArticles({ category: slug, page, pageSize: PAGE_SIZE }),
-    listBreaking(3),
+    listBreaking(4),
     getAdsByPage("Categoria"),
   ]);
   // Only treat the first article as "featured" on page 1 — otherwise

@@ -31,7 +31,7 @@ export default async function ArticlePage({
   if (!article) notFound();
   const [related, breaking, ads] = await Promise.all([
     listRelated(slug, 4),
-    listBreaking(3),
+    listBreaking(4),
     getAdsByPage("Artigo"),
   ]);
   const authorInitials = (article.author.name ?? "??")

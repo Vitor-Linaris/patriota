@@ -14,7 +14,7 @@ import { getAdsByPage, getHomepage, listBreaking } from "@/lib/public-api";
 export default async function HomePage() {
   const [home, breaking, ads] = await Promise.all([
     getHomepage(),
-    listBreaking(3),
+    listBreaking(4),
     getAdsByPage("Homepage"),
   ]);
   return (
