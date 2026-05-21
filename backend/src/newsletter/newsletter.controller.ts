@@ -187,4 +187,10 @@ export class NewsletterController {
   subscribe(@Body() dto: SubscribeDto) {
     return this.service.subscribe(dto.email, dto.name);
   }
+
+  @Public()
+  @Post('public/newsletter/unsubscribe')
+  unsubscribe(@Body() dto: SubscribeDto) {
+    return this.service.unsubscribe(dto.email);
+  }
 }

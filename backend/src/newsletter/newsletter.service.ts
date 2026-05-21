@@ -178,15 +178,47 @@ export class NewsletterService {
 
   async subscribe(email: string, name = '') {
     const lower = email.toLowerCase();
+    // If a row already exists (re-subscribe scenario), promote it
+    // back to ATIVO instead of throwing — readers who once cancelled
+    // and want back in should not be turned away.
+    const existing = await this.prisma.newsletterSubscriber.findUnique({
+      where: { email: lower },
+    });
+    if (existing) {
+      if (existing.status === 'ATIVO') {
+        throw new ConflictException('Este e-mail já está subscrito.');
+      }
+      return this.prisma.newsletterSubscriber.update({
+        where: { email: lower },
+        data: { status: 'ATIVO', name: name || existing.name },
+      });
+    }
+    return this.prisma.newsletterSubscriber.create({
+      data: { email: lower, name, status: 'ATIVO', segment: 'Geral' },
+    });
+  }
+
+  /**
+   * Public unsubscribe — the reader provides only their e-mail.
+   * Treated as idempotent: if the address isn't in the list we still
+   * return success (avoids leaking "yes this e-mail subscribes to
+   * us"). The status flips to CANCELADO so we keep a history of past
+   * subscribers without losing the audit trail.
+   */
+  async unsubscribe(email: string): Promise<{ ok: true }> {
+    const lower = email.toLowerCase();
     try {
-      return await this.prisma.newsletterSubscriber.create({
-        data: { email: lower, name, status: 'ATIVO', segment: 'Geral' },
+      await this.prisma.newsletterSubscriber.update({
+        where: { email: lower },
+        data: { status: 'CANCELADO' },
       });
     } catch (e) {
-      if ((e as { code?: string }).code === 'P2002') {
-        throw new ConflictException('Este e-mail já está subscrito.');
+      if ((e as { code?: string }).code === 'P2025') {
+        // Address not in the list — return success anyway. See above.
+        return { ok: true };
       }
       throw e;
     }
+    return { ok: true };
   }
 }
