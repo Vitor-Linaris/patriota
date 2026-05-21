@@ -1,6 +1,5 @@
 import { AdminShell } from "../AdminShell";
 import AdminNewsletterClient, {
-  type Campaign,
   type Subscriber,
 } from "./AdminNewsletterClient";
 import { apiFetch } from "@/lib/api";
@@ -10,27 +9,6 @@ interface PageResult<T> {
   total: number;
   page: number;
   pageSize: number;
-}
-
-interface CampaignApi {
-  id: string;
-  subject: string;
-  preview: string;
-  segment: string;
-  header: string;
-  body: string;
-  ctaText: string;
-  ctaUrl: string;
-  footer: string;
-  status: "RASCUNHO" | "AGENDADA" | "ENVIADA";
-  scheduledAt: string | null;
-  sentAt: string | null;
-  recipients: number;
-  opens: number;
-  clicks: number;
-  openRate: number;
-  clickRate: number;
-  createdAt: string;
 }
 
 interface SubscriberApi {
@@ -43,14 +21,12 @@ interface SubscriberApi {
   joinedAt: string;
 }
 
-const STATUS_API_TO_UI: Record<
-  CampaignApi["status"],
-  Campaign["status"]
-> = {
-  RASCUNHO: "rascunho",
-  AGENDADA: "agendada",
-  ENVIADA: "enviada",
-};
+interface StatsApi {
+  total: number;
+  ativo: number;
+  inativo: number;
+  cancelado: number;
+}
 
 const SUB_STATUS_API_TO_UI: Record<
   SubscriberApi["status"],
@@ -63,80 +39,63 @@ const SUB_STATUS_API_TO_UI: Record<
 
 const dateFmt = new Intl.DateTimeFormat("pt-PT", {
   day: "2-digit",
-  month: "short",
+  month: "2-digit",
   year: "numeric",
 });
-
-const monthFmt = new Intl.DateTimeFormat("pt-PT", {
-  month: "short",
-  year: "numeric",
-});
-
-function toCampaign(c: CampaignApi): Campaign {
-  let dateStr = "—";
-  const sourceDate = c.sentAt ?? c.scheduledAt ?? null;
-  if (sourceDate) {
-    try {
-      dateStr = dateFmt.format(new Date(sourceDate));
-    } catch {
-      /* keep — */
-    }
-  }
-  return {
-    id: c.id,
-    subject: c.subject,
-    preview: c.preview,
-    segment: c.segment,
-    header: c.header,
-    body: c.body,
-    ctaText: c.ctaText,
-    ctaUrl: c.ctaUrl,
-    footer: c.footer,
-    status: STATUS_API_TO_UI[c.status],
-    date: dateStr,
-    scheduledAt: c.scheduledAt,
-    sentAt: c.sentAt,
-    opens: c.opens,
-    clicks: c.clicks,
-    recipients: c.recipients,
-    openRate: c.openRate,
-    clickRate: c.clickRate,
-  };
-}
 
 function toSubscriber(s: SubscriberApi): Subscriber {
   return {
     id: s.id,
     email: s.email,
     name: s.name,
-    joinedAt: monthFmt.format(new Date(s.joinedAt)),
+    joinedAt: dateFmt.format(new Date(s.joinedAt)),
     status: SUB_STATUS_API_TO_UI[s.status],
     segment: s.segment,
-    opens: s.opens,
   };
 }
 
-export default async function Page() {
-  const [campRes, subRes] = await Promise.all([
-    apiFetch("/admin/newsletters/campaigns?pageSize=50"),
-    apiFetch("/admin/newsletters/subscribers?pageSize=200"),
+const PAGE_SIZE = 20;
+
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string; q?: string }>;
+}) {
+  const { page: pageParam, q: qParam } = await searchParams;
+  const page = Math.max(1, Number(pageParam) || 1);
+  const q = (qParam ?? "").trim();
+
+  const listParams = new URLSearchParams();
+  listParams.set("page", String(page));
+  listParams.set("pageSize", String(PAGE_SIZE));
+  if (q) listParams.set("q", q);
+
+  // Stats are independent of the search / page so the headline
+  // totals don't shrink when the user filters the visible list.
+  const [subRes, statsRes] = await Promise.all([
+    apiFetch(`/admin/newsletters/subscribers?${listParams.toString()}`),
+    apiFetch("/admin/newsletters/subscribers/stats"),
   ]);
-  const campaigns = campRes.ok
-    ? ((await campRes.json()) as PageResult<CampaignApi>).items.map(
-        toCampaign,
-      )
-    : [];
-  const subscribers = subRes.ok
-    ? ((await subRes.json()) as PageResult<SubscriberApi>).items.map(
-        toSubscriber,
-      )
-    : [];
+  const body = subRes.ok
+    ? ((await subRes.json()) as PageResult<SubscriberApi>)
+    : { items: [], total: 0, page: 1, pageSize: PAGE_SIZE };
+  const stats: StatsApi = statsRes.ok
+    ? ((await statsRes.json()) as StatsApi)
+    : { total: 0, ativo: 0, inativo: 0, cancelado: 0 };
+  const subscribers = body.items.map(toSubscriber);
+  const totalPages = Math.max(1, Math.ceil(body.total / PAGE_SIZE));
 
   return (
     <AdminShell active="/admin/newsletter">
       <AdminNewsletterClient
-        initialCampaigns={campaigns}
         initialSubscribers={subscribers}
+        totalSubscribers={body.total}
+        statsTotal={stats.total}
+        statsAtivo={stats.ativo}
+        statsCancelado={stats.cancelado}
+        currentPage={page}
+        totalPages={totalPages}
+        searchQuery={q}
       />
     </AdminShell>
   );

@@ -2,11 +2,15 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Param,
   Patch,
   Post,
   Query,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
+import ExcelJS from 'exceljs';
 import {
   IsDateString,
   IsEmail,
@@ -76,8 +80,92 @@ export class NewsletterController {
 
   @Get('admin/newsletters/subscribers')
   @RequirePermissions('newsletter.listas')
-  listSubscribers(@Query() query: PageQueryDto) {
+  listSubscribers(@Query() query: PageQueryDto & { q?: string }) {
     return this.service.listSubscribers(query);
+  }
+
+  @Get('admin/newsletters/subscribers/stats')
+  @RequirePermissions('newsletter.listas')
+  subscriberStats() {
+    return this.service.subscriberStats();
+  }
+
+  /**
+   * UTF-8 CSV with BOM so Excel detects the encoding and Portuguese
+   * accents render correctly. Plain comma-separated; columns wrapped
+   * in quotes only when they contain a comma or quote.
+   */
+  @Get('admin/newsletters/subscribers/export.csv')
+  @RequirePermissions('newsletter.listas')
+  async exportCsv(@Res() res: Response): Promise<void> {
+    const subs = await this.service.listAllSubscribers();
+    const escape = (v: unknown): string => {
+      const s = v == null ? '' : String(v);
+      return /[,"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const header = ['Email', 'Nome', 'Estado', 'Segmento', 'Subscrito em'];
+    const rows = subs.map((s) => [
+      s.email,
+      s.name,
+      s.status,
+      s.segment,
+      s.joinedAt.toISOString(),
+    ]);
+    const csv =
+      '﻿' +
+      [header, ...rows].map((r) => r.map(escape).join(',')).join('\r\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="subscritores-${new Date().toISOString().slice(0, 10)}.csv"`,
+    );
+    res.send(csv);
+  }
+
+  /** XLSX with column widths and header styling so the export opens
+   *  cleanly in Excel / Numbers / LibreOffice. */
+  @Get('admin/newsletters/subscribers/export.xlsx')
+  @RequirePermissions('newsletter.listas')
+  async exportXlsx(@Res() res: Response): Promise<void> {
+    const subs = await this.service.listAllSubscribers();
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'O Patriota';
+    wb.created = new Date();
+    const ws = wb.addWorksheet('Subscritores');
+    ws.columns = [
+      { header: 'Email', key: 'email', width: 35 },
+      { header: 'Nome', key: 'name', width: 25 },
+      { header: 'Estado', key: 'status', width: 12 },
+      { header: 'Segmento', key: 'segment', width: 14 },
+      { header: 'Subscrito em', key: 'joinedAt', width: 16 },
+    ];
+    ws.getRow(1).font = { bold: true };
+    ws.getRow(1).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF0F2C6B' },
+    };
+    ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    for (const s of subs) {
+      ws.addRow({
+        email: s.email,
+        name: s.name,
+        status: s.status,
+        segment: s.segment,
+        joinedAt: s.joinedAt,
+      });
+    }
+    ws.getColumn('joinedAt').numFmt = 'yyyy-mm-dd';
+    const buf = await wb.xlsx.writeBuffer();
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="subscritores-${new Date().toISOString().slice(0, 10)}.xlsx"`,
+    );
+    res.send(Buffer.from(buf));
   }
 
   @Public()

@@ -117,15 +117,26 @@ export class NewsletterService {
   }
 
   // ── Subscribers ───────────────────────────────────────────────────
-  async listSubscribers(query: PageQueryDto): Promise<PageResult<unknown>> {
+  async listSubscribers(
+    query: PageQueryDto & { q?: string },
+  ): Promise<PageResult<unknown>> {
     const { skip, take } = toSkipTake(query);
+    const where = query.q
+      ? {
+          OR: [
+            { email: { contains: query.q, mode: 'insensitive' as const } },
+            { name: { contains: query.q, mode: 'insensitive' as const } },
+          ],
+        }
+      : {};
     const [items, total] = await Promise.all([
       this.prisma.newsletterSubscriber.findMany({
+        where,
         skip,
         take,
         orderBy: { joinedAt: 'desc' },
       }),
-      this.prisma.newsletterSubscriber.count(),
+      this.prisma.newsletterSubscriber.count({ where }),
     ]);
     return {
       items,
@@ -133,6 +144,36 @@ export class NewsletterService {
       page: query.page ?? 1,
       pageSize: query.pageSize ?? 20,
     };
+  }
+
+  /**
+   * Whole-corpus counts shown on the admin dashboard stats card.
+   * Calculated independently of the current page filter so the
+   * "Total" number doesn't shrink when the user searches.
+   */
+  async subscriberStats() {
+    const [total, ativo, inativo, cancelado] = await Promise.all([
+      this.prisma.newsletterSubscriber.count(),
+      this.prisma.newsletterSubscriber.count({
+        where: { status: SubscriberStatus.ATIVO },
+      }),
+      this.prisma.newsletterSubscriber.count({
+        where: { status: SubscriberStatus.INATIVO },
+      }),
+      this.prisma.newsletterSubscriber.count({
+        where: { status: SubscriberStatus.CANCELADO },
+      }),
+    ]);
+    return { total, ativo, inativo, cancelado };
+  }
+
+  /** Returns every subscriber in joinedAt-desc order. Used by the
+   *  CSV / XLSX export endpoints; never paginated since the whole
+   *  point of export is to dump the full list. */
+  listAllSubscribers() {
+    return this.prisma.newsletterSubscriber.findMany({
+      orderBy: { joinedAt: 'desc' },
+    });
   }
 
   async subscribe(email: string, name = '') {
