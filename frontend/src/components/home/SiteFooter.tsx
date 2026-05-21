@@ -2,22 +2,54 @@ import Image from "next/image";
 import { Container } from "../Container";
 import { getSocialLinks, type SocialLinks } from "@/lib/public-api";
 
-const COLUMNS = [
+interface FooterLink {
+  label: string;
+  href: string;
+}
+
+interface FooterColumn {
+  title: string;
+  items: FooterLink[];
+}
+
+// Static pages live at /p/<slug>. "Rubricas" point at the category
+// routes so navigation stays consistent with the secondary nav.
+const COLUMNS: FooterColumn[] = [
   {
     title: "Editorial",
-    items: ["Estatuto", "Equipa", "Política de Correções", "Transparência"],
+    items: [
+      { label: "Estatuto", href: "/p/estatuto-editorial" },
+      { label: "Equipa", href: "/p/equipa" },
+      { label: "Política de Correções", href: "/p/politica-correcoes" },
+      { label: "Transparência", href: "/p/transparencia" },
+    ],
   },
   {
     title: "Rubricas",
-    items: ["Investigação A21", "Entrelinhas", "Ringue", "Vox Pop"],
+    items: [
+      { label: "Investigação", href: "/categoria/investigacao" },
+      { label: "Opinião", href: "/categoria/opiniao" },
+      { label: "Política", href: "/categoria/politica" },
+      { label: "Mundo", href: "/categoria/mundo" },
+    ],
   },
   {
     title: "Contacto",
-    items: ["Redação", "Publicidade", "Assinatura", "Imprensa"],
+    items: [
+      { label: "Redação", href: "/p/redaccao" },
+      { label: "Publicidade", href: "/p/publicidade" },
+      { label: "Assinatura", href: "/p/assinatura" },
+      { label: "Imprensa", href: "/p/imprensa" },
+    ],
   },
   {
     title: "Legal",
-    items: ["Termos de Uso", "Privacidade", "Cookies", "ERC"],
+    items: [
+      { label: "Termos de Uso", href: "/p/termos" },
+      { label: "Privacidade", href: "/p/privacidade" },
+      { label: "Cookies", href: "/p/cookies" },
+      { label: "ERC", href: "/p/erc" },
+    ],
   },
 ];
 
@@ -125,9 +157,12 @@ export async function SiteFooter() {
                 </h4>
                 <ul className="mt-3 flex flex-col gap-2 text-[13px] text-white/70">
                   {col.items.map((it) => (
-                    <li key={it}>
-                      <a className="hover:text-white" href="#">
-                        {it}
+                    <li key={it.label}>
+                      <a
+                        className="transition-colors hover:text-patriota-accent"
+                        href={it.href}
+                      >
+                        {it.label}
                       </a>
                     </li>
                   ))}
