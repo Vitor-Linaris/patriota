@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { Container } from "../Container";
 import { getSocialLinks, type SocialLinks } from "@/lib/public-api";
+import { CookieConsent } from "./CookieConsent";
 
 interface FooterLink {
   label: string;
@@ -134,6 +135,7 @@ function SocialIcons({ links }: { links: SocialLinks }) {
 export async function SiteFooter() {
   const social = await getSocialLinks();
   return (
+    <>
     <footer className="bg-patriota-dark text-white">
       <Container className="py-12">
         <div className="flex flex-col gap-10 md:flex-row md:items-start md:justify-between">
@@ -177,5 +179,9 @@ export async function SiteFooter() {
         </div>
       </Container>
     </footer>
+    {/* Cookie consent banner — only on public pages (admin doesn't
+        render SiteFooter). Self-managed via localStorage. */}
+    <CookieConsent />
+    </>
   );
 }
