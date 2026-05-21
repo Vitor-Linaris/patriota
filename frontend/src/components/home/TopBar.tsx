@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Container } from "../Container";
 import { FEATURES } from "@/lib/features";
 import { NewsletterModal } from "./NewsletterModal";
+import { SearchModal } from "./SearchModal";
 
 function formatToday(): string {
   const long = new Intl.DateTimeFormat("pt-PT", {
@@ -17,6 +18,21 @@ function formatToday(): string {
 
 export function TopBar() {
   const [newsletterOpen, setNewsletterOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  // Global ⌘K / Ctrl+K opens the search modal from anywhere on the
+  // page. We register at the TopBar level because it lives on every
+  // public route — single registration, no duplication.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   return (
     <>
@@ -35,15 +51,13 @@ export function TopBar() {
           <nav className="hidden items-center gap-4 sm:flex">
             <button
               type="button"
-              className="transition-colors hover:text-white"
-              onClick={() => {
-                // Search modal is wired separately in a future step.
-                // For now this button is a placeholder so the click
-                // target exists.
-                window.dispatchEvent(new CustomEvent("patriota:search"));
-              }}
+              onClick={() => setSearchOpen(true)}
+              className="inline-flex items-center gap-1.5 transition-colors hover:text-white"
             >
-              Pesquisar
+              <span aria-hidden>⌕</span> Pesquisar
+              <kbd className="hidden rounded border border-white/15 bg-white/5 px-1 py-0.5 text-[10px] font-medium text-white/60 md:inline-block">
+                ⌘K
+              </kbd>
             </button>
             <span aria-hidden className="h-3 w-px bg-white/20" />
             <button
@@ -75,6 +89,7 @@ export function TopBar() {
         open={newsletterOpen}
         onClose={() => setNewsletterOpen(false)}
       />
+      <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
     </>
   );
 }

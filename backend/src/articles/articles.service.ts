@@ -377,6 +377,15 @@ export class ArticlesService {
     const { skip, take } = toSkipTake(query);
     const where: Record<string, unknown> = { status: 'PUBLICADO' };
     if (query.category) where.category = { slug: query.category };
+    // Public search across title + summary. Uses the same case-
+    // insensitive contains pattern as the admin list — same index
+    // story, same expectations.
+    if (query.q) {
+      where.OR = [
+        { title: { contains: query.q, mode: 'insensitive' } },
+        { summary: { contains: query.q, mode: 'insensitive' } },
+      ];
+    }
     const orderBy =
       query.sort === 'views'
         ? { views: 'desc' as const }

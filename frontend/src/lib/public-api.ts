@@ -85,6 +85,8 @@ export async function getArticleBySlug(
 
 export interface PublicListQuery {
   category?: string;
+  /** Free-text search across title + summary. */
+  q?: string;
   page?: number;
   pageSize?: number;
   sort?: "publishedAt" | "views";
@@ -96,6 +98,7 @@ export async function listPublicArticles(
   try {
     const params = new URLSearchParams();
     if (q.category) params.set("category", q.category);
+    if (q.q) params.set("q", q.q);
     if (q.page) params.set("page", String(q.page));
     if (q.pageSize) params.set("pageSize", String(q.pageSize));
     if (q.sort) params.set("sort", q.sort);
