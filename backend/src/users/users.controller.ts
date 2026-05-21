@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -7,8 +8,15 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
+  UseFilters,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { UsersService } from './users.service';
+import { MulterExceptionFilter } from '../media/multer-exception.filter';
+
+const AVATAR_MAX_BYTES = 10 * 1024 * 1024;
 import { RequirePermissions } from '../auth/permissions.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthUser } from '../auth/auth.service';
@@ -96,5 +104,24 @@ export class UsersController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.users.changeOwnPassword(user.id, dto);
+  }
+
+  /**
+   * Multipart upload of the user's profile photo. Goes to its own
+   * /uploads/avatars/ folder — does NOT create a Media row, so
+   * profile photos stay private to each user and never appear in
+   * the shared media library picker.
+   */
+  @Post('users/me/avatar')
+  @UseFilters(MulterExceptionFilter)
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: AVATAR_MAX_BYTES } }),
+  )
+  uploadMyAvatar(
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: AuthUser,
+  ) {
+    if (!file) throw new BadRequestException('Ficheiro obrigatório.');
+    return this.users.uploadAvatar(user.id, file);
   }
 }

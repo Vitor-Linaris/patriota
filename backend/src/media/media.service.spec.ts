@@ -19,6 +19,7 @@ describe('MediaService', () => {
       delete: jest.Mock;
     };
     article: { findMany: jest.Mock };
+    ad: { findMany: jest.Mock };
   };
 
   beforeEach(async () => {
@@ -31,6 +32,7 @@ describe('MediaService', () => {
         delete: jest.fn().mockResolvedValue({ id: 'm1', name: 'a.jpg' }),
       },
       article: { findMany: jest.fn().mockResolvedValue([]) },
+      ad: { findMany: jest.fn().mockResolvedValue([]) },
     };
     const moduleRef = await Test.createTestingModule({
       providers: [

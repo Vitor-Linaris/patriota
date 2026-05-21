@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { changePasswordAction, updateProfileAction } from "./actions";
-import { uploadMediaFileAction } from "@/app/admin/media/actions";
+import {
+  changePasswordAction,
+  updateProfileAction,
+  uploadAvatarAction,
+} from "./actions";
 import { validateImageUpload } from "@/lib/upload-limits";
-import { imageVariant } from "@/lib/images";
 
 interface ProfileData {
   name: string;
@@ -69,10 +71,11 @@ export default function AdminProfileClient({ initial, initialNotifs }: Props) {
   const [notifsError, setNotifsError] = useState<string | null>(null);
 
   /**
-   * Avatar upload through the standard media pipeline. The file is
-   * sent to /admin/media/upload, returns the 3-variant WebP set, and
-   * we persist the canonical (large) URL on the user record. The
-   * preview here uses the medium variant to keep payload light.
+   * Avatar upload — talks to the dedicated /users/me/avatar endpoint
+   * (NOT /admin/media/upload). The backend writes a single WebP @ q80
+   * to /uploads/avatars/, updates user.avatarUrl, and does NOT create
+   * a Media row — so the photo stays private to this user and never
+   * pollutes the shared media library picker.
    */
   function handleAvatarFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -88,13 +91,13 @@ export default function AdminProfileClient({ initial, initialNotifs }: Props) {
     const fd = new FormData();
     fd.append("file", file);
     startTransition(async () => {
-      const res = await uploadMediaFileAction(fd);
+      const res = await uploadAvatarAction(fd);
       setAvatarUploading(false);
       if (!res.ok) {
         setAvatarError(res.error);
         return;
       }
-      setDraft((d) => ({ ...d, avatarUrl: res.media.url }));
+      setDraft((d) => ({ ...d, avatarUrl: res.avatarUrl }));
     });
   }
 
@@ -165,14 +168,11 @@ export default function AdminProfileClient({ initial, initialNotifs }: Props) {
     });
   }
 
-  // Sidebar avatar uses the small variant if available (snappy
-  // server-side render), big card uses medium.
-  const sidebarAvatar = draft.avatarUrl
-    ? imageVariant(draft.avatarUrl, "small") ?? draft.avatarUrl
-    : "";
-  const mainAvatar = draft.avatarUrl
-    ? imageVariant(draft.avatarUrl, "medium") ?? draft.avatarUrl
-    : "";
+  // Single avatar file — no small/medium/large variants. Same URL
+  // for sidebar (80px) and main card (64px); the WebP is sized to
+  // fit a 512px square at upload, well within budget for both.
+  const sidebarAvatar = draft.avatarUrl;
+  const mainAvatar = draft.avatarUrl;
 
   const pwStrength =
     pw.next.length === 0

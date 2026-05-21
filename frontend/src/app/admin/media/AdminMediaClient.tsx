@@ -20,9 +20,14 @@ export interface MediaItem {
   dimensions?: string;
   /** Number of articles referencing this media (cover or inline). */
   articleCount?: number;
-  /** Articles using this media (first 5). Used by the delete modal
-   * to link the editor to the affected articles. */
-  usedIn?: Array<{ id: string; slug: string; title: string }>;
+  /** Number of ad slots referencing this media. */
+  adCount?: number;
+  /** Places using this media (first 5). Mix of articles and ads —
+   *  the `kind` discriminator drives the link target in the UI. */
+  usedIn?: Array<
+    | { kind: "article"; id: string; slug: string; title: string }
+    | { kind: "ad"; id: string; title: string }
+  >;
 }
 
 function parseDimensions(text: string): { width?: number; height?: number } {
@@ -109,12 +114,17 @@ export default function AdminMediaClient({
     });
   };
 
+  // Helper: total references = articles + ad slots. An image is
+  // "in use" when this is > 0.
+  const totalUsageOf = (m: MediaItem) =>
+    (m.articleCount ?? 0) + (m.adCount ?? 0);
+
   // Search is server-driven (?q=). The "usadas/nao-usadas" filter is
   // still client-side on the current page (backend doesn't filter by
   // usage yet) — adequate at our scale since one page is bounded.
   const filtered = useMemo(() => {
     return initialItems.filter((item) => {
-      const isUsed = (item.articleCount ?? 0) > 0;
+      const isUsed = totalUsageOf(item) > 0;
       const matchFilter =
         filter === "todas"
           ? true
@@ -131,7 +141,7 @@ export default function AdminMediaClient({
   // in the UI to set expectations.
   const stats = useMemo(() => {
     const usadasOnPage = initialItems.filter(
-      (i) => (i.articleCount ?? 0) > 0,
+      (i) => totalUsageOf(i) > 0,
     ).length;
     return {
       total: statsTotal,
@@ -171,16 +181,29 @@ export default function AdminMediaClient({
     });
   };
 
-  // Centralises navigation to the article editor from any link in the
-  // media library. We close the modal + detail panel BEFORE pushing so
-  // that the next paint doesn't carry over stale UI state, and we use
-  // router.push (not <a>) so the back button restores the library page
-  // with a clean React tree instead of a stuck overlay.
-  const openArticleEditor = (articleId: string) => {
+  // Centralises navigation from any usage link in the media library.
+  // We close the modal + detail panel BEFORE pushing so that the next
+  // paint doesn't carry over stale UI state, and we use router.push
+  // (not <a>) so the back button restores the library page with a
+  // clean React tree instead of a stuck overlay.
+  //
+  // For articles we deep-link to the specific editor (?edit=<id>).
+  // For ads we send the user to /admin/publicidade (the slot list) —
+  // there are only ~11 slots total, the user finds the relevant one
+  // at a glance, and we don't have a deep-link param for ads yet.
+  const openUsageTarget = (
+    entry:
+      | { kind: "article"; id: string }
+      | { kind: "ad"; id: string },
+  ) => {
     setDeleteConfirm(null);
     setSelected(null);
     startTransition(() => {
-      router.push(`/admin/artigos?edit=${articleId}`);
+      if (entry.kind === "article") {
+        router.push(`/admin/artigos?edit=${entry.id}`);
+      } else {
+        router.push(`/admin/publicidade`);
+      }
     });
   };
 
@@ -328,7 +351,23 @@ export default function AdminMediaClient({
       {deleteConfirm &&
         (() => {
           const target = initialItems.find((i) => i.id === deleteConfirm);
-          const inUse = (target?.articleCount ?? 0) > 0;
+          const articleCount = target?.articleCount ?? 0;
+          const adCount = target?.adCount ?? 0;
+          const totalUses = articleCount + adCount;
+          const inUse = totalUses > 0;
+          const usedInList = target?.usedIn ?? [];
+          const remaining = totalUses - usedInList.length;
+          // Build a friendly summary: "2 artigos e 1 publicidade".
+          const summaryParts: string[] = [];
+          if (articleCount > 0)
+            summaryParts.push(
+              `${articleCount} ${articleCount === 1 ? "artigo" : "artigos"}`,
+            );
+          if (adCount > 0)
+            summaryParts.push(
+              `${adCount} ${adCount === 1 ? "publicidade" : "publicidades"}`,
+            );
+          const summary = summaryParts.join(" e ");
           return (
             <div
               className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
@@ -347,48 +386,42 @@ export default function AdminMediaClient({
                   <>
                     <p className="mb-3 text-sm text-gray-600">
                       Esta imagem está a ser usada em{" "}
-                      <strong>
-                        {target?.articleCount}{" "}
-                        {target?.articleCount === 1 ? "artigo" : "artigos"}
-                      </strong>
-                      . Remova-a desses artigos antes de eliminar.
+                      <strong>{summary}</strong>. Remova-a antes de
+                      eliminar.
                     </p>
-                    {(target?.usedIn ?? []).length > 0 && (
+                    {usedInList.length > 0 && (
                       <div className="mb-4 max-h-56 overflow-y-auto rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
                         <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-700">
-                          Artigos a editar
+                          Locais a editar
                         </p>
                         <ul className="space-y-1 text-[12px]">
-                          {(target?.usedIn ?? []).map((a) => (
+                          {usedInList.map((entry) => (
                             <li
-                              key={a.id}
+                              key={`${entry.kind}-${entry.id}`}
                               className="flex items-center justify-between gap-2"
                             >
                               <span className="line-clamp-1 text-amber-900">
-                                {a.title}
+                                <span className="mr-1.5 inline-block rounded bg-amber-200/70 px-1.5 py-px text-[9px] font-bold uppercase tracking-wider text-amber-800">
+                                  {entry.kind === "article"
+                                    ? "Artigo"
+                                    : "Publicidade"}
+                                </span>
+                                {entry.title}
                               </span>
                               <button
                                 type="button"
-                                onClick={() => openArticleEditor(a.id)}
+                                onClick={() => openUsageTarget(entry)}
                                 className="shrink-0 rounded-md bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700 ring-1 ring-amber-300 hover:bg-amber-100"
                               >
-                                Editar →
+                                {entry.kind === "article"
+                                  ? "Editar →"
+                                  : "Ver →"}
                               </button>
                             </li>
                           ))}
-                          {(target?.articleCount ?? 0) >
-                            (target?.usedIn ?? []).length && (
+                          {remaining > 0 && (
                             <li className="text-[11px] italic text-amber-700">
-                              (e mais{" "}
-                              {(target?.articleCount ?? 0) -
-                                (target?.usedIn ?? []).length}{" "}
-                              artigo
-                              {(target?.articleCount ?? 0) -
-                                (target?.usedIn ?? []).length ===
-                              1
-                                ? ""
-                                : "s"}
-                              …)
+                              (e mais {remaining} …)
                             </li>
                           )}
                         </ul>
@@ -568,7 +601,7 @@ export default function AdminMediaClient({
               className={`grid gap-3 ${selected ? "grid-cols-2 xl:grid-cols-3" : "grid-cols-3 md:grid-cols-4 xl:grid-cols-5"}`}
             >
               {filtered.map((item) => {
-                const count = item.articleCount ?? 0;
+                const count = totalUsageOf(item);
                 const used = count > 0;
                 return (
                   <button
@@ -668,62 +701,68 @@ export default function AdminMediaClient({
                 )}
               </div>
 
-              {/* Usage indicator + sample article titles. Helps the
-                  admin understand the consequence of deleting before
-                  they click. */}
-              {/* Article usage block. Mirrors the layout of the
-                  delete-confirm modal so the same "title + Editar →"
-                  affordance is available whenever the panel is open —
-                  no need to click the trash icon just to discover
-                  where the image is referenced. */}
-              {(selected.articleCount ?? 0) > 0 ? (
-                <div className="mb-4 rounded-lg border border-green-200 bg-green-50 px-3 py-2">
-                  <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-green-700">
-                    Em uso em {selected.articleCount}{" "}
-                    {selected.articleCount === 1 ? "artigo" : "artigos"}
-                  </p>
-                  {(selected.usedIn ?? []).length > 0 && (
+              {/* Usage block — same "title + action" pattern as the
+                  delete modal. Surfaces both article and ad references
+                  so the admin can navigate to either context. */}
+              {(() => {
+                const articleCount = selected.articleCount ?? 0;
+                const adCount = selected.adCount ?? 0;
+                const totalUses = articleCount + adCount;
+                const list = selected.usedIn ?? [];
+                const remaining = totalUses - list.length;
+                if (totalUses === 0) {
+                  return (
+                    <div className="mb-4 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-[11px] text-gray-500">
+                      Esta imagem não está em uso.
+                    </div>
+                  );
+                }
+                const summaryParts: string[] = [];
+                if (articleCount > 0)
+                  summaryParts.push(
+                    `${articleCount} ${articleCount === 1 ? "artigo" : "artigos"}`,
+                  );
+                if (adCount > 0)
+                  summaryParts.push(
+                    `${adCount} ${adCount === 1 ? "publicidade" : "publicidades"}`,
+                  );
+                return (
+                  <div className="mb-4 rounded-lg border border-green-200 bg-green-50 px-3 py-2">
+                    <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-green-700">
+                      Em uso em {summaryParts.join(" e ")}
+                    </p>
                     <ul className="space-y-1 text-[12px]">
-                      {(selected.usedIn ?? []).map((a) => (
+                      {list.map((entry) => (
                         <li
-                          key={a.id}
+                          key={`${entry.kind}-${entry.id}`}
                           className="flex items-center justify-between gap-2"
                         >
                           <span className="line-clamp-1 text-green-900">
-                            {a.title}
+                            <span className="mr-1.5 inline-block rounded bg-green-200/70 px-1.5 py-px text-[9px] font-bold uppercase tracking-wider text-green-800">
+                              {entry.kind === "article"
+                                ? "Artigo"
+                                : "Publicidade"}
+                            </span>
+                            {entry.title}
                           </span>
                           <button
                             type="button"
-                            onClick={() => openArticleEditor(a.id)}
+                            onClick={() => openUsageTarget(entry)}
                             className="shrink-0 rounded-md bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-green-700 ring-1 ring-green-300 hover:bg-green-100"
                           >
-                            Editar →
+                            {entry.kind === "article" ? "Editar →" : "Ver →"}
                           </button>
                         </li>
                       ))}
-                      {(selected.articleCount ?? 0) >
-                        (selected.usedIn ?? []).length && (
+                      {remaining > 0 && (
                         <li className="text-[11px] italic text-green-700">
-                          (e mais{" "}
-                          {(selected.articleCount ?? 0) -
-                            (selected.usedIn ?? []).length}{" "}
-                          artigo
-                          {(selected.articleCount ?? 0) -
-                            (selected.usedIn ?? []).length ===
-                          1
-                            ? ""
-                            : "s"}
-                          …)
+                          (e mais {remaining} …)
                         </li>
                       )}
                     </ul>
-                  )}
-                </div>
-              ) : (
-                <div className="mb-4 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-[11px] text-gray-500">
-                  Esta imagem não está em uso em nenhum artigo.
-                </div>
-              )}
+                  </div>
+                );
+              })()}
 
               <div className="mb-4 rounded-lg bg-gray-50 px-3 py-2">
                 <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">

@@ -22,8 +22,13 @@ interface MediaApi {
   uploadedAt: string;
   /** Count of articles that reference this media (cover or inline). */
   articleCount: number;
-  /** First 5 articles using this media, with link info. */
-  usedIn: Array<{ id: string; slug: string; title: string }>;
+  /** Count of ad slots whose imageUrl points at this media. */
+  adCount: number;
+  /** First 5 places using this media — mix of articles and ads. */
+  usedIn: Array<
+    | { kind: "article"; id: string; slug: string; title: string }
+    | { kind: "ad"; id: string; title: string }
+  >;
 }
 
 const dateFmt = new Intl.DateTimeFormat("pt-PT", {
@@ -49,6 +54,7 @@ function toMediaItem(m: MediaApi): MediaItem {
     dimensions:
       m.width && m.height ? `${m.width}×${m.height}` : undefined,
     articleCount: m.articleCount ?? 0,
+    adCount: m.adCount ?? 0,
     usedIn: m.usedIn ?? [],
   };
 }

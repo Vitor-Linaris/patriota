@@ -104,69 +104,111 @@ export class MediaService {
     //
     // An image is in use when:
     //   • some article's coverImageUrl matches one of the variant URLs, OR
-    //   • some article's HTML content embeds one of the variant URLs.
+    //   • some article's HTML content embeds one of the variant URLs, OR
+    //   • some ad slot's imageUrl matches one of the variant URLs.
     //
-    // We do it in ONE bounded query (only articles that reference at
-    // least one URL on this page) instead of N+1 per item. With ~24
-    // media per page that's a single Postgres scan with an OR list.
+    // Two bounded queries (articles OR-list and ads OR-list) instead
+    // of N+1 per item. With ~24 media per page that's two Postgres
+    // scans with OR-lists.
     const variantUrls = items
       .flatMap((m) => [m.url, m.urlMedium, m.urlSmall])
       .filter((u): u is string => Boolean(u));
 
-    type UsedArticle = { id: string; slug: string; title: string };
+    type UsageEntry =
+      | { kind: 'article'; id: string; slug: string; title: string }
+      | { kind: 'ad'; id: string; title: string };
+
     const usage = new Map<
       string,
-      { articleCount: number; usedIn: UsedArticle[] }
+      { articleCount: number; adCount: number; usedIn: UsageEntry[] }
     >();
-    for (const m of items) usage.set(m.id, { articleCount: 0, usedIn: [] });
+    for (const m of items)
+      usage.set(m.id, { articleCount: 0, adCount: 0, usedIn: [] });
 
     if (variantUrls.length > 0) {
       // Cover-image equality is cheap (indexed string column).
       // Content `contains` is sequential scan — fine at our scale; if
       // the corpus grows we'll add a separate MediaUsage join table.
-      const refs = await this.prisma.article.findMany({
-        where: {
-          OR: [
-            { coverImageUrl: { in: variantUrls } },
-            ...variantUrls.map((u) => ({ content: { contains: u } })),
-          ],
-        },
-        select: {
-          id: true,
-          title: true,
-          slug: true,
-          coverImageUrl: true,
-          content: true,
-        },
-      });
+      const [articleRefs, adRefs] = await Promise.all([
+        this.prisma.article.findMany({
+          where: {
+            OR: [
+              { coverImageUrl: { in: variantUrls } },
+              ...variantUrls.map((u) => ({ content: { contains: u } })),
+            ],
+          },
+          select: {
+            id: true,
+            title: true,
+            slug: true,
+            coverImageUrl: true,
+            content: true,
+          },
+        }),
+        this.prisma.ad.findMany({
+          where: { imageUrl: { in: variantUrls } },
+          select: { id: true, name: true, imageUrl: true },
+        }),
+      ]);
 
       for (const m of items) {
         const variants = [m.url, m.urlMedium, m.urlSmall].filter(
           (u): u is string => Boolean(u),
         );
-        const usedBy = refs.filter((a) =>
+        const articlesUsing = articleRefs.filter((a) =>
           variants.some(
             (u) =>
               a.coverImageUrl === u || (a.content ?? '').includes(u),
           ),
         );
+        const adsUsing = adRefs.filter((a) =>
+          variants.some((u) => a.imageUrl === u),
+        );
+        // Build a combined list: articles first (more context for
+        // editors), ads next, capped at 5 to keep the panel tidy.
+        const usedIn: UsageEntry[] = [
+          ...articlesUsing.map(
+            (a) =>
+              ({
+                kind: 'article' as const,
+                id: a.id,
+                slug: a.slug,
+                title: a.title,
+              }) satisfies UsageEntry,
+          ),
+          ...adsUsing.map(
+            (a) =>
+              ({
+                kind: 'ad' as const,
+                id: a.id,
+                title: a.name,
+              }) satisfies UsageEntry,
+          ),
+        ].slice(0, 5);
         usage.set(m.id, {
-          articleCount: usedBy.length,
-          usedIn: usedBy.slice(0, 5).map((a) => ({
-            id: a.id,
-            slug: a.slug,
-            title: a.title,
-          })),
+          articleCount: articlesUsing.length,
+          adCount: adsUsing.length,
+          usedIn,
         });
       }
     }
 
     return {
-      items: items.map((m) => ({
-        ...m,
-        articleCount: usage.get(m.id)?.articleCount ?? 0,
-        usedIn: usage.get(m.id)?.usedIn ?? [],
-      })),
+      items: items.map((m) => {
+        const u = usage.get(m.id);
+        const articleCount = u?.articleCount ?? 0;
+        const adCount = u?.adCount ?? 0;
+        return {
+          ...m,
+          articleCount,
+          adCount,
+          // Legacy field kept for backwards compatibility — total
+          // count regardless of kind. Frontend now also receives
+          // articleCount and adCount separately.
+          usageCount: articleCount + adCount,
+          usedIn: u?.usedIn ?? [],
+        };
+      }),
       total,
       page: query.page ?? 1,
       pageSize: query.pageSize ?? 20,
@@ -296,25 +338,45 @@ export class MediaService {
       (u): u is string => Boolean(u),
     );
 
-    const refs = await this.prisma.article.findMany({
-      where: {
-        OR: [
-          { coverImageUrl: { in: variants } },
-          ...variants.map((u) => ({ content: { contains: u } })),
-        ],
-      },
-      select: { id: true, slug: true, title: true },
-      take: 50,
-    });
+    const [articleRefs, adRefs] = await Promise.all([
+      this.prisma.article.findMany({
+        where: {
+          OR: [
+            { coverImageUrl: { in: variants } },
+            ...variants.map((u) => ({ content: { contains: u } })),
+          ],
+        },
+        select: { id: true, slug: true, title: true },
+        take: 50,
+      }),
+      this.prisma.ad.findMany({
+        where: { imageUrl: { in: variants } },
+        select: { id: true, name: true },
+        take: 50,
+      }),
+    ]);
 
-    if (refs.length > 0) {
+    if (articleRefs.length + adRefs.length > 0) {
       throw new ConflictException({
         statusCode: 409,
         error: 'Conflict',
         message:
-          'Imagem em uso. Remova-a dos artigos abaixo antes de eliminar.',
-        articleCount: refs.length,
-        usedIn: refs,
+          'Imagem em uso. Remova-a dos artigos / publicidade antes de eliminar.',
+        articleCount: articleRefs.length,
+        adCount: adRefs.length,
+        usedIn: [
+          ...articleRefs.map((a) => ({
+            kind: 'article' as const,
+            id: a.id,
+            slug: a.slug,
+            title: a.title,
+          })),
+          ...adRefs.map((a) => ({
+            kind: 'ad' as const,
+            id: a.id,
+            title: a.name,
+          })),
+        ],
       });
     }
 

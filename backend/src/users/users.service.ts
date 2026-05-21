@@ -1,12 +1,17 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import sharp from 'sharp';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import {
@@ -390,4 +395,87 @@ export class UsersService {
     });
     return { ok: true };
   }
+
+  /**
+   * Profile photo upload — kept deliberately separate from the
+   * /admin/media flow so avatars don't show up in the shared media
+   * library (each user's photo is private to their own profile).
+   * Files land in /uploads/avatars/, no Media row is created.
+   *
+   * Output is a single WebP at q=80, resized to fit a 512px square
+   * (avatars never need more — the largest consumer renders at 80px
+   * on the profile sidebar). No small/medium/large variants.
+   */
+  async uploadAvatar(
+    userId: string,
+    file: {
+      buffer: Buffer;
+      originalname: string;
+      mimetype: string;
+      size: number;
+    },
+  ): Promise<{ avatarUrl: string }> {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Ficheiro vazio.');
+    }
+    const supported = new Set([
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+      'image/gif',
+      'image/avif',
+    ]);
+    if (!supported.has(file.mimetype)) {
+      throw new BadRequestException(
+        `Tipo de ficheiro não suportado: ${file.mimetype}`,
+      );
+    }
+
+    const uploadsDir =
+      process.env.UPLOADS_DIR ?? '/usr/src/app/uploads';
+    const publicBase =
+      process.env.UPLOADS_PUBLIC_BASE_URL ?? 'http://localhost:8585/uploads';
+    const dir = join(uploadsDir, 'avatars');
+    await mkdir(dir, { recursive: true });
+
+    // Filename combines the user id and a short random suffix so
+    // (a) we don't accumulate orphan files when a user replaces
+    // their photo, and (b) a stale CDN cache is invalidated by the
+    // changed URL. The user prefix makes ownership inspectable on
+    // disk.
+    const suffix = randomBytes(4).toString('hex');
+    const filename = `${userId}-${suffix}.webp`;
+    const outPath = join(dir, filename);
+
+    let buf: Buffer;
+    try {
+      buf = await sharp(file.buffer)
+        .rotate()
+        .resize({
+          width: 512,
+          height: 512,
+          fit: 'inside',
+          withoutEnlargement: true,
+        })
+        .webp({ quality: 80 })
+        .toBuffer();
+    } catch (e) {
+      throw new BadRequestException(
+        `Imagem inválida: ${(e as Error).message}`,
+      );
+    }
+    await writeFile(outPath, buf);
+
+    const avatarUrl = `${publicBase}/avatars/${filename}`;
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { avatarUrl },
+    });
+    this.logger.log(
+      `Avatar uploaded for user ${userId} → ${(buf.length / 1024).toFixed(1)}KB`,
+    );
+    return { avatarUrl };
+  }
+
+  private readonly logger = new Logger(UsersService.name);
 }
