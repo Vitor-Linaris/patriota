@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Container } from "../Container";
 import { getNavCategories } from "@/lib/categories";
+import { MobileNav } from "./MobileNav";
 
 /**
  * Primary top navigation. Lives 100% off the category catalogue
@@ -9,21 +10,18 @@ import { getNavCategories } from "@/lib/categories";
  * controls what shows up here from `/admin/categorias` — there is
  * no hardcoded list to fall out of sync.
  *
- * The first PRIMARY_NAV_LIMIT categories land here; the rest fall
- * through to <SecondaryNav>. Partition logic lives in
- * `lib/categories.ts:getNavCategories()` so both components share
- * the same source of truth.
+ * Layout
+ *   • Desktop (≥ lg) → inline category links to the right of the logo
+ *   • Tablet + mobile (< lg) → hamburger button that opens the
+ *     <MobileNav> drawer with the full category list + shortcuts
  *
- * "Última Hora" is intentionally NOT in this bar:
- *   • The animated ticker right above (BreakingNews) already shows
- *     the four most recent published articles — that IS the última
- *     hora and is dynamic by definition.
- *   • Adding it here too would just duplicate the same intent in
- *     two places and required hardcoding /categoria/ultima-hora
- *     which doesn't exist as a real category.
+ * "Última Hora" is intentionally NOT in this bar — the animated
+ * BreakingNews ticker right above already shows the four most recent
+ * published articles, which IS última hora and is dynamic by
+ * definition.
  */
 export async function SiteHeader() {
-  const { primary } = await getNavCategories();
+  const { primary, secondary } = await getNavCategories();
   return (
     <header className="border-b border-slate-200 bg-white">
       <Container className="flex h-[82px] items-center justify-between">
@@ -36,6 +34,8 @@ export async function SiteHeader() {
             priority
           />
         </Link>
+
+        {/* Desktop: inline links. Hidden below `lg`. */}
         {primary.length > 0 && (
           <nav className="hidden items-center gap-7 text-[14px] lg:flex">
             {primary.map((c) => (
@@ -49,6 +49,9 @@ export async function SiteHeader() {
             ))}
           </nav>
         )}
+
+        {/* Tablet + mobile: hamburger. Hidden at `lg` and above. */}
+        <MobileNav primary={primary} secondary={secondary} />
       </Container>
     </header>
   );

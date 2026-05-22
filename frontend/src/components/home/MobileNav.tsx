@@ -1,0 +1,228 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import Image from "next/image";
+import type { CategoryDef } from "@/lib/categories";
+
+/**
+ * Hamburger menu for tablet + mobile. Replaces the inline category
+ * row in <SiteHeader> on screens narrower than `lg`. Slides in from
+ * the right with a backdrop; Esc / backdrop click close it.
+ *
+ * Receives the full category catalogue as props (already split into
+ * primary + secondary by the parent server component) so it stays
+ * fully static after hydration — no client-side fetching.
+ *
+ * Includes shortcuts to the search and newsletter modals at the
+ * bottom, so the mobile reader has a single entry point for "search
+ * + browse + subscribe" without having to remember where each lives
+ * on a tiny viewport.
+ */
+export function MobileNav({
+  primary,
+  secondary,
+}: {
+  primary: CategoryDef[];
+  secondary: CategoryDef[];
+}) {
+  const [open, setOpen] = useState(false);
+
+  // Esc to close, body scroll lock while open.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [open]);
+
+  const all = [...primary, ...secondary];
+
+  return (
+    <>
+      {/* Hamburger button — only visible below lg. The 3 bars
+          animate to an X when the drawer opens so the same button
+          works as "open" and "close" without a layout shift. */}
+      <button
+        type="button"
+        aria-label={open ? "Fechar menu" : "Abrir menu"}
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="relative z-[110] flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-700 transition-colors hover:bg-slate-100 lg:hidden"
+      >
+        <span className="relative block h-4 w-6">
+          <span
+            className={`absolute left-0 block h-0.5 w-6 rounded-full bg-current transition-all duration-300 ${
+              open ? "top-1/2 rotate-45" : "top-0"
+            }`}
+          />
+          <span
+            className={`absolute left-0 top-1/2 block h-0.5 w-6 -translate-y-1/2 rounded-full bg-current transition-opacity duration-200 ${
+              open ? "opacity-0" : "opacity-100"
+            }`}
+          />
+          <span
+            className={`absolute left-0 block h-0.5 w-6 rounded-full bg-current transition-all duration-300 ${
+              open ? "top-1/2 -rotate-45" : "bottom-0"
+            }`}
+          />
+        </span>
+      </button>
+
+      {/* Backdrop */}
+      <div
+        aria-hidden
+        onClick={() => setOpen(false)}
+        className={`fixed inset-0 z-[100] bg-slate-900/50 backdrop-blur-sm transition-opacity duration-300 lg:hidden ${
+          open
+            ? "pointer-events-auto opacity-100"
+            : "pointer-events-none opacity-0"
+        }`}
+      />
+
+      {/* Drawer */}
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-label="Menu de navegação"
+        className={`fixed inset-y-0 right-0 z-[105] flex w-[85%] max-w-sm flex-col overflow-y-auto bg-white shadow-2xl transition-transform duration-300 ease-out lg:hidden ${
+          open ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
+        {/* Drawer header */}
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+          <Link
+            href="/"
+            onClick={() => setOpen(false)}
+            aria-label="O Patriota"
+            className="inline-flex"
+          >
+            <Image
+              src="/brand/Logo-header.svg"
+              alt="O Patriota"
+              width={104}
+              height={42}
+            />
+          </Link>
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            aria-label="Fechar menu"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Primary categories — featured prominently */}
+        {primary.length > 0 && (
+          <nav className="px-2 py-4" aria-label="Secções principais">
+            <p className="mb-2 px-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              Secções
+            </p>
+            <ul className="flex flex-col gap-0.5">
+              {primary.map((c) => (
+                <li key={c.slug}>
+                  <Link
+                    href={`/categoria/${c.slug}`}
+                    onClick={() => setOpen(false)}
+                    className="flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-[15px] font-semibold text-slate-800 transition-colors hover:bg-patriota-pure hover:text-patriota-dark"
+                  >
+                    <span>{c.label}</span>
+                    {c.articleCount > 0 && (
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500">
+                        {c.articleCount}
+                      </span>
+                    )}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        )}
+
+        {/* Secondary categories — same data the desktop SecondaryNav
+            shows. On mobile we include them here so the reader has a
+            single navigation surface; the visible SecondaryNav strip
+            below the header is fine for casual swiping but small. */}
+        {secondary.length > 0 && (
+          <nav
+            className="border-t border-slate-100 px-2 py-4"
+            aria-label="Outras secções"
+          >
+            <p className="mb-2 px-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              Mais rubricas
+            </p>
+            <ul className="flex flex-col gap-0.5">
+              {secondary.map((c) => (
+                <li key={c.slug}>
+                  <Link
+                    href={`/categoria/${c.slug}`}
+                    onClick={() => setOpen(false)}
+                    className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-[14px] text-slate-600 transition-colors hover:bg-patriota-pure hover:text-patriota-dark"
+                  >
+                    <span>{c.label}</span>
+                    {c.articleCount > 0 && (
+                      <span className="text-[11px] text-slate-400">
+                        {c.articleCount}
+                      </span>
+                    )}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        )}
+
+        {all.length === 0 && (
+          <p className="px-5 py-10 text-center text-sm text-slate-400">
+            Sem rubricas configuradas.
+          </p>
+        )}
+
+        {/* Quick actions — search + newsletter — mirror what's in
+            the TopBar but visible here for mobile users who don't
+            see the top strip clearly. */}
+        <div className="mt-auto border-t border-slate-100 px-5 py-5">
+          <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+            Atalhos
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                // TopBar listens to this event and opens the
+                // SearchModal — keeps the modal state in one place
+                // without prop drilling through the layout.
+                window.dispatchEvent(new CustomEvent("patriota:search"));
+              }}
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-[13px] font-bold text-slate-700 transition-colors hover:border-patriota-medium hover:text-patriota-medium"
+            >
+              <span aria-hidden>⌕</span> Pesquisar
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                window.dispatchEvent(new CustomEvent("patriota:newsletter"));
+              }}
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-patriota-dark px-3 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-patriota-medium"
+            >
+              Newsletter
+            </button>
+          </div>
+          <p className="mt-4 text-center text-[11px] text-slate-400">
+            © 2026 O Patriota Notícias
+          </p>
+        </div>
+      </aside>
+    </>
+  );
+}

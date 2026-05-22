@@ -23,6 +23,10 @@ export function TopBar() {
   // Global ⌘K / Ctrl+K opens the search modal from anywhere on the
   // page. We register at the TopBar level because it lives on every
   // public route — single registration, no duplication.
+  //
+  // We also listen for custom DOM events so other components (e.g.
+  // the mobile <MobileNav> drawer) can pop these modals open without
+  // having to do prop drilling or share React state.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -30,8 +34,16 @@ export function TopBar() {
         setSearchOpen(true);
       }
     };
+    const openSearch = () => setSearchOpen(true);
+    const openNewsletter = () => setNewsletterOpen(true);
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("patriota:search", openSearch);
+    window.addEventListener("patriota:newsletter", openNewsletter);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("patriota:search", openSearch);
+      window.removeEventListener("patriota:newsletter", openNewsletter);
+    };
   }, []);
 
   return (
