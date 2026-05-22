@@ -62,3 +62,31 @@ export async function getCategoryBySlug(
   const all = await getCategories();
   return all.find((c) => c.slug === slug);
 }
+
+/**
+ * Maximum number of categories shown in the primary <SiteHeader> nav.
+ * Anything beyond this falls through to <SecondaryNav>. Pulled out
+ * here so both components agree on the same boundary without one
+ * having to import the other.
+ *
+ * Single source of truth: the backend returns categories sorted by
+ * `order asc`, so the first N here is "the top N according to the
+ * order the admin chose in /admin/categorias".
+ */
+export const PRIMARY_NAV_LIMIT = 6;
+
+/**
+ * Splits the live category catalogue into the two nav bars. Use
+ * this in both SiteHeader and SecondaryNav — keeps the partition
+ * logic in one place so they can't disagree.
+ */
+export async function getNavCategories(): Promise<{
+  primary: CategoryDef[];
+  secondary: CategoryDef[];
+}> {
+  const all = await getCategories();
+  return {
+    primary: all.slice(0, PRIMARY_NAV_LIMIT),
+    secondary: all.slice(PRIMARY_NAV_LIMIT),
+  };
+}

@@ -1,38 +1,29 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Container } from "../Container";
-
-interface NavItem {
-  href: string;
-  label: string;
-  slug?: string;
-  strong?: boolean;
-}
+import { getNavCategories } from "@/lib/categories";
 
 /**
- * Primary top navigation. Hardcoded because the editorial order
- * matters more than the DB row order — "Última Hora" must be first,
- * "Política" must be second, etc.
+ * Primary top navigation. Lives 100% off the category catalogue
+ * (`/public/categories`, ordered by `order asc`) so the admin
+ * controls what shows up here from `/admin/categorias` — there is
+ * no hardcoded list to fall out of sync.
  *
- * `TOP_NAV_SLUGS` is exported so SecondaryNav can de-dupe — items
- * here are filtered out of the secondary bar, otherwise the two
- * menus repeat the same categories one above the other.
+ * The first PRIMARY_NAV_LIMIT categories land here; the rest fall
+ * through to <SecondaryNav>. Partition logic lives in
+ * `lib/categories.ts:getNavCategories()` so both components share
+ * the same source of truth.
+ *
+ * "Última Hora" is intentionally NOT in this bar:
+ *   • The animated ticker right above (BreakingNews) already shows
+ *     the four most recent published articles — that IS the última
+ *     hora and is dynamic by definition.
+ *   • Adding it here too would just duplicate the same intent in
+ *     two places and required hardcoding /categoria/ultima-hora
+ *     which doesn't exist as a real category.
  */
-const NAV: NavItem[] = [
-  { href: "/categoria/ultima-hora", label: "Última Hora", strong: true },
-  { href: "/categoria/politica", label: "Política", slug: "politica" },
-  { href: "/categoria/economia", label: "Economia", slug: "economia" },
-  { href: "/categoria/sociedade", label: "Sociedade", slug: "sociedade" },
-  { href: "/categoria/investigacao", label: "Investigação", slug: "investigacao" },
-  { href: "/categoria/opiniao", label: "Opinião", slug: "opiniao" },
-  { href: "/categoria/multimedia", label: "Multimédia", slug: "multimedia" },
-];
-
-export const TOP_NAV_SLUGS: ReadonlySet<string> = new Set(
-  NAV.map((n) => n.slug).filter((s): s is string => Boolean(s)),
-);
-
-export function SiteHeader() {
+export async function SiteHeader() {
+  const { primary } = await getNavCategories();
   return (
     <header className="border-b border-slate-200 bg-white">
       <Container className="flex h-[82px] items-center justify-between">
@@ -45,22 +36,19 @@ export function SiteHeader() {
             priority
           />
         </Link>
-        <nav className="hidden items-center gap-7 text-[14px] lg:flex">
-          {NAV.map((n) => (
-            <Link
-              key={n.label}
-              href={n.href}
-              className={
-                "transition hover:text-patriota-medium " +
-                (n.strong
-                  ? "font-bold text-patriota-dark"
-                  : "text-slate-700")
-              }
-            >
-              {n.label}
-            </Link>
-          ))}
-        </nav>
+        {primary.length > 0 && (
+          <nav className="hidden items-center gap-7 text-[14px] lg:flex">
+            {primary.map((c) => (
+              <Link
+                key={c.slug}
+                href={`/categoria/${c.slug}`}
+                className="text-slate-700 transition hover:text-patriota-medium"
+              >
+                {c.label}
+              </Link>
+            ))}
+          </nav>
+        )}
       </Container>
     </header>
   );
