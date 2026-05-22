@@ -46,32 +46,22 @@ export function MobileNav({
 
   return (
     <>
-      {/* Hamburger button — only visible below lg. The 3 bars
-          animate to an X when the drawer opens so the same button
-          works as "open" and "close" without a layout shift. */}
+      {/* Hamburger button — only visible below lg. Stays as 3 bars
+          always: when the drawer opens it slides over this button and
+          the drawer's own ✕ in its header handles closing. Avoids the
+          "double X" confusion of having both the rotated hamburger and
+          a close button visible at once. */}
       <button
         type="button"
-        aria-label={open ? "Fechar menu" : "Abrir menu"}
+        aria-label="Abrir menu"
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        className="relative z-[110] flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-700 transition-colors hover:bg-slate-100 lg:hidden"
+        onClick={() => setOpen(true)}
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-700 transition-colors hover:bg-slate-100 lg:hidden"
       >
         <span className="relative block h-4 w-6">
-          <span
-            className={`absolute left-0 block h-0.5 w-6 rounded-full bg-current transition-all duration-300 ${
-              open ? "top-1/2 rotate-45" : "top-0"
-            }`}
-          />
-          <span
-            className={`absolute left-0 top-1/2 block h-0.5 w-6 -translate-y-1/2 rounded-full bg-current transition-opacity duration-200 ${
-              open ? "opacity-0" : "opacity-100"
-            }`}
-          />
-          <span
-            className={`absolute left-0 block h-0.5 w-6 rounded-full bg-current transition-all duration-300 ${
-              open ? "top-1/2 -rotate-45" : "bottom-0"
-            }`}
-          />
+          <span className="absolute left-0 top-0 block h-0.5 w-6 rounded-full bg-current" />
+          <span className="absolute left-0 top-1/2 block h-0.5 w-6 -translate-y-1/2 rounded-full bg-current" />
+          <span className="absolute bottom-0 left-0 block h-0.5 w-6 rounded-full bg-current" />
         </span>
       </button>
 
