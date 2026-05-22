@@ -422,6 +422,50 @@ recursos externos:
 3. **Armazenamento de objectos** para os uploads (Cloudinary, AWS S3, R2 da
    Cloudflare) — fortemente recomendado (ver [Roadmap](#roadmap--melhorias-recomendadas))
 
+### Primeiro deploy em produção — bootstrap automático do super admin
+
+Antes de qualquer das receitas abaixo, é importante perceber o **fluxo de
+arranque inicial**: na primeira vez que o backend arranca em produção, ele
+detecta automaticamente que a base de dados está vazia e **cria o
+SUPER_ADMIN inicial a partir do `.env`**. Não há comandos manuais a correr.
+
+**Como funciona:**
+
+```
+1. docker compose up -d
+2. backend arranca em modo prod
+3. Executa: prisma migrate deploy        ← tabelas criadas
+4. Executa: bootstrapInitialAdmin()      ← lógica em src/bootstrap-admin.ts
+   ├─ Verifica: userCount + articleCount + activityLogCount === 0?
+   ├─ Sim → cria SUPER_ADMIN com SUPERADMIN_EMAIL/PASSWORD do .env
+   ├─       popula matriz de permissões (7 papéis × 31 permissões)
+   ├─       loga "✓ INITIAL BOOTSTRAP COMPLETE — created SUPER_ADMIN..."
+   └─ Não  → não faz nada (a "janela de bootstrap" fechou-se permanentemente)
+5. App.listen() — API começa a aceitar pedidos
+```
+
+**Validações que o bootstrap faz antes de criar o admin (caso contrário falha boot):**
+
+- `SUPERADMIN_EMAIL` válido (regex `*@*.*`)
+- `SUPERADMIN_PASSWORD` tem pelo menos **12 caracteres**
+- Password não contém valores comuns/exemplo (`admin`, `password`, `changeme`,
+  `patriotaadmin!2025`, etc.) — força o cliente a escolher uma password real
+
+**O que NÃO se faz em produção:**
+
+- ❌ Correr `prisma db seed` (refusa-se a executar com `NODE_ENV=production`)
+- ❌ Criar utilizadores demo (`editor.chefe@...`, `jorn1@...`)
+- ❌ Criar artigos demo
+
+Resultado: **base de dados limpa, só com o admin do cliente**. As categorias
+e ads default são criados via outros mecanismos (`AdsModule.onModuleInit`
+cria os 10 slots de publicidade idempotentemente; categorias têm de ser
+criadas pelo admin via `/admin/categorias`).
+
+> **Self-healing:** se algum acidente esvaziar completamente as 3 tabelas-
+> guardas (users, articles, activity_logs), o próximo restart vai recriar
+> o admin do `.env`. Útil em recuperação de desastres.
+
 ### Receita 1 — VPS simples (DigitalOcean, Hetzner, Linode)
 
 Mais barato e simples para começar; tudo num servidor.
@@ -442,9 +486,19 @@ ssh user@seu-servidor.pt
 git clone <url-repo> /opt/patriota
 cd /opt/patriota
 
-# 3. Configurar .env (NÃO copiar do .example — escrever do zero com valores reais)
-nano backend/.env
+# 3. Configurar .env de produção
+# IMPORTANTE: cumprir os requisitos validados pelo bootstrap:
+#   - SUPERADMIN_PASSWORD: ≥12 caracteres, sem palavras comuns
+#   - JWT_SECRET: gerar com `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`
+#   - CORS_ORIGIN: domínio real
+#   - NODE_ENV=production
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
+nano backend/.env       # preencher TODOS os valores
 nano frontend/.env
+
+# Permissões restritivas para o .env (só dono lê)
+chmod 600 backend/.env frontend/.env
 
 # 4. Construir imagens de produção
 docker compose -f docker-compose.yml -f docker-compose.prod.yml build
@@ -452,9 +506,23 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml build
 # 5. Subir
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
-# 6. Verificar
+# 6. Verificar bootstrap (procurar "INITIAL BOOTSTRAP COMPLETE" no log)
+docker compose logs api | grep -i bootstrap
+
+# Output esperado:
+#   ⚠ DATABASE IS EMPTY — bootstrapping initial SUPER_ADMIN from .env
+#   ✓ INITIAL BOOTSTRAP COMPLETE — created SUPER_ADMIN <admin@cliente.pt>.
+#     Log in at /admin/login and change the password from /admin/perfil.
+
+# 7. Smoke test
 curl http://localhost:8585/public/categories
 curl http://localhost:3005/
+
+# 8. Login
+# Browser → https://cliente.pt/admin/login
+# Email: o que pôs em SUPERADMIN_EMAIL
+# Password: o que pôs em SUPERADMIN_PASSWORD
+# ⚠ Primeira coisa a fazer: ir a /admin/perfil → Segurança → alterar password
 ```
 
 **Reverse proxy (Caddy)** — `/etc/caddy/Caddyfile`:
@@ -504,19 +572,35 @@ deste README.
 
 ### Checklist pré-deploy
 
-- [ ] `JWT_SECRET` gerado aleatoriamente, **NÃO** o valor de exemplo
-- [ ] `SUPERADMIN_PASSWORD` mudada
+**Antes do `docker compose up` em produção:**
+
+- [ ] `NODE_ENV=production` definido
+- [ ] `JWT_SECRET` gerado aleatoriamente, ≥ 32 chars, **NÃO** valor de exemplo
+- [ ] `SUPERADMIN_EMAIL` é o endereço real do administrador do cliente
+- [ ] `SUPERADMIN_PASSWORD` cumpre **todos**:
+  - [ ] ≥ 12 caracteres
+  - [ ] Não contém palavras comuns (`admin`, `password`, `changeme`, etc. — bootstrap recusa)
+  - [ ] Misturado: maiúsculas, minúsculas, números, símbolos
 - [ ] `CORS_ORIGIN` aponta apenas para o domínio de produção
-- [ ] `NODE_ENV=production`
+- [ ] `DATABASE_URL` aponta para Postgres com password forte
+- [ ] `backend/.env` e `frontend/.env` com `chmod 600`
 - [ ] Postgres com backups automáticos (ver [Backups](#backups))
-- [ ] Migrations aplicadas (`prisma migrate deploy`)
-- [ ] DNS configurado (A record para domínio principal + subdomínio API)
+- [ ] DNS configurado (A record para domínio principal + subdomínio API se separado)
 - [ ] HTTPS activo (Let's Encrypt via Caddy/Nginx)
-- [ ] Tag ERC actualizada em `/p/erc`
+
+**Logo após o primeiro `docker compose up`:**
+
+- [ ] Verificar bootstrap no log (`docker compose logs api | grep BOOTSTRAP`)
+- [ ] Fazer login em `/admin/login` com as credenciais do `.env`
+- [ ] **Alterar a password** em `/admin/perfil › Segurança` (a do `.env` fica "queimada")
+- [ ] Convidar a equipa real em `/admin/utilizadores` (cada um com a própria password)
+- [ ] Criar categorias em `/admin/categorias`
+- [ ] Activar slots de publicidade em `/admin/publicidade`
+- [ ] Configurar redes sociais em `/admin/configuracoes › Redes`
+- [ ] Tag ERC actualizada em `/p/erc` (via `static-pages.ts` ou conteúdo editável futuro)
 - [ ] Páginas de Termos / Privacidade revistas por advogado
-- [ ] Slots de publicidade activados em `/admin/publicidade`
 - [ ] Logo e favicon actualizados em `frontend/public/brand/`
-- [ ] Testes a passar: `npm test && npm run test:e2e`
+- [ ] Testes a passar antes do deploy: `npm test && npm run test:e2e`
 
 ---
 
@@ -723,12 +807,43 @@ Faltam variáveis de ambiente. `cp backend/.env.example backend/.env` e
 preencher.
 
 ### "Login retorna 401 mesmo com a password certa"
-O seed só corre uma vez. Se mudou `SUPERADMIN_PASSWORD` depois do primeiro
-boot, a base de dados ainda tem o hash antigo. Reset:
 
+**Em dev:** o seed só corre uma vez. Se mudou `SUPERADMIN_PASSWORD` depois
+do primeiro boot, a BD ainda tem o hash antigo. Reset:
 ```bash
 docker compose exec api npx prisma db seed
 ```
+
+**Em produção:** o bootstrap também só corre uma vez (intencionalmente — ver
+[Primeiro deploy](#primeiro-deploy-em-produção--bootstrap-automático-do-super-admin)).
+Se perdeu a password do admin, **NÃO** corra o seed (refusa-se a executar
+em prod). Em vez disso:
+
+1. Faça login com outro utilizador SUPER_ADMIN se houver
+2. Vá a `/admin/utilizadores`, reset da password ao admin afectado
+3. **Se não houver outro SUPER_ADMIN**, recurso de último caso:
+   ```bash
+   # Gerar hash da nova password
+   docker compose exec api node -e \
+     "console.log(require('bcryptjs').hashSync('NovaPasswordForte!2026', 12))"
+
+   # Atualizar directamente no Postgres
+   docker compose exec postgres psql -U $POSTGRES_USER -d $POSTGRES_DB -c \
+     "UPDATE \"User\" SET password='<HASH_AQUI>' WHERE email='admin@cliente.pt';"
+   ```
+
+### "Bootstrap aborted: SUPERADMIN_PASSWORD must be at least 12 characters"
+
+O bootstrap recusa criar um admin com password fraca. Edite o `.env`,
+ponha uma password ≥ 12 chars sem palavras comuns, e restart:
+```bash
+nano backend/.env
+docker compose restart api
+```
+
+### "Como faço backup do admin antes de mexer no servidor?"
+
+O admin está apenas no Postgres — basta `pg_dump`. Ver [Backups](#backups).
 
 ### "Imagens não aparecem no site público mas estão na biblioteca"
 Confirmar que `UPLOADS_PUBLIC_BASE_URL` no `backend/.env` aponta para uma

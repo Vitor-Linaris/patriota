@@ -3,6 +3,8 @@ import { ValidationPipe, Logger } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { existsSync, mkdirSync } from 'node:fs';
 import { AppModule } from './app.module';
+import { PrismaService } from './prisma/prisma.service';
+import { bootstrapInitialAdmin } from './bootstrap-admin';
 
 function resolveCorsOrigin(): string[] | false {
   const env = process.env.CORS_ORIGIN?.trim();
@@ -42,6 +44,25 @@ async function bootstrap() {
     immutable: true,
     maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days — variants are content-addressed
   });
+
+  // First-deploy admin bootstrap — only fires on a truly empty DB.
+  // See src/bootstrap-admin.ts for the triple-guard logic. Runs
+  // BEFORE app.listen() so the API only starts accepting traffic
+  // once the SUPER_ADMIN row exists (no race window between listen
+  // and admin creation).
+  try {
+    const prisma = app.get(PrismaService);
+    await bootstrapInitialAdmin(prisma);
+  } catch (err) {
+    // Fail loud — better to refuse to boot than to ship with a
+    // half-bootstrapped state.
+    new Logger('Bootstrap').error(
+      `Initial admin bootstrap failed: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+    process.exit(1);
+  }
 
   const port = Number(process.env.PORT ?? 8585);
   await app.listen(port, '0.0.0.0');

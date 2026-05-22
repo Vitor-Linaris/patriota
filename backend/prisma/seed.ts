@@ -1,19 +1,44 @@
 /**
- * Prisma seed — bootstraps a superadmin user and the RBAC matrix.
+ * Prisma seed — DEVELOPMENT ONLY.
  *
- * Run from inside the api container:
+ * Bootstraps a superadmin, the full RBAC matrix, demo users, demo
+ * articles and demo newsletter subscribers. Suitable for local dev
+ * because it lets you click around immediately after `compose up`.
+ *
+ * In production the first SUPER_ADMIN is created automatically by
+ * `src/bootstrap-admin.ts` on the very first boot (with a triple
+ * guard that closes the bootstrap window after first use). DO NOT
+ * run this seed against a production database — it would reinstate
+ * the 9 demo users with the publicly-known dev password and reset
+ * customised categories back to their defaults.
+ *
+ * This file refuses to run when NODE_ENV=production (see the guard
+ * below) — defence in depth against an intern doing
+ *   `docker compose exec api npx prisma db seed`
+ * in prod by accident.
+ *
+ * Run locally:
  *   docker compose exec api npx prisma db seed
- *
- * Or from the host (with DATABASE_URL pointing at localhost:5432):
- *   npm run prisma:seed
- *
- * Credentials are read from env vars (with safe-ish defaults for local dev).
- * Change SUPERADMIN_PASSWORD before any non-local use.
  */
 import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcryptjs';
 import { PrismaClient } from '../generated/prisma/client';
+
+// Defence-in-depth guard — refuse to run in production no matter
+// who or what invoked us. The `--force` escape hatch is intentional:
+// if you really need to seed a fresh staging DB that happens to have
+// NODE_ENV=production set, you have to be very explicit about it.
+if (process.env.NODE_ENV === 'production' && !process.argv.includes('--force')) {
+  console.error(
+    '\n[seed] Refusing to run with NODE_ENV=production.\n' +
+      '       The bootstrap of the initial admin is handled automatically\n' +
+      '       on first boot — see backend/src/bootstrap-admin.ts.\n' +
+      '       If you REALLY want to seed in production (you almost\n' +
+      '       certainly do not), pass --force.\n',
+  );
+  process.exit(1);
+}
 
 const adapter = new PrismaPg({
   connectionString: process.env.DATABASE_URL,
