@@ -45,27 +45,42 @@ export function HeroGrid({ featured, side }: Props) {
         href={featured ? `/artigo/${featured.slug}` : "#"}
         className="group relative col-span-1 overflow-hidden rounded-xl bg-patriota-dark text-white shadow-sm transition-shadow duration-500 hover:shadow-[0_12px_32px_-12px_rgba(15,44,107,0.25)] lg:col-span-8"
       >
-        {featured?.coverImageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={
-              imageVariant(featured.coverImageUrl, "large") ??
-              featured.coverImageUrl
-            }
-            alt={featured.title}
-            className="aspect-[16/9] w-full object-cover transition-transform duration-[800ms] ease-out group-hover:scale-[1.04]"
-          />
-        ) : (
-          <div
-            className="aspect-[16/9] w-full bg-gradient-to-br from-slate-700 via-patriota-medium to-patriota-dark"
-            aria-hidden
-          />
-        )}
-        {/* Base gradient + extra hover layer for subtle darkening. */}
-        <div className="absolute inset-0 bg-gradient-to-t from-patriota-dark via-patriota-dark/85 to-transparent" />
-        <div className="absolute inset-0 bg-patriota-dark/0 transition-colors duration-500 group-hover:bg-patriota-dark/10" />
-        <div className="absolute inset-x-0 bottom-0 flex flex-col gap-3 p-6 lg:p-8">
-          <div className="flex items-center gap-3 text-[12px] text-white/80">
+        {/* Image / placeholder. The wrapper is overflow-hidden so the
+            hover zoom doesn't leak past the card. */}
+        <div className="overflow-hidden">
+          {featured?.coverImageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={
+                imageVariant(featured.coverImageUrl, "large") ??
+                featured.coverImageUrl
+              }
+              alt={featured.title}
+              className="aspect-[16/9] w-full object-cover transition-transform duration-[800ms] ease-out group-hover:scale-[1.04]"
+            />
+          ) : (
+            <div
+              className="aspect-[16/9] w-full bg-gradient-to-br from-slate-700 via-patriota-medium to-patriota-dark"
+              aria-hidden
+            />
+          )}
+        </div>
+
+        {/* Gradient overlays — only on desktop where the text sits on
+            top of the image. On mobile the text flows below the
+            image instead (see the layout-mode switch on the text
+            container below) so we don't need the gradient. */}
+        <div className="pointer-events-none absolute inset-0 hidden bg-gradient-to-t from-patriota-dark via-patriota-dark/85 to-transparent lg:block" />
+        <div className="pointer-events-none absolute inset-0 hidden bg-patriota-dark/0 transition-colors duration-500 group-hover:bg-patriota-dark/10 lg:block" />
+
+        {/* Text — relative on mobile (flows below the image, no
+            cropping), absolute on lg+ (overlays the gradient).
+            Switching layout mode rather than trying to cram the
+            absolute overlay into a 16/9 mobile viewport is what
+            stops the title / summary / author from being cut off
+            on phones. */}
+        <div className="relative flex flex-col gap-3 p-5 sm:p-6 lg:absolute lg:inset-x-0 lg:bottom-0 lg:p-8">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-white/80">
             <span
               className={`rounded px-2 py-1 text-[10px] font-bold uppercase tracking-wider ${CATEGORY_COLOR[featured?.category.name ?? ""] ?? "bg-slate-600"}`}
             >
@@ -75,17 +90,17 @@ export function HeroGrid({ featured, side }: Props) {
             <span aria-hidden>·</span>
             <span>{featured?.readMinutes ?? 4} min leitura</span>
           </div>
-          <h1 className="text-2xl font-black leading-tight transition-colors duration-300 group-hover:text-patriota-accent lg:text-[30px] lg:leading-[36px]">
+          <h1 className="text-xl font-black leading-tight transition-colors duration-300 group-hover:text-patriota-accent sm:text-2xl lg:text-[30px] lg:leading-[36px]">
             {featured?.title ??
               "Nenhum artigo publicado ainda. Crie um no painel admin."}
           </h1>
           {featured?.summary && (
-            <p className="max-w-2xl text-[14px] leading-relaxed text-white/75">
+            <p className="max-w-2xl text-[13px] leading-relaxed text-white/75 sm:text-[14px]">
               {featured.summary}
             </p>
           )}
           {featured?.author?.name && (
-            <div className="mt-2 flex items-center gap-2 text-[13px] text-white/70">
+            <div className="mt-1 flex items-center gap-2 text-[13px] text-white/70">
               <span className="flex h-7 w-7 items-center justify-center rounded-full bg-patriota-accent text-[11px] font-bold text-patriota-ink">
                 {initialsOf(featured.author.name)}
               </span>
