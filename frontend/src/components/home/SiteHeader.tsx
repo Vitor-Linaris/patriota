@@ -32,6 +32,11 @@ export async function SiteHeader() {
             width={132}
             height={54}
             priority
+            // h-auto silences the Next warning when the parent flex
+            // container constrains the width: it tells the browser
+            // to let height scale with the aspect ratio rather than
+            // staying pinned at 54px while width shrinks.
+            className="h-auto"
           />
         </Link>
 

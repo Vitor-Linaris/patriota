@@ -98,6 +98,7 @@ export function MobileNav({
               alt="O Patriota"
               width={104}
               height={42}
+              className="h-auto"
             />
           </Link>
           <button

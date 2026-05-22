@@ -147,6 +147,7 @@ export async function SiteFooter() {
                 alt="O Patriota"
                 width={89}
                 height={37}
+                className="h-auto"
               />
             </a>
             <SocialIcons links={social} />
