@@ -80,7 +80,13 @@ const tabs: { id: TabId; label: string; icon: string }[] = [
   { id: "email", label: "E-mail", icon: "◈" },
   { id: "seo", label: "SEO", icon: "◉" },
   { id: "redes", label: "Redes Sociais", icon: "◎" },
-  { id: "newsletter", label: "Newsletter", icon: "◇" },
+  // Newsletter tab hidden — /admin/newsletter is now just a
+  // subscriber list with CSV/XLSX export. The fields here (provider,
+  // listId, welcome email, double opt-in, weekly digest) assumed a
+  // full campaign engine that we removed. Panel + state kept below
+  // as dead code so it can be reinstated in one line if we ever
+  // bring native campaigns back.
+  // { id: "newsletter", label: "Newsletter", icon: "◇" },
   { id: "seguranca", label: "Segurança", icon: "◆" },
 ];
 
