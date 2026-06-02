@@ -54,6 +54,18 @@ export class ArticlesController {
     return this.service.getStats();
   }
 
+  /**
+   * The current user's articles that have been rejected back to
+   * RASCUNHO with a rejectionReason. Powers the "Devolvidos para
+   * revisão" banner on the admin dashboard so journalists don't
+   * miss that an editor sent something back. No permission check
+   * beyond authenticated — every author should see their own.
+   */
+  @Get('admin/articles/my-rejected')
+  myRejected(@CurrentUser() user: AuthUser) {
+    return this.service.listMyRejected(user.id);
+  }
+
   @Get('admin/articles/:id')
   @RequirePermissions('artigos.ler')
   findOne(@Param('id') id: string) {

@@ -127,13 +127,24 @@ interface MeWithPerms {
   permissions: string[];
 }
 
+interface RejectedArticleItem {
+  id: string;
+  title: string;
+  slug: string;
+  rejectionReason: string | null;
+  updatedAt: string;
+  category: { slug: string; name: string } | null;
+}
+
 async function loadDashboard() {
-  const [statsRes, activityRes, pendingRes, meRes] = await Promise.all([
-    apiFetch("/admin/stats"),
-    apiFetch("/admin/activity?pageSize=8"),
-    apiFetch("/admin/articles?status=EM_REVISAO,AGENDADO&pageSize=6"),
-    apiFetch("/auth/me"),
-  ]);
+  const [statsRes, activityRes, pendingRes, rejectedRes, meRes] =
+    await Promise.all([
+      apiFetch("/admin/stats"),
+      apiFetch("/admin/activity?pageSize=8"),
+      apiFetch("/admin/articles?status=EM_REVISAO,AGENDADO&pageSize=6"),
+      apiFetch("/admin/articles/my-rejected"),
+      apiFetch("/auth/me"),
+    ]);
   const stats = statsRes.ok ? ((await statsRes.json()) as StatsResponse) : null;
   const activity = activityRes.ok
     ? ((await activityRes.json()) as PageResult<ActivityItem>)
@@ -141,16 +152,20 @@ async function loadDashboard() {
   const pending = pendingRes.ok
     ? ((await pendingRes.json()) as PageResult<PendingArticleItem>)
     : { items: [], total: 0, page: 1, pageSize: 4 };
+  const rejected: RejectedArticleItem[] = rejectedRes.ok
+    ? ((await rejectedRes.json()) as RejectedArticleItem[])
+    : [];
   const me = meRes.ok ? ((await meRes.json()) as MeWithPerms) : null;
   const canApprove =
     me?.role === "SUPER_ADMIN" ||
     me?.permissions?.includes("artigos.aprovar") ||
     false;
-  return { stats, activity, pending, canApprove };
+  return { stats, activity, pending, rejected, canApprove };
 }
 
 export default async function AdminDashboardPage() {
-  const { stats, activity, pending, canApprove } = await loadDashboard();
+  const { stats, activity, pending, rejected, canApprove } =
+    await loadDashboard();
 
   const statCards = [
     {
@@ -196,6 +211,75 @@ export default async function AdminDashboardPage() {
           </h1>
           <p className="mt-0.5 text-sm text-gray-500">{formatToday()}</p>
         </header>
+
+        {/* Rejected-back-to-draft banner. Shows ONLY to the author of
+            the affected articles and ONLY when there's at least one,
+            so the dashboard stays tidy for everyone else. The motive
+            here is that without this banner a journalist would see
+            their submitted article silently return to RASCUNHO and
+            never know an editor flagged it — they'd think it was
+            just a draft they forgot. */}
+        {rejected.length > 0 && (
+          <section className="mb-6 rounded-2xl border-l-4 border-amber-400 bg-amber-50 p-5">
+            <div className="mb-3 flex items-start gap-3">
+              <span
+                aria-hidden
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500 text-white"
+              >
+                ⚠
+              </span>
+              <div>
+                <h2 className="text-sm font-black text-amber-900">
+                  {rejected.length === 1
+                    ? "Tem 1 artigo devolvido para revisão"
+                    : `Tem ${rejected.length} artigos devolvidos para revisão`}
+                </h2>
+                <p className="mt-0.5 text-xs text-amber-800">
+                  Um editor enviou estes artigos de volta para rascunho.
+                  Reveja o motivo e submeta novamente quando estiverem
+                  prontos.
+                </p>
+              </div>
+            </div>
+            <ul className="space-y-2">
+              {rejected.map((r) => (
+                <li
+                  key={r.id}
+                  className="rounded-xl border border-amber-200 bg-white p-4"
+                >
+                  <div className="mb-1 flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-wider">
+                    {r.category && (
+                      <span className="rounded-sm bg-amber-100 px-1.5 py-0.5 text-amber-800">
+                        {r.category.name}
+                      </span>
+                    )}
+                    <span className="text-gray-300">·</span>
+                    <span className="text-gray-400">
+                      Devolvido {relativeTime(r.updatedAt)}
+                    </span>
+                  </div>
+                  <p className="text-sm font-bold text-gray-900">{r.title}</p>
+                  {r.rejectionReason && (
+                    <div className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+                      <span className="font-bold">Motivo: </span>
+                      <span className="italic">
+                        “{r.rejectionReason}”
+                      </span>
+                    </div>
+                  )}
+                  <div className="mt-3 flex justify-end">
+                    <a
+                      href={`/admin/artigos?edit=${r.id}`}
+                      className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white transition-colors hover:bg-amber-700"
+                    >
+                      Editar e ressubmeter →
+                    </a>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         <section className="mb-6 grid grid-cols-2 gap-4 xl:grid-cols-4">
           {statCards.map((s) => (

@@ -373,6 +373,36 @@ export class ArticlesService {
   }
 
   // ── public ─────────────────────────────────────────────────────────
+  /**
+   * Articles authored by the given user that were submitted for
+   * review and then rejected — i.e. now back in RASCUNHO with a
+   * `rejectionReason` populated. Used by the dashboard banner to
+   * tell the journalist that an editor sent something back so it
+   * doesn't silently sit in "drafts" forever.
+   *
+   * Ordered by `updatedAt desc` so the most recent rejection is at
+   * the top of the list.
+   */
+  async listMyRejected(userId: string) {
+    return this.prisma.article.findMany({
+      where: {
+        authorId: userId,
+        status: 'RASCUNHO',
+        rejectionReason: { not: null },
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 10,
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        rejectionReason: true,
+        updatedAt: true,
+        category: { select: { slug: true, name: true } },
+      },
+    });
+  }
+
   async listPublic(query: ListArticlesQueryDto): Promise<PageResult<unknown>> {
     const { skip, take } = toSkipTake(query);
     const where: Record<string, unknown> = { status: 'PUBLICADO' };
