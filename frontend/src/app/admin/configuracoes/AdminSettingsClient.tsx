@@ -84,6 +84,16 @@ const tabs: { id: TabId; label: string; icon: string }[] = [
   { id: "seguranca", label: "Segurança", icon: "◆" },
 ];
 
+/**
+ * Local Toggle — same flex-items-center pattern as the shared
+ * `@/components/admin/Toggle` (which uses `onChange: (next) => void`).
+ * Kept inline here because every call site in this file uses the
+ * `() => set(prev => !prev)` shape and converting them all would
+ * just add noise. Visually + behaviourally identical to the shared
+ * one: thumb is vertically centred via inline-flex instead of the
+ * old absolute-position hack that let the circle drift outside the
+ * track on the publicity page (and here too).
+ */
 function Toggle({
   checked,
   onChange,
@@ -96,10 +106,10 @@ function Toggle({
       type="button"
       onClick={onChange}
       aria-pressed={checked}
-      className={`relative h-[22px] w-10 shrink-0 rounded-full transition-colors ${checked ? "bg-[#0F2C6B]" : "bg-gray-200"}`}
+      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full px-0.5 transition-colors ${checked ? "bg-[#0F2C6B]" : "bg-gray-300"}`}
     >
       <span
-        className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform duration-200 ${checked ? "translate-x-5" : "translate-x-0.5"}`}
+        className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform duration-200 ${checked ? "translate-x-4" : "translate-x-0"}`}
       />
     </button>
   );
