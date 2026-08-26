@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ReaderAuthService } from './reader-auth.service';
+import { ReaderMailService } from './reader-mail.service';
 import { ReaderTokenService } from './reader-token.service';
 import { ReaderAuthController } from './reader-auth.controller';
 import { ReaderAccountController } from './reader-account.controller';
@@ -18,6 +19,7 @@ import { ReaderFeatureGuard } from './reader-feature.guard';
 @Module({
   providers: [
     ReaderAuthService,
+    ReaderMailService,
     ReaderTokenService,
     ReaderAuthGuard,
     OptionalReaderAuthGuard,

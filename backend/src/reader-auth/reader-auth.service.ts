@@ -100,24 +100,35 @@ export class ReaderAuthService {
    * a "someone tried to register with your address" mail instead, so a
    * real owner is not left in the dark.
    *
-   * Returns the verification token for the caller to email. M3 replaces
-   * this with a MailerService call; until then the controller logs it.
+   * Returns the verification token for the controller to hand to
+   * ReaderMailService. The token is returned rather than sent here so the
+   * service stays free of transport concerns and remains unit-testable
+   * without a mail double.
    */
   async register(input: {
     email: string;
     password: string;
     name?: string;
-  }): Promise<{ verificationToken: string | null; alreadyRegistered: boolean }> {
+  }): Promise<{
+    verificationToken: string | null;
+    alreadyRegistered: boolean;
+    /** Name on the account, so the caller can address the mail properly. */
+    name: string | null;
+  }> {
     const email = this.normaliseEmail(input.email);
     const existing = await this.prisma.reader.findUnique({
       where: { email },
-      select: { id: true, status: true },
+      select: { id: true, status: true, name: true },
     });
 
     if (existing) {
       // Burn a hash anyway so the taken/free branches cost the same.
       await bcrypt.hash(input.password, BCRYPT_ROUNDS);
-      return { verificationToken: null, alreadyRegistered: true };
+      return {
+        verificationToken: null,
+        alreadyRegistered: true,
+        name: existing.name,
+      };
     }
 
     const reader = await this.prisma.reader.create({
@@ -133,21 +144,27 @@ export class ReaderAuthService {
     });
 
     const token = await this.issueEmailToken(reader.id, 'VERIFICACAO_EMAIL');
-    return { verificationToken: token.raw, alreadyRegistered: false };
+    return {
+      verificationToken: token.raw,
+      alreadyRegistered: false,
+      name: input.name?.trim() || null,
+    };
   }
 
   /** Re-issues a verification token, or null if there is nothing to verify. */
-  async resendVerification(rawEmail: string): Promise<string | null> {
+  async resendVerification(
+    rawEmail: string,
+  ): Promise<{ token: string; name: string | null } | null> {
     const email = this.normaliseEmail(rawEmail);
     const reader = await this.prisma.reader.findUnique({
       where: { email },
-      select: { id: true, emailVerifiedAt: true, status: true },
+      select: { id: true, emailVerifiedAt: true, status: true, name: true },
     });
     if (!reader || reader.emailVerifiedAt || reader.status === 'ANONIMIZADO') {
       return null;
     }
     const token = await this.issueEmailToken(reader.id, 'VERIFICACAO_EMAIL');
-    return token.raw;
+    return { token: token.raw, name: reader.name };
   }
 
   async verifyEmail(raw: string): Promise<ReaderSession> {
@@ -253,11 +270,13 @@ export class ReaderAuthService {
   // ────────────────────────── password recovery ──────────────────────────
 
   /** Null when there is no account, or when it is social-only. */
-  async forgotPassword(rawEmail: string): Promise<string | null> {
+  async forgotPassword(
+    rawEmail: string,
+  ): Promise<{ token: string; name: string | null } | null> {
     const email = this.normaliseEmail(rawEmail);
     const reader = await this.prisma.reader.findUnique({
       where: { email },
-      select: { id: true, password: true, status: true },
+      select: { id: true, password: true, status: true, name: true },
     });
     if (
       !reader ||
@@ -268,7 +287,7 @@ export class ReaderAuthService {
       return null;
     }
     const token = await this.issueEmailToken(reader.id, 'REPOR_PASSWORD');
-    return token.raw;
+    return { token: token.raw, name: reader.name };
   }
 
   async resetPassword(raw: string, nextPassword: string): Promise<void> {

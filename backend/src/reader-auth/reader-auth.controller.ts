@@ -1,13 +1,7 @@
-import {
-  Body,
-  Controller,
-  HttpCode,
-  HttpStatus,
-  Logger,
-  Post,
-} from '@nestjs/common';
+import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ReaderAuthService } from './reader-auth.service';
+import { ReaderMailService } from './reader-mail.service';
 import { ReaderPublic } from './reader-auth.decorators';
 import { RegisterDto } from './dto/register.dto';
 import { ReaderLoginDto } from './dto/login.dto';
@@ -27,18 +21,10 @@ import { ResetPasswordDto, VerifyEmailDto } from './dto/token.dto';
  */
 @Controller()
 export class ReaderAuthController {
-  private readonly logger = new Logger(ReaderAuthController.name);
-
-  constructor(private readonly auth: ReaderAuthService) {}
-
-  /**
-   * M3 replaces this with MailerService. Until the mailer lands, the link
-   * is logged so the flow is testable end to end with no credentials —
-   * which is also exactly what MAIL_DRIVER=log will do afterwards.
-   */
-  private deliver(kind: string, email: string, token: string): void {
-    this.logger.log(`[${kind}] ${email} → token=${token}`);
-  }
+  constructor(
+    private readonly auth: ReaderAuthService,
+    private readonly mail: ReaderMailService,
+  ) {}
 
   /**
    * Always 202, whether or not the address was free.
@@ -54,10 +40,17 @@ export class ReaderAuthController {
   async register(@Body() dto: RegisterDto) {
     const result = await this.auth.register(dto);
 
+    // Both branches send mail, and both return the same 202 — that is the
+    // whole point. The address owner learns something either way; a
+    // stranger probing for accounts learns nothing.
     if (result.alreadyRegistered) {
-      this.deliver('registration-attempt', dto.email, '(no token)');
+      await this.mail.sendRegistrationAttempt(dto.email, result.name);
     } else if (result.verificationToken) {
-      this.deliver('verify-email', dto.email, result.verificationToken);
+      await this.mail.sendVerification(
+        dto.email,
+        result.name,
+        result.verificationToken,
+      );
     }
 
     return {
@@ -88,8 +81,10 @@ export class ReaderAuthController {
   @Throttle({ default: { ttl: 3_600_000, limit: 3 } })
   @HttpCode(HttpStatus.NO_CONTENT)
   async resendVerification(@Body() dto: EmailOnlyDto): Promise<void> {
-    const token = await this.auth.resendVerification(dto.email);
-    if (token) this.deliver('verify-email', dto.email, token);
+    const issued = await this.auth.resendVerification(dto.email);
+    if (issued) {
+      await this.mail.sendVerification(dto.email, issued.name, issued.token);
+    }
     // 204 regardless — same non-enumeration rule as register.
   }
 
@@ -98,8 +93,11 @@ export class ReaderAuthController {
   @Throttle({ default: { ttl: 3_600_000, limit: 3 } })
   @HttpCode(HttpStatus.NO_CONTENT)
   async forgotPassword(@Body() dto: EmailOnlyDto): Promise<void> {
-    const token = await this.auth.forgotPassword(dto.email);
-    if (token) this.deliver('reset-password', dto.email, token);
+    const issued = await this.auth.forgotPassword(dto.email);
+    if (issued) {
+      await this.mail.sendPasswordReset(dto.email, issued.name, issued.token);
+    }
+    // 204 whether or not an account exists.
   }
 
   @ReaderPublic()

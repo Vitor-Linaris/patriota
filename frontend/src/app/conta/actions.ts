@@ -141,3 +141,40 @@ export async function readerForgotPasswordAction(
       "Se existir uma conta com esse endereço, enviámos instruções para repor a palavra-passe.",
   };
 }
+
+export async function readerResetPasswordAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const token = String(formData.get("token") ?? "");
+  const password = String(formData.get("password") ?? "");
+
+  if (!token) return { error: "Ligação inválida. Peça uma nova." };
+  if (password.length < 10) {
+    return { error: "A palavra-passe deve ter pelo menos 10 caracteres." };
+  }
+
+  const out = await postJson("/public/reader/reset-password", {
+    token,
+    password,
+  });
+  if ("error" in out) return out;
+
+  if (!out.res.ok && out.res.status !== 204) {
+    if (out.res.status === 400) {
+      return { error: "Esta ligação é inválida ou já expirou. Peça uma nova." };
+    }
+    if (out.res.status === 429) {
+      return { error: "Demasiadas tentativas. Aguarde um momento." };
+    }
+    return { error: "Não foi possível alterar a palavra-passe." };
+  }
+
+  // Deliberately no auto-login: the reset bumps tokenVersion, so every
+  // session is now dead by design. Sending them through the login form
+  // also confirms the new password actually works.
+  return {
+    notice:
+      "Pode agora iniciar sessão com a nova palavra-passe. As sessões abertas noutros dispositivos foram terminadas.",
+  };
+}

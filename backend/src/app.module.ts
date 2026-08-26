@@ -18,9 +18,11 @@ import { NewsletterModule } from './newsletter/newsletter.module';
 import { SettingsModule } from './settings/settings.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { VisitsModule } from './visits/visits.module';
+import { MailerModule } from './mailer/mailer.module';
 import { ReaderAuthModule } from './reader-auth/reader-auth.module';
 import { ReaderLibraryModule } from './reader-library/reader-library.module';
 import { CommentsModule } from './comments/comments.module';
+import { ReaderNotificationsModule } from './reader-notifications/reader-notifications.module';
 
 @Module({
   imports: [
@@ -61,6 +63,8 @@ import { CommentsModule } from './comments/comments.module';
     SettingsModule,
     DashboardModule,
     VisitsModule,
+    // @Global — reader auth, digests and (later) staff invites all send.
+    MailerModule,
     // Public-audience accounts. Every route inside is gated by
     // FEATURE_READER_AREA (see ReaderFeatureGuard), so registering the
     // module unconditionally is safe and keeps e2e able to build the
@@ -68,6 +72,7 @@ import { CommentsModule } from './comments/comments.module';
     ReaderAuthModule,
     ReaderLibraryModule,
     CommentsModule,
+    ReaderNotificationsModule,
   ],
   controllers: [AppController],
   providers: [
