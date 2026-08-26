@@ -2,6 +2,7 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { apiBaseUrl } from "@/lib/api-base";
 
 export type LoginState = {
   error?: string;
@@ -14,7 +15,7 @@ const SESSION_COOKIE = "patriota_session";
  * the returned JWT in an httpOnly cookie so the browser never sees it.
  *
  * Backend contract (NestJS — see backend/src/auth/auth.controller.ts):
- *   POST {INTERNAL_API_URL}/auth/login
+ *   POST <api base>/auth/login
  *   body: { email, password }
  *   200: { accessToken: string, user: { id, email, name, role } }
  *   401: { message: "Credenciais inválidas." }
@@ -30,14 +31,9 @@ export async function loginAction(
     return { error: "Preencha e-mail e palavra-passe." };
   }
 
-  const apiUrl =
-    process.env.INTERNAL_API_URL ??
-    process.env.NEXT_PUBLIC_API_URL ??
-    "http://api:8585";
-
   let res: Response;
   try {
-    res = await fetch(`${apiUrl}/auth/login`, {
+    res = await fetch(`${apiBaseUrl()}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),

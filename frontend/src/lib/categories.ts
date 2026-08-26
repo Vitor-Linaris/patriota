@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { apiBaseUrl } from "./api-base";
 
 export interface CategoryDef {
   slug: string;
@@ -21,14 +22,6 @@ interface BackendCategory {
   subtopics: { id: string; label: string; order: number }[];
 }
 
-function getApiUrl(): string {
-  return (
-    process.env.INTERNAL_API_URL ??
-    process.env.NEXT_PUBLIC_API_URL ??
-    "http://api:8585"
-  );
-}
-
 /**
  * Server-side cached fetch of the public category catalogue. Backed by
  * `GET /public/categories`. Falls back to an empty list if the backend
@@ -39,7 +32,7 @@ function getApiUrl(): string {
  */
 export const getCategories = cache(async (): Promise<CategoryDef[]> => {
   try {
-    const res = await fetch(`${getApiUrl()}/public/categories`, {
+    const res = await fetch(`${apiBaseUrl()}/public/categories`, {
       cache: "no-store",
     });
     if (!res.ok) return [];

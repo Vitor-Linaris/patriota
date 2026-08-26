@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { apiBaseUrl } from "@/lib/api-base";
 
 /**
  * Client-side proxy to GET /admin/media. Needed because:
@@ -11,13 +12,6 @@ import { NextResponse } from "next/server";
  * The route handler runs server-side, reads the session cookie, and
  * forwards the request with the bearer token attached.
  */
-function apiUrl(): string {
-  return (
-    process.env.INTERNAL_API_URL ??
-    process.env.NEXT_PUBLIC_API_URL ??
-    "http://api:8585"
-  );
-}
 
 export async function GET(req: Request) {
   const cookieStore = await cookies();
@@ -29,7 +23,7 @@ export async function GET(req: Request) {
     );
   }
   const incoming = new URL(req.url);
-  const target = new URL(`${apiUrl()}/admin/media`);
+  const target = new URL(`${apiBaseUrl()}/admin/media`);
   for (const [k, v] of incoming.searchParams.entries()) {
     target.searchParams.set(k, v);
   }

@@ -1,15 +1,9 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { apiBaseUrl } from "./api-base";
 
 const SESSION_COOKIE = "patriota_session";
 
-function getApiUrl() {
-  return (
-    process.env.INTERNAL_API_URL ??
-    process.env.NEXT_PUBLIC_API_URL ??
-    "http://api:8585"
-  );
-}
 
 /**
  * Authenticated server-side fetch against the backend.
@@ -21,7 +15,7 @@ export async function apiFetch(path: string, init: RequestInit = {}) {
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   if (!token) redirect("/admin/login");
 
-  const res = await fetch(`${getApiUrl()}${path}`, {
+  const res = await fetch(`${apiBaseUrl()}${path}`, {
     ...init,
     cache: "no-store",
     headers: {

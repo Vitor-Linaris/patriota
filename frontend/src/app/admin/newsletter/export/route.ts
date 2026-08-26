@@ -1,15 +1,8 @@
 import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
+import { apiBaseUrl } from "@/lib/api-base";
 
 const SESSION_COOKIE = "patriota_session";
-
-function apiBase(): string {
-  return (
-    process.env.INTERNAL_API_URL ??
-    process.env.NEXT_PUBLIC_API_URL ??
-    "http://api:8585"
-  );
-}
 
 /**
  * Proxy for the subscriber export. The backend lives at a different
@@ -35,7 +28,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   }
 
   const upstream = await fetch(
-    `${apiBase()}/admin/newsletters/subscribers/export.${format}`,
+    `${apiBaseUrl()}/admin/newsletters/subscribers/export.${format}`,
     {
       headers: { Authorization: `Bearer ${token}` },
       cache: "no-store",

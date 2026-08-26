@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { mapApiAdToUi, type Ad, type AdApi } from "./ads";
+import { apiBaseUrl } from "./api-base";
 
 export interface ArticleSummary {
   id: string;
@@ -44,18 +45,10 @@ export interface HomepageBundle {
   investigation: ArticleSummary[];
 }
 
-function apiUrl(): string {
-  return (
-    process.env.INTERNAL_API_URL ??
-    process.env.NEXT_PUBLIC_API_URL ??
-    "http://api:8585"
-  );
-}
-
 export const getHomepage = cache(
   async (): Promise<HomepageBundle> => {
     try {
-      const res = await fetch(`${apiUrl()}/public/homepage`, {
+      const res = await fetch(`${apiBaseUrl()}/public/homepage`, {
         cache: "no-store",
       });
       if (!res.ok) {
@@ -73,7 +66,7 @@ export async function getArticleBySlug(
 ): Promise<ArticleDetail | null> {
   try {
     const res = await fetch(
-      `${apiUrl()}/public/articles/by-slug/${encodeURIComponent(slug)}`,
+      `${apiBaseUrl()}/public/articles/by-slug/${encodeURIComponent(slug)}`,
       { cache: "no-store" },
     );
     if (!res.ok) return null;
@@ -103,7 +96,7 @@ export async function listPublicArticles(
     if (q.pageSize) params.set("pageSize", String(q.pageSize));
     if (q.sort) params.set("sort", q.sort);
     const res = await fetch(
-      `${apiUrl()}/public/articles?${params.toString()}`,
+      `${apiBaseUrl()}/public/articles?${params.toString()}`,
       { cache: "no-store" },
     );
     if (!res.ok) return { items: [], total: 0 };
@@ -139,7 +132,7 @@ export async function listRelated(
 ): Promise<ArticleSummary[]> {
   try {
     const res = await fetch(
-      `${apiUrl()}/public/articles/related/${encodeURIComponent(slug)}?limit=${limit}`,
+      `${apiBaseUrl()}/public/articles/related/${encodeURIComponent(slug)}?limit=${limit}`,
       { cache: "no-store" },
     );
     if (!res.ok) return [];
@@ -163,7 +156,7 @@ export const getAdsByPage = cache(
   async (page: "Homepage" | "Artigo" | "Categoria"): Promise<Record<string, Ad>> => {
     try {
       const res = await fetch(
-        `${apiUrl()}/public/ads/${encodeURIComponent(page)}`,
+        `${apiBaseUrl()}/public/ads/${encodeURIComponent(page)}`,
         { cache: "no-store" },
       );
       if (!res.ok) return {};
@@ -190,7 +183,7 @@ export interface SocialLinks {
  *  footer simply hides every icon rather than blowing up. */
 export const getSocialLinks = cache(async (): Promise<SocialLinks> => {
   try {
-    const res = await fetch(`${apiUrl()}/public/settings/redes`, {
+    const res = await fetch(`${apiBaseUrl()}/public/settings/redes`, {
       cache: "no-store",
     });
     if (!res.ok) return {};

@@ -4,16 +4,9 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { apiFetch } from "@/lib/api";
+import { apiBaseUrl } from "@/lib/api-base";
 
 const SESSION_COOKIE = "patriota_session";
-
-function getApiUrl(): string {
-  return (
-    process.env.INTERNAL_API_URL ??
-    process.env.NEXT_PUBLIC_API_URL ??
-    "http://api:8585"
-  );
-}
 
 export interface CreateMediaPayload {
   url: string;
@@ -75,7 +68,7 @@ export async function uploadMediaFileAction(
   const out = new FormData();
   out.append("file", file, file.name);
 
-  const res = await fetch(`${getApiUrl()}/admin/media/upload`, {
+  const res = await fetch(`${apiBaseUrl()}/admin/media/upload`, {
     method: "POST",
     body: out,
     cache: "no-store",
