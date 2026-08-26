@@ -15,6 +15,8 @@ export interface ArticleSummary {
   publishedAt: string | null;
   scheduledAt: string | null;
   coverImageUrl: string | null;
+  /** Denormalised count of APPROVED comments — drives the counter badge. */
+  commentCount: number;
   category: { slug: string; name: string };
   author: { name: string | null };
 }
@@ -36,6 +38,13 @@ export interface ArticleDetail extends ArticleSummary {
   essentials: string[];
   context: { columns: ArticleContextColumn[] } | null;
   pullQuote: ArticlePullQuote | null;
+  categoryId?: string;
+  // PHASE 2 (paywall): the backend will return a truncated contentPreview
+  // and omit content entirely for non-subscribers. Declared now so the
+  // switch is a backend change only — a CSS blur or a client-side slice
+  // is defeated by View Source.
+  paywalled?: boolean;
+  contentPreview?: string;
 }
 
 export interface HomepageBundle {
@@ -211,4 +220,45 @@ export function timeAgo(iso: string | null): string {
   if (hr < 24) return `Há ${hr} hora${hr === 1 ? "" : "s"}`;
   const day = Math.round(hr / 24);
   return day === 1 ? "Ontem" : `Há ${day} dias`;
+}
+
+export interface PublicComment {
+  id: string;
+  /** null when the comment was removed — the row stays so replies keep their anchor. */
+  body: string | null;
+  status: "PENDENTE" | "APROVADO" | "REJEITADO" | "SPAM" | "ELIMINADO";
+  parentId: string | null;
+  createdAt: string;
+  editedAt: string | null;
+  author: { name: string; isMe: boolean };
+}
+
+/**
+ * Comment thread for an article, rendered server-side so it is indexable.
+ *
+ * The reader token is passed through when there is one, purely so an
+ * author sees their own still-PENDENTE comment; anonymous callers get the
+ * approved ones. Errors are swallowed into an empty thread — a comments
+ * outage must never take the article down with it, same contract as
+ * getHomepage and the rest of this file.
+ */
+export async function listComments(
+  slug: string,
+  token?: string | null,
+  pageSize = 50,
+): Promise<{ items: PublicComment[]; total: number }> {
+  try {
+    const res = await fetch(
+      `${apiBaseUrl()}/public/articles/${encodeURIComponent(slug)}/comments?pageSize=${pageSize}`,
+      {
+        cache: "no-store",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      },
+    );
+    if (!res.ok) return { items: [], total: 0 };
+    const data = (await res.json()) as { items?: PublicComment[]; total?: number };
+    return { items: data.items ?? [], total: data.total ?? 0 };
+  } catch {
+    return { items: [], total: 0 };
+  }
 }

@@ -46,6 +46,14 @@ const NAV: readonly NavItem[] = [
     requires: ["configuracoes.permissoes"],
   },
   {
+    // Reader comments. The comentarios.* permissions already existed in
+    // rbac.constants.ts and are granted to EDITOR, REVISOR and MODERADOR.
+    href: "/admin/comentarios",
+    label: "Comentários",
+    icon: "❝",
+    requires: ["comentarios.ver"],
+  },
+  {
     href: "/admin/categorias",
     label: "Categorias",
     icon: "◉",

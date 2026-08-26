@@ -12,6 +12,10 @@ import { ContextBox } from "@/components/article/ContextBox";
 import { Blockquote } from "@/components/article/Blockquote";
 import { AuthorBio } from "@/components/article/AuthorBio";
 import { ArticleSidebar } from "@/components/article/ArticleSidebar";
+import { ShareButtons } from "@/components/article/ShareButtons";
+import { ReaderActions } from "@/components/article/ReaderActions";
+import { ArticleComments } from "@/components/article/ArticleComments";
+import { FEATURES } from "@/lib/features";
 import { imageVariant } from "@/lib/images";
 import {
   getAdsByPage,
@@ -34,6 +38,13 @@ export default async function ArticlePage({
     listBreaking(4),
     getAdsByPage("Artigo"),
   ]);
+  // Built from the configured site URL rather than window.location so
+  // what gets shared is always the canonical address, whichever host
+  // the reader happened to arrive on.
+  const shareUrl = `${
+    process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.opatriota.pt"
+  }/artigo/${article.slug}`;
+
   const authorInitials = (article.author.name ?? "??")
     .split(" ")
     .filter(Boolean)
@@ -108,12 +119,45 @@ export default async function ArticlePage({
                   <p>{timeAgo(article.publishedAt)}</p>
                   <p>{article.readMinutes} min leitura</p>
                 </div>
-                <div className="flex gap-2">
-                  <ShareButton aria="Partilhar no Facebook" glyph="f" />
-                  <ShareButton aria="Partilhar no X" glyph="𝕏" />
-                  <ShareButton aria="Copiar link" glyph="🔗" />
-                </div>
+                <ShareButtons url={shareUrl} title={article.title} />
               </div>
+
+              {/* Interaction bar — comment counter, heart, follow category.
+                  The counter is a real anchor, not a button: it works with
+                  JS disabled, it is shareable, and the browser does the
+                  scrolling. The count comes from the SSR payload, so this
+                  costs no extra request. */}
+              {(FEATURES.comments || FEATURES.readerArea) && (
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  {FEATURES.comments && (
+                    <a
+                      href="#comentarios"
+                      className="inline-flex items-center gap-2.5 rounded-full border border-slate-200 px-3 py-1.5 text-[12px] font-medium text-slate-600 transition hover:border-slate-400 hover:text-slate-900"
+                    >
+                      <span className="relative inline-flex" aria-hidden>
+                        <span className="text-[15px] leading-none">❝</span>
+                        {article.commentCount > 0 && (
+                          <span className="absolute -right-2.5 -top-2 flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-patriota-accent px-1 text-[10px] font-bold text-patriota-ink">
+                            {article.commentCount > 99 ? "99+" : article.commentCount}
+                          </span>
+                        )}
+                      </span>
+                      <span>
+                        {article.commentCount === 1
+                          ? "1 comentário"
+                          : article.commentCount + " comentários"}
+                      </span>
+                    </a>
+                  )}
+                  {FEATURES.readerArea && (
+                    <ReaderActions
+                      articleId={article.id}
+                      slug={article.slug}
+                      categoryName={article.category.name}
+                    />
+                  )}
+                </div>
+              )}
 
               {/* Essential */}
               {article.essentials && article.essentials.length > 0 && (
@@ -193,6 +237,15 @@ export default async function ArticlePage({
                 />
               </div>
 
+              {/* Comments — server-rendered, so they are indexable and
+                  carry no third-party JavaScript. */}
+              {FEATURES.comments && (
+                <ArticleComments
+                  slug={article.slug}
+                  totalHint={article.commentCount}
+                />
+              )}
+
               {/* Related articles */}
               {related.length > 0 && (
                 <section className="mt-12 border-t border-slate-200 pt-8">
@@ -255,14 +308,3 @@ export default async function ArticlePage({
   );
 }
 
-function ShareButton({ aria, glyph }: { aria: string; glyph: string }) {
-  return (
-    <button
-      type="button"
-      aria-label={aria}
-      className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-[14px] text-slate-600 transition hover:border-slate-400 hover:text-slate-900"
-    >
-      {glyph}
-    </button>
-  );
-}
