@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SettingsService } from '../settings/settings.service';
 import { LogMailDriver } from './drivers/log.driver';
-import { BrevoMailDriver } from './drivers/brevo.driver';
+import { ResendMailDriver } from './drivers/resend.driver';
 import { SmtpMailDriver } from './drivers/smtp.driver';
 import type {
   MailDriver,
@@ -23,7 +23,7 @@ export class MailerService {
     private readonly config: ConfigService,
     private readonly settings: SettingsService,
     private readonly log: LogMailDriver,
-    private readonly brevo: BrevoMailDriver,
+    private readonly resend: ResendMailDriver,
     private readonly smtp: SmtpMailDriver,
   ) {}
 
@@ -33,8 +33,8 @@ export class MailerService {
    */
   private get driver(): MailDriver {
     switch (this.config.get<string>('MAIL_DRIVER')) {
-      case 'brevo':
-        return this.brevo;
+      case 'resend':
+        return this.resend;
       case 'smtp':
         return this.smtp;
       default:

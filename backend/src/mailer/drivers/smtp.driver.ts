@@ -12,7 +12,7 @@ import type {
 
 /**
  * Plain SMTP, kept so the /admin/configuracoes › Email fields stay
- * meaningful and self-hosters have an escape hatch from Brevo.
+ * meaningful and self-hosters have an escape hatch from Resend.
  *
  * Host, port and user come from the Setting row (they are configuration,
  * and the newsroom edits them); the PASSWORD comes from env only. That

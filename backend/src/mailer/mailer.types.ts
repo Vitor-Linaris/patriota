@@ -26,7 +26,7 @@ export interface MailResult {
 }
 
 /**
- * Implemented by log / brevo / smtp. Kept deliberately small: everything
+ * Implemented by log / resend / smtp. Kept deliberately small: everything
  * provider-specific lives behind this, so swapping ESP is one file.
  */
 export interface MailDriver {

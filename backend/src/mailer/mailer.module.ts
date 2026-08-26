@@ -1,7 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { MailerService } from './mailer.service';
 import { LogMailDriver } from './drivers/log.driver';
-import { BrevoMailDriver } from './drivers/brevo.driver';
+import { ResendMailDriver } from './drivers/resend.driver';
 import { SmtpMailDriver } from './drivers/smtp.driver';
 import { SettingsModule } from '../settings/settings.module';
 
@@ -18,7 +18,7 @@ import { SettingsModule } from '../settings/settings.module';
 @Global()
 @Module({
   imports: [SettingsModule],
-  providers: [MailerService, LogMailDriver, BrevoMailDriver, SmtpMailDriver],
+  providers: [MailerService, LogMailDriver, ResendMailDriver, SmtpMailDriver],
   exports: [MailerService],
 })
 export class MailerModule {}
