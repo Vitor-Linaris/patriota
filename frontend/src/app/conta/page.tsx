@@ -18,7 +18,7 @@ const DATE = new Intl.DateTimeFormat("pt-PT", {
   year: "numeric",
 });
 
-/** Sections of the reader area. `ready` flips as each module lands. */
+/** Sections of the reader area. All four are live as of M4/M5. */
 const SECTIONS = [
   {
     href: "/conta/categorias",
@@ -28,7 +28,7 @@ const SECTIONS = [
       "Escolha os temas que lhe interessam e receba um e-mail quando sair notícia nova.",
     countKey: "categorias",
     empty: "Ainda não segue nenhuma categoria.",
-    ready: false,
+    ready: true,
   },
   {
     href: "/conta/guardados",
@@ -37,7 +37,7 @@ const SECTIONS = [
     blurb: "As notícias que marcou para ler mais tarde.",
     countKey: "artigos",
     empty: "Ainda não guardou nenhuma notícia.",
-    ready: false,
+    ready: true,
   },
   {
     href: "/conta/comentarios",
@@ -46,7 +46,7 @@ const SECTIONS = [
     blurb: "Em que notícias participou nas últimas semanas.",
     countKey: "comentarios",
     empty: "Ainda não comentou nenhuma notícia.",
-    ready: false,
+    ready: true,
   },
   {
     href: "/conta/historico",
@@ -55,7 +55,7 @@ const SECTIONS = [
     blurb: "O que andou a ler, por ordem cronológica.",
     countKey: "historico",
     empty: "Ainda não há histórico para mostrar.",
-    ready: false,
+    ready: true,
   },
 ] as const;
 
