@@ -11,6 +11,14 @@ export interface JwtPayload {
   sub: string;
   email: string;
   role: Role;
+  /**
+   * Audience marker separating staff tokens from reader tokens
+   * (src/reader-auth/). Optional today because tokens issued before it
+   * existed are still valid for their 8h, and test/helpers/auth.ts does
+   * not set it; JwtAuthGuard therefore treats absent as staff. M10 makes
+   * AuthService.login stamp it and the guard require it.
+   */
+  typ?: 'staff';
 }
 
 export interface AuthUser {

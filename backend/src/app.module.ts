@@ -18,6 +18,7 @@ import { NewsletterModule } from './newsletter/newsletter.module';
 import { SettingsModule } from './settings/settings.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { VisitsModule } from './visits/visits.module';
+import { ReaderAuthModule } from './reader-auth/reader-auth.module';
 
 @Module({
   imports: [
@@ -39,6 +40,11 @@ import { VisitsModule } from './visits/visits.module';
     SettingsModule,
     DashboardModule,
     VisitsModule,
+    // Public-audience accounts. Every route inside is gated by
+    // FEATURE_READER_AREA (see ReaderFeatureGuard), so registering the
+    // module unconditionally is safe and keeps e2e able to build the
+    // full graph.
+    ReaderAuthModule,
   ],
   controllers: [AppController],
   providers: [
