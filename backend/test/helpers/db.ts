@@ -4,6 +4,16 @@ import { PrismaService } from '../../src/prisma/prisma.service';
 /**
  * Truncates the tables passed in (in order) using TRUNCATE ... CASCADE.
  * Safe to call between test cases for isolation.
+ *
+ * CASCADE also empties every table that REFERENCES the ones listed, which
+ * now reaches further than it used to. Since the reader area landed:
+ *   • truncating "User"     also empties "Comment" (via moderatedById)
+ *   • truncating "Article"  also empties "Comment", "ArticleFavorite",
+ *                           "ReadingHistory" and "ArticleNotification"
+ *   • truncating "Reader"   empties all of the reader-owned tables
+ *   • truncating "Category" also empties "CategoryFavorite"
+ * Harmless for isolation — but if a spec truncates "Article" and then
+ * expects its own seeded comments to survive, this is why they did not.
  */
 export async function truncate(
   app: INestApplication,
