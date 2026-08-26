@@ -79,17 +79,19 @@ export function TopBar() {
             >
               Newsletter
             </button>
-            {FEATURES.publicAuth && (
+            {FEATURES.publicAuth && FEATURES.readerArea && (
               <>
                 <span aria-hidden className="h-3 w-px bg-white/20" />
-                <a className="hover:text-white" href="/admin/login">
-                  Login
+                {/* Reader accounts, NOT /admin/login — the backoffice is a
+                    separate account system and stays URL-only. */}
+                <a className="hover:text-white" href="/conta/entrar">
+                  Iniciar sessão
                 </a>
                 <a
                   className="rounded bg-patriota-accent px-2.5 py-0.5 text-[12px] font-medium text-patriota-medium hover:brightness-105"
-                  href="#"
+                  href="/conta/registar"
                 >
-                  Registar
+                  Criar conta
                 </a>
               </>
             )}
