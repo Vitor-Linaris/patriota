@@ -5,6 +5,7 @@ import { Container } from "../Container";
 import { FEATURES } from "@/lib/features";
 import { NewsletterModal } from "./NewsletterModal";
 import { SearchModal } from "./SearchModal";
+import { ReaderNav } from "./ReaderNav";
 
 /**
  * Today, in Lisbon.
@@ -102,17 +103,14 @@ export function TopBar() {
             {FEATURES.publicAuth && FEATURES.readerArea && (
               <>
                 <span aria-hidden className="h-3 w-px bg-white/20" />
-                {/* Reader accounts, NOT /admin/login — the backoffice is a
-                    separate account system and stays URL-only. */}
-                <a className="hover:text-white" href="/conta/entrar">
-                  Iniciar sessão
-                </a>
-                <a
-                  className="rounded bg-patriota-accent px-2.5 py-0.5 text-[12px] font-medium text-patriota-medium hover:brightness-105"
-                  href="/conta/registar"
-                >
-                  Criar conta
-                </a>
+                {/*
+                  Reader accounts, NOT /admin/login — the backoffice is a
+                  separate account system and stays URL-only.
+
+                  ReaderNav resolves the session on the client and swaps
+                  the two sign-in links for the reader name once it knows.
+                */}
+                <ReaderNav />
               </>
             )}
           </nav>
