@@ -104,13 +104,48 @@ export class CategoriesService {
     }
   }
 
+  /**
+   * Deleting a category that still holds articles used to surface as a
+   * raw 500: Article.category has no onDelete, so Postgres raises a
+   * foreign-key violation (P2003) and nothing caught it.
+   *
+   * Checked up front rather than only caught, so the editor is told HOW
+   * MANY articles are in the way instead of just being refused — the
+   * same courtesy MediaService.remove() already extends for images in
+   * use. The catch below stays as the race-condition backstop, and will
+   * also cover child categories once the hierarchy lands.
+   */
   async remove(id: string) {
+    const category = await this.prisma.category.findUnique({
+      where: { id },
+      select: { id: true, name: true },
+    });
+    if (!category) throw new NotFoundException('Categoria não encontrada.');
+
+    const articleCount = await this.prisma.article.count({
+      where: { categoryId: id },
+    });
+    if (articleCount > 0) {
+      throw new ConflictException(
+        `Categoria "${category.name}" tem ${articleCount} ` +
+          `${articleCount === 1 ? 'artigo associado' : 'artigos associados'}. ` +
+          'Mova-os para outra categoria antes de eliminar.',
+      );
+    }
+
     try {
       await this.prisma.category.delete({ where: { id } });
       return { ok: true };
     } catch (e) {
       if (isPrismaCode(e, 'P2025')) {
         throw new NotFoundException('Categoria não encontrada.');
+      }
+      // Backstop: an article (or, later, a child category) created
+      // between the check above and this delete.
+      if (isPrismaCode(e, 'P2003')) {
+        throw new ConflictException(
+          'Categoria em uso. Remova o que depende dela antes de eliminar.',
+        );
       }
       throw e;
     }

@@ -3,6 +3,7 @@ import request from 'supertest';
 import { createTestApp } from './helpers/app';
 import { makeUser, bearer } from './helpers/auth';
 import { truncate } from './helpers/db';
+import { PrismaService } from '../src/prisma/prisma.service';
 
 describe('Categories (e2e)', () => {
   let app: INestApplication;
@@ -16,7 +17,7 @@ describe('Categories (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await truncate(app, ['Subtopic', 'Category']);
+    await truncate(app, ['Article', 'Subtopic', 'Category', 'User']);
   });
 
   it('rejects POST /admin/categories without authentication', async () => {
@@ -121,5 +122,46 @@ describe('Categories (e2e)', () => {
       .delete(`/admin/categories/${created.body.id}`)
       .set(bearer(jorn))
       .expect(403);
+  });
+
+  it('refuses to delete a category with articles, with 409 not 500', async () => {
+    // Against the real database, which is where this mattered:
+    // Article.category has no onDelete, so Postgres raises a
+    // foreign-key violation. Before this guard it escaped as a 500.
+    const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+    const prisma = app.get(PrismaService);
+
+    const created = await request(app.getHttpServer())
+      .post('/admin/categories')
+      .set(bearer(admin))
+      .send({ name: 'Com artigos', description: '', icon: '◆', color: '#000000' })
+      .expect(201);
+
+    await prisma.article.create({
+      data: {
+        slug: 'artigo-a-bloquear',
+        title: 'Artigo a bloquear',
+        summary: 's',
+        content: 'c',
+        status: 'PUBLICADO',
+        publishedAt: new Date(),
+        categoryId: created.body.id,
+        authorId: admin.id,
+      },
+    });
+
+    const res = await request(app.getHttpServer())
+      .delete(`/admin/categories/${created.body.id}`)
+      .set(bearer(admin))
+      .expect(409);
+
+    // The editor is told what is in the way, not just refused.
+    expect(res.body.message).toMatch(/Com artigos/);
+    expect(res.body.message).toMatch(/1 artigo associado/);
+
+    // And the category is still there.
+    expect(
+      await prisma.category.findUnique({ where: { id: created.body.id } }),
+    ).not.toBeNull();
   });
 });
