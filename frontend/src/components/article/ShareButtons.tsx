@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useState } from "react";
 import {
   FaFacebookF,
   FaLinkedinIn,
@@ -8,7 +8,7 @@ import {
   FaXTwitter,
 } from "react-icons/fa6";
 import { HiOutlineMail } from "react-icons/hi";
-import { FiCheck, FiLink, FiShare2 } from "react-icons/fi";
+import { FiCheck, FiLink } from "react-icons/fi";
 
 /**
  * Share row — icons only, no labels.
@@ -64,18 +64,21 @@ function targets(url: string, title: string) {
 export const ICON_BUTTON =
   "flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 text-slate-600 transition hover:border-patriota-medium hover:bg-slate-50 hover:text-patriota-medium";
 
+/**
+ * NOTE: there is deliberately no navigator.share branch here.
+ *
+ * An earlier version swapped this whole row for the OS share sheet
+ * whenever navigator.share existed, on the assumption that it meant a
+ * phone. It does not — Chrome on Windows has had the Web Share API since
+ * version 89 — so desktop readers watched the icons arrive from the
+ * server and then vanish the moment hydration ran.
+ *
+ * Rendering the same row everywhere costs nothing (six 36px circles fit
+ * a 375px screen) and removes the swap entirely, which is worth more
+ * than the native sheet ever was.
+ */
 export function ShareButtons({ url, title }: { url: string; title: string }) {
   const [copied, setCopied] = useState(false);
-
-  // Feature detection that survives hydration: the server snapshot is
-  // always false, so SSR and the first client render agree, and React
-  // swaps in the real value without a cascading effect. navigator.share
-  // never changes for the life of the page, hence the no-op subscribe.
-  const canNativeShare = useSyncExternalStore(
-    () => () => {},
-    () => typeof navigator !== "undefined" && !!navigator.share,
-    () => false,
-  );
 
   async function copy() {
     try {
@@ -85,32 +88,6 @@ export function ShareButtons({ url, title }: { url: string; title: string }) {
     } catch {
       // Clipboard is permission-gated; failing silently beats an alert.
     }
-  }
-
-  // On a phone the OS sheet beats a row of six circles on a narrow screen.
-  if (canNativeShare) {
-    return (
-      <div className="flex items-center gap-1.5">
-        <button
-          type="button"
-          onClick={() => void navigator.share({ title, url })}
-          aria-label="Partilhar"
-          title="Partilhar"
-          className={ICON_BUTTON}
-        >
-          <FiShare2 size={16} aria-hidden />
-        </button>
-        <button
-          type="button"
-          onClick={copy}
-          aria-label={copied ? "Ligação copiada" : "Copiar ligação"}
-          title={copied ? "Ligação copiada" : "Copiar ligação"}
-          className={ICON_BUTTON}
-        >
-          {copied ? <FiCheck size={16} aria-hidden /> : <FiLink size={16} aria-hidden />}
-        </button>
-      </div>
-    );
   }
 
   return (
@@ -135,7 +112,11 @@ export function ShareButtons({ url, title }: { url: string; title: string }) {
         title={copied ? "Ligação copiada" : "Copiar ligação"}
         className={ICON_BUTTON}
       >
-        {copied ? <FiCheck size={16} aria-hidden /> : <FiLink size={16} aria-hidden />}
+        {copied ? (
+          <FiCheck size={16} aria-hidden />
+        ) : (
+          <FiLink size={16} aria-hidden />
+        )}
       </button>
     </div>
   );
