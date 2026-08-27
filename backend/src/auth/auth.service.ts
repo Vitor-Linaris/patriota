@@ -11,6 +11,13 @@ export interface JwtPayload {
   sub: string;
   email: string;
   role: Role;
+  /**
+   * Audience marker separating staff tokens from reader tokens
+   * (src/reader-auth/). Required as of M10: JwtAuthGuard refuses a token
+   * without it, so the two audiences cannot be confused even if the
+   * separate signing secrets were ever unified.
+   */
+  typ: 'staff';
 }
 
 export interface AuthUser {
@@ -48,6 +55,10 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       role: user.role,
+      // Audience marker. JwtAuthGuard now REQUIRES it, so a reader token
+      // can never satisfy a staff route even if the two signing secrets
+      // were ever unified by accident.
+      typ: 'staff',
     };
 
     return {

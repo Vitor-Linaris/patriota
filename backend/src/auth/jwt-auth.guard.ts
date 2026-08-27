@@ -39,6 +39,22 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Token inválido.');
     }
 
+    // Audience check. Reader tokens are signed with READER_JWT_SECRET so
+    // they already fail verifyAsync above — this is the second layer, and
+    // the one that still holds if the two secrets are ever unified.
+    //
+    // REQUIRED, not merely checked when present. The permissive version
+    // shipped one release earlier so that staff sessions already in the
+    // wild (8h lifetime) kept working through the rollout; that window
+    // has passed, so an unstamped token is now refused.
+    //
+    // Consequence to expect on deploy: anyone holding a session issued
+    // before this release is signed out and logs in again. That is the
+    // intended cost of closing the gap.
+    if (payload.typ !== 'staff') {
+      throw new UnauthorizedException('Token inválido.');
+    }
+
     const user = await this.authService.getUserById(payload.sub);
     if (!user) throw new UnauthorizedException('Utilizador inativo.');
 

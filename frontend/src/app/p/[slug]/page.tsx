@@ -8,6 +8,7 @@ import { SiteHeader } from "@/components/home/SiteHeader";
 import { SecondaryNav } from "@/components/home/SecondaryNav";
 import { SiteFooter } from "@/components/home/SiteFooter";
 import { listBreaking } from "@/lib/public-api";
+import { FEATURES } from "@/lib/features";
 import {
   STATIC_PAGES,
   STATIC_PAGE_SLUGS,
@@ -103,6 +104,29 @@ export default async function StaticPageRoute({
             <p className="mt-6 text-[16px] leading-relaxed text-slate-600">
               {page.intro}
             </p>
+
+            {/*
+              Slug-scoped call to action. Lives here rather than in
+              static-pages.ts on purpose: that map is deliberately plain
+              text (paragraphs and lists) so it can be edited without
+              touching JSX, and links are the one thing it cannot carry.
+            */}
+            {slug === "assinatura" && FEATURES.readerArea && (
+              <div className="mt-8 flex flex-wrap items-center gap-3 rounded-[12px] border border-slate-200 bg-slate-50 px-5 py-4">
+                <Link
+                  href="/conta/registar"
+                  className="rounded-[8px] bg-patriota-pure px-4 py-2.5 text-[14px] font-bold text-white transition hover:brightness-110"
+                >
+                  Criar conta gratuita
+                </Link>
+                <Link
+                  href="/conta/entrar"
+                  className="text-[14px] font-semibold text-patriota-medium hover:underline"
+                >
+                  Já tenho conta
+                </Link>
+              </div>
+            )}
 
             <div className="mt-10 space-y-10">
               {page.sections.map((section, i) => (

@@ -786,17 +786,27 @@ Documentadas honestamente para evitar surpresas:
 
 | Área | Limitação |
 | --- | --- |
-| Email | Nenhum email sai do sistema; toda a configuração SMTP é placeholder |
 | 2FA | UI existe, lógica não |
-| Sessões | JWT sem refresh-token; "terminar sessões" não funciona |
+| Sessões (staff) | JWT sem refresh-token; "terminar sessões" não funciona. Os leitores NÃO têm este problema: `Reader.tokenVersion` revoga todas as sessões |
 | Whitelist de IPs | Campo nas settings é cosmético |
 | reCAPTCHA | Idem |
-| Comentários | Sem modelo, sem moderação |
-| Paywall | Sem implementação |
+| Paywall | `Article.premium` é gravado e `applyPaywall` está reservado, mas nada bloqueia conteúdo ainda — falta o billing |
+| Login social | Código pronto; inerte até haver credenciais Google/Meta. O App Review da Meta demora dias |
 | Pesquisa | ILIKE simples; sem ranking |
-| Uploads | Em volume local; perde-se em hosts efémeros |
+| Uploads | Em volume local; perde-se em hosts efémeros. Ver roadmap #1 |
 | Importação | Não há importer de artigos de outras plataformas |
 | Multi-idioma | Só PT-PT |
+| Publicação | `PATCH /admin/articles/:id` aceita `status` sem verificar `artigos.publicar` — um JORNALISTA consegue auto-publicar-se. Bug pré-existente, por corrigir |
+
+### Resolvido na área de leitores (branch `feat/area-leitores`)
+
+Estas linhas estavam na tabela acima e deixaram de se aplicar:
+
+| Área | Estado |
+| --- | --- |
+| Email | Sai a sério. `MailerModule` com drivers `log` / `resend` / `smtp`, escolhidos por `MAIL_DRIVER`. Verificação de conta, reposição de palavra-passe e digests de categoria |
+| Comentários | Modelo, moderação em `/admin/comentarios`, thread renderizada no servidor, texto simples (sem XSS), contador desnormalizado |
+| Contas de leitor | Registo, login, favoritos, histórico e notificações, com isolamento total do staff — chave de assinatura distinta, claim `typ`, tabela distinta, propriedade distinta no request |
 
 ---
 
@@ -805,6 +815,113 @@ Documentadas honestamente para evitar surpresas:
 ### "Backend não arranca, erro `JWT_SECRET must be defined`"
 Faltam variáveis de ambiente. `cp backend/.env.example backend/.env` e
 preencher.
+
+### "API não arranca: `READER_JWT_SECRET must be defined`"
+
+A área de leitores exige uma chave de assinatura **diferente** da do
+staff, e a aplicação recusa-se a arrancar sem ela ou se for igual à
+`JWT_SECRET`. É deliberado: com uma só chave, um esquecimento em qualquer
+guard passa a valer um token de leitor aceite numa rota de administração.
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+```
+
+Cole o resultado em `READER_JWT_SECRET` no `backend/.env`.
+
+### "Mudei o `.env` e nada mudou"
+
+`docker compose restart` **não relê o `env_file`**. Para variáveis novas
+tem de recriar o container:
+
+```bash
+docker compose up -d --force-recreate api
+```
+
+### "Instalei um pacote e o container diz `Cannot find module`"
+
+O `node_modules` **não** é bind-mounted em nenhum dos dois serviços —
+vive na camada da imagem. Um `npm install` feito no host (ou dentro de
+um container a correr, que se perde na próxima recriação) é invisível.
+
+Depois de mexer no `package.json`, reconstrua o serviço em causa:
+
+```bash
+# backend
+docker compose build api && docker compose up -d --force-recreate api
+
+# frontend
+docker compose build web && docker compose up -d --force-recreate web
+```
+
+No frontend nem o `package.json` está montado (só `src`, `public` e as
+configs), por isso o rebuild é sempre obrigatório.
+
+### "Criei uma página nova no frontend e dá 404"
+
+O Turbopack não deteta **ficheiros novos** através do bind mount do
+Docker em Windows — não chegam eventos inotify. Editar ficheiros
+existentes recarrega normalmente; criar rotas novas obriga a:
+
+```bash
+docker compose restart web
+```
+
+### "Erro de hidratação numa data"
+
+Formatar `new Date()` sem `timeZone` usa a timezone do *runtime*, e há
+dois: o container corre UTC, o browser do leitor corre a hora local
+dele. Fixe sempre a timezone ao formatar o "agora" em código que corre
+nos dois lados — ver `formatToday()` em `components/home/TopBar.tsx`.
+Datas **vindas dos dados** não têm este problema: ambos os lados
+formatam o mesmo instante.
+
+### "Os e-mails não chegam"
+
+Por omissão `MAIL_DRIVER=log`: as mensagens vão para os logs da API em
+vez de saírem. É intencional, para que um clone novo e os testes
+funcionem sem credenciais. Para ver a ligação de confirmação de um
+registo:
+
+```bash
+docker compose logs api --tail 40 | grep -A12 "Mailer:log"
+```
+
+Para enviar a sério, ponha `MAIL_DRIVER=resend` e `RESEND_API_KEY`, e
+garanta que o `fromEmail` está num domínio verificado no Resend — caso
+contrário todos os envios voltam com 403.
+
+### "Os leitores não recebem a notificação de notícia nova"
+
+Três interruptores em série, por esta ordem:
+
+1. `FEATURE_READER_AREA=true` no `backend/.env`
+2. `settings.email.emailArticlePublished` — em `/admin/configuracoes ›
+   Email`. **Vem desligado por omissão**: é a redação que opta por
+   ativar
+3. O leitor tem de seguir a categoria com `notify` ligado, ter o e-mail
+   confirmado e não estar em `digestFrequency: NUNCA`
+
+O enfileiramento corre de minuto a minuto; o envio depende da cadência
+do leitor (imediato = 5/5 min, diário = 08:00 de Lisboa). Para
+diagnosticar:
+
+```bash
+docker compose exec postgres psql -U $POSTGRES_USER -d $POSTGRES_DB -c \
+  'SELECT status, attempts, "lastError" FROM "ArticleNotification";'
+```
+
+### "Os botões de login social não aparecem"
+
+É o comportamento correto quando não há credenciais.
+`GET /public/reader/auth/providers` devolve apenas os fornecedores que
+têm **id e secret** definidos, e a página de login desenha os botões a
+partir dessa lista. Sem credenciais: lista vazia, sem botões, e as rotas
+de início dão 404.
+
+Note que o Facebook exige **App Review da Meta** para pedir o e-mail em
+produção, o que demora dias. Em modo de desenvolvimento funciona logo,
+mas só para contas listadas como testers na app.
 
 ### "Login retorna 401 mesmo com a password certa"
 

@@ -9,6 +9,14 @@
  */
 export const FEATURES = {
   /**
+   * Master switch for the public reader area (/conta/*). Its backend
+   * counterpart is FEATURE_READER_AREA — deliberately WITHOUT the
+   * NEXT_PUBLIC_ prefix, because this flag only hides UI: the API is
+   * reachable on :8585 directly and does its own gating.
+   */
+  readerArea: process.env.NEXT_PUBLIC_FEATURE_READER_AREA === "true",
+
+  /**
    * Comments engine (posting, moderation, "Mais comentadas" tab). The
    * backend has no Comment model yet, so the UI is hidden until the
    * module ships.
@@ -28,9 +36,9 @@ export const FEATURES = {
   topicFollow: process.env.NEXT_PUBLIC_FEATURE_TOPIC_FOLLOW === "true",
 
   /**
-   * Public Login / Registar links in the top bar. The /admin/login
-   * page is internal-only by design; reaching it requires typing the
-   * URL directly.
+   * Public Login / Registar links in the top bar, pointing at /conta.
+   * /admin/login stays internal-only by design and is reachable only by
+   * typing the URL — readers and staff are separate account systems.
    */
   publicAuth: process.env.NEXT_PUBLIC_FEATURE_PUBLIC_AUTH === "true",
 } as const;

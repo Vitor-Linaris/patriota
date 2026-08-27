@@ -28,6 +28,54 @@ enum ArticleStatus {
   ARQUIVADO
 }
 
+/// Reader accounts are the PUBLIC audience and share nothing with the User
+/// model (newsroom staff, RBAC, /admin). Separate table, separate JWT
+/// secret, separate cookie, separate guard - see src/reader-auth/.
+enum ReaderStatus {
+  PENDENTE_VERIFICACAO
+  ATIVO
+  SUSPENSO
+  ANONIMIZADO
+}
+
+/// PREMIUM is inert until phase 2 (Stripe Billing). Shipped now so the
+/// paywall migration is data-only.
+enum ReaderPlan {
+  GRATIS
+  PREMIUM
+}
+
+enum ReaderAuthProvider {
+  GOOGLE
+  FACEBOOK
+}
+
+enum CommentStatus {
+  PENDENTE
+  APROVADO
+  REJEITADO
+  SPAM
+  ELIMINADO
+}
+
+enum EmailTokenType {
+  VERIFICACAO_EMAIL
+  REPOR_PASSWORD
+}
+
+enum DigestFrequency {
+  IMEDIATO
+  DIARIO
+  SEMANAL
+  NUNCA
+}
+
+enum NotificationStatus {
+  PENDENTE
+  ENVIADO
+  FALHOU
+}
+
 model Media {
   id           String   @id @default(cuid())
   // Canonical URL — points to the "large" WebP variant for uploads,
@@ -66,7 +114,7 @@ model Ad {
   linkTarget String?
   altText    String?
   htmlCode   String?
-  updatedAt  DateTime @updatedAt @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
 
   @@index([page, enabled])
 }
@@ -122,7 +170,7 @@ model NewsletterSubscriber {
 model Setting {
   section   String   @id
   data      Json     @default("{}")
-  updatedAt DateTime @updatedAt @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 }
 
 model User {
@@ -139,62 +187,81 @@ model User {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  activities ActivityLog[]
-  articles   Article[]
+  activities        ActivityLog[]
+  articles          Article[]
+  moderatedComments Comment[]     @relation("CommentModerator")
 }
 
 model Category {
-  id          String     @id @default(cuid())
-  slug        String     @unique
+  id          String             @id @default(cuid())
+  slug        String             @unique
   name        String
-  description String     @default("")
-  icon        String     @default("◆")
-  color       String     @default("#1e40af")
-  order       Int        @default(0)
-  visible     Boolean    @default(true)
+  description String             @default("")
+  icon        String             @default("◆")
+  color       String             @default("#1e40af")
+  order       Int                @default(0)
+  visible     Boolean            @default(true)
   subtopics   Subtopic[]
   articles    Article[]
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  favorites   CategoryFavorite[]
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
 }
 
 model Article {
-  id              String        @id @default(cuid())
-  slug            String        @unique
-  title           String
-  summary         String        @default("")
-  content         String        @default("")
-  status          ArticleStatus @default(RASCUNHO)
-  premium         Boolean       @default(false)
-  views           Int           @default(0)
-  readMinutes     Int           @default(3)
-  tags            String[]      @default([])
-  essentials      String[]      @default([])
-  context         Json?
-  pullQuote       Json?
-  metaTitle       String?
-  metaDescription String?
-  coverImageUrl   String?
-  scheduledAt     DateTime?
-  publishedAt     DateTime?
-  rejectionReason String?
-  categoryId      String
-  authorId        String
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id                    String        @id @default(cuid())
+  slug                  String        @unique
+  title                 String
+  summary               String        @default("")
+  content               String        @default("")
+  status                ArticleStatus @default(RASCUNHO)
+  premium               Boolean       @default(false)
+  views                 Int           @default(0)
+  readMinutes           Int           @default(3)
+  tags                  String[]      @default([])
+  essentials            String[]      @default([])
+  context               Json?
+  pullQuote             Json?
+  metaTitle             String?
+  metaDescription       String?
+  coverImageUrl         String?
+  scheduledAt           DateTime?
+  publishedAt           DateTime?
+  rejectionReason       String?
+  /// Denormalised count of APROVADO comments. Kept in sync by
+  /// CommentsService so "Mais comentadas" is an indexed orderBy rather
+  /// than a groupBy join on every article listing.
+  commentCount          Int           @default(0)
+  /// Claim flag for the notification fan-out. NULL means not yet queued.
+  /// A poller keys off this instead of hooking the publish path, because
+  /// an article can reach PUBLICADO through four different code paths:
+  /// publish(), the scheduler cron, create() and update().
+  /// NOTE: the migration backfills this to now() for every already
+  /// published article - without that the first cron tick would email
+  /// the entire archive to every reader.
+  notificationsQueuedAt DateTime?
+  categoryId            String
+  authorId              String
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
 
-  category Category @relation(fields: [categoryId], references: [id])
-  author   User     @relation(fields: [authorId], references: [id])
+  category       Category              @relation(fields: [categoryId], references: [id])
+  author         User                  @relation(fields: [authorId], references: [id])
+  comments       Comment[]
+  favorites      ArticleFavorite[]
+  readingEntries ReadingHistory[]
+  notifications  ArticleNotification[]
 
   @@index([categoryId, status, publishedAt])
   @@index([status, publishedAt])
+  @@index([status, notificationsQueuedAt])
 }
 
 model Subtopic {
-  id         String   @id @default(cuid())
+  id         String @id @default(cuid())
   categoryId String
   label      String
-  order      Int      @default(0)
+  order      Int    @default(0)
 
   category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
@@ -223,4 +290,228 @@ model RolePermissions {
   role        Role     @id
   permissions String[]
   updatedAt   DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Reader area — the PUBLIC audience.
+//
+// Deliberately disjoint from User/Role/RolePermissions above, which model
+// newsroom staff. A Reader has no role and never touches RBAC; a User can
+// never authenticate against these tables. See src/reader-auth/ for the
+// four isolation layers (distinct secret, typ claim, distinct table,
+// distinct request property).
+// ─────────────────────────────────────────────────────────────────────
+
+model Reader {
+  id              String       @id @default(cuid())
+  email           String       @unique
+  emailVerifiedAt DateTime?
+  /// NULL for accounts created through Google/Facebook only. Login must
+  /// reject a null password BEFORE bcrypt.compare, while still burning a
+  /// dummy compare, or "is this account social-only?" becomes a timing
+  /// oracle. bcrypt cost 12, matching users.service.ts.
+  password        String?
+  name            String?
+  avatarUrl       String?
+  status          ReaderStatus @default(PENDENTE_VERIFICACAO)
+  /// Bumped on password change/reset and on "terminar todas as sessoes".
+  /// Tokens carry it as tv; a mismatch fails the guard, which is how a
+  /// 30-day cookie gets revoked without server-side session storage.
+  tokenVersion    Int          @default(0)
+
+  // Notification preferences (global; per-category lives on CategoryFavorite)
+  notifyNewArticles Boolean         @default(true)
+  digestFrequency   DigestFrequency @default(DIARIO)
+  /// One-click unsubscribe secret for the RFC 8058 List-Unsubscribe header,
+  /// which must work with no session and no CSRF token. NO @default here on
+  /// purpose: cuid is sequential enough to guess. The service generates it
+  /// with randomBytes(32).
+  unsubscribeToken  String          @unique
+
+  /// When false the reader shows as "Leitor" on their public comments.
+  displayNamePublic Boolean @default(true)
+
+  // Phase 2 (Stripe Billing). Inert today; shipped now so enabling the
+  // paywall is a data migration rather than a schema migration.
+  plan             ReaderPlan @default(GRATIS)
+  planStatus       String?
+  planRenewsAt     DateTime?
+  stripeCustomerId String?    @unique
+
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  identities        ReaderIdentity[]
+  categoryFavorites CategoryFavorite[]
+  articleFavorites  ArticleFavorite[]
+  comments          Comment[]
+  readingHistory    ReadingHistory[]
+  emailTokens       EmailToken[]
+  notifications     ArticleNotification[]
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+/// A linked social account. One Reader may hold several.
+///
+/// Linking rules (account-takeover surface, enforced in the service):
+///   - Google: auto-link to an existing Reader with the same address only
+///     when the provider asserts email_verified AND the local row already
+///     has emailVerifiedAt set.
+///   - Facebook: never auto-link onto an account that has a password.
+///     Facebook has historically returned addresses it had not verified.
+model ReaderIdentity {
+  id                String             @id @default(cuid())
+  readerId          String
+  provider          ReaderAuthProvider
+  providerAccountId String
+  email             String?
+  createdAt         DateTime           @default(now())
+
+  reader Reader @relation(fields: [readerId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([readerId])
+}
+
+/// "Seguir esta categoria". notify is the per-category email mute and is
+/// deliberately NOT the same as removing the favourite - a reader may want
+/// the category on their dashboard without the emails.
+model CategoryFavorite {
+  readerId   String
+  categoryId String
+  notify     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  reader   Reader   @relation(fields: [readerId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([readerId, categoryId])
+  /// The notification fan-out query runs on exactly this index.
+  @@index([categoryId, notify])
+}
+
+model ArticleFavorite {
+  readerId  String
+  articleId String
+  createdAt DateTime @default(now())
+
+  reader  Reader  @relation(fields: [readerId], references: [id], onDelete: Cascade)
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@id([readerId, articleId])
+  @@index([readerId, createdAt])
+  @@index([articleId])
+}
+
+/// Authored by a Reader only. Staff appear solely on the moderation
+/// columns - a nullable author FK pointing at two tables would poison
+/// every query and every include for a feature nobody has asked for.
+/// Letting staff reply inline later is a purely additive migration.
+model Comment {
+  id        String        @id @default(cuid())
+  articleId String
+  readerId  String
+  /// Threads are capped at two levels: the service re-parents a reply to a
+  /// reply onto the root rather than rejecting it.
+  parentId  String?
+  /// PLAIN TEXT. Tags are stripped on write and it renders as {body} in
+  /// JSX - never dangerouslySetInnerHTML, whatever the article body does.
+  body      String
+  status    CommentStatus @default(PENDENTE)
+  editedAt  DateTime?
+
+  moderatedById  String?
+  moderatedAt    DateTime?
+  moderationNote String?
+
+  reportCount Int     @default(0)
+  /// Daily-salted SHA-256, same scheme as the visitor hash in proxy.ts:
+  /// an abuse signal that stops being personal data after 24h.
+  ipHash      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  article     Article   @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  reader      Reader    @relation(fields: [readerId], references: [id], onDelete: Cascade)
+  parent      Comment?  @relation("CommentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies     Comment[] @relation("CommentThread")
+  moderatedBy User?     @relation("CommentModerator", fields: [moderatedById], references: [id], onDelete: SetNull)
+
+  /// Public thread render.
+  @@index([articleId, status, createdAt])
+  /// The /admin/comentarios moderation queue.
+  @@index([status, createdAt])
+  /// "Em que noticias comentei" on the reader dashboard.
+  @@index([readerId, createdAt])
+  @@index([parentId])
+}
+
+/// One row per (reader, article) pair, upserted on each view rather than an
+/// append-only event log: bounded size, and the history page becomes a
+/// single indexed scan. readCount recovers the "read it twice" signal.
+model ReadingHistory {
+  id         String   @id @default(cuid())
+  readerId   String
+  articleId  String
+  lastReadAt DateTime @default(now())
+  readCount  Int      @default(1)
+  /// Scroll depth 0-100, best effort.
+  progress   Int      @default(0)
+
+  reader  Reader  @relation(fields: [readerId], references: [id], onDelete: Cascade)
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@unique([readerId, articleId])
+  @@index([readerId, lastReadAt(sort: Desc)])
+}
+
+/// Email verification and password reset.
+///
+/// Stores sha256(token) only - the raw value exists in the email and
+/// nowhere else. Single use (usedAt). A successful reset also deletes the
+/// other outstanding REPOR_PASSWORD rows for that reader and bumps
+/// tokenVersion, which kills every live session.
+///
+/// Postgres rather than Redis (which is already wired up) because these
+/// must survive a cache flush and stay auditable.
+model EmailToken {
+  id        String         @id @default(cuid())
+  readerId  String
+  type      EmailTokenType
+  tokenHash String         @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime       @default(now())
+
+  reader Reader @relation(fields: [readerId], references: [id], onDelete: Cascade)
+
+  @@index([readerId, type])
+  @@index([expiresAt])
+}
+
+/// Outbox for "new article in a category you follow".
+///
+/// The @@unique IS the deduplication: enqueue is a createMany with
+/// skipDuplicates, so re-running the poller, restarting the container or
+/// running two API instances all converge on one row per reader/article.
+model ArticleNotification {
+  id        String             @id @default(cuid())
+  readerId  String
+  articleId String
+  status    NotificationStatus @default(PENDENTE)
+  attempts  Int                @default(0)
+  lastError String?
+  createdAt DateTime           @default(now())
+  sentAt    DateTime?
+
+  reader  Reader  @relation(fields: [readerId], references: [id], onDelete: Cascade)
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@unique([readerId, articleId])
+  @@index([status, createdAt])
+  @@index([articleId])
 }

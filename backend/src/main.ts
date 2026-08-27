@@ -20,7 +20,23 @@ function resolveCorsOrigin(): string[] | false {
 }
 
 async function bootstrap() {
+  // PHASE 2 (billing): Stripe webhooks need the untouched request body to
+  // verify the signature, so this will have to become
+  //   NestFactory.create(AppModule, { rawBody: true })
+  // and the webhook route must carry @SkipThrottle() plus its own body
+  // parser — the global ValidationPipe below (forbidNonWhitelisted) and
+  // the JSON parsing both destroy the signature otherwise.
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Behind Docker/Nginx every request arrives from the proxy, so req.ip is
+  // the proxy IP and ThrottlerGuard buckets the whole internet together —
+  // including the 5/min limit on POST /auth/login. Trusting one hop makes
+  // Express read the client IP from X-Forwarded-For instead.
+  //
+  // "1" (not `true`) on purpose: trusting the full chain would let a
+  // client spoof X-Forwarded-For and dodge every rate limit. Raise this
+  // only if a second reverse proxy is ever put in front.
+  app.set('trust proxy', 1);
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { apiBaseUrl } from "@/lib/api-base";
 
 /**
  * Counts unique daily visitors to the public surfaces of the site.
@@ -20,11 +21,6 @@ import { NextResponse, type NextRequest } from "next/server";
  */
 
 const BOT_RE = /bot|crawler|spider|preview|monitor|curl|wget|python-requests|headless/i;
-
-const INTERNAL_API_URL =
-  process.env.INTERNAL_API_URL ??
-  process.env.NEXT_PUBLIC_API_URL ??
-  "http://api:8585";
 
 function getClientIp(req: NextRequest): string {
   const xff = req.headers.get("x-forwarded-for");
@@ -58,7 +54,7 @@ export async function proxy(req: NextRequest) {
     const ip = getClientIp(req);
     void visitorHash(ip, ua)
       .then((hash) =>
-        fetch(`${INTERNAL_API_URL}/public/visits/track`, {
+        fetch(`${apiBaseUrl()}/public/visits/track`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ visitor: hash }),

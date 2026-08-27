@@ -5,13 +5,28 @@ import { Container } from "../Container";
 import { FEATURES } from "@/lib/features";
 import { NewsletterModal } from "./NewsletterModal";
 import { SearchModal } from "./SearchModal";
+import { ReaderNav } from "./ReaderNav";
 
+/**
+ * Today, in Lisbon.
+ *
+ * The timeZone is pinned on purpose. Without it, Intl uses whatever
+ * timezone the RUNTIME is in — and the two runtimes disagree: the
+ * container runs UTC while the reader browser runs their own local time.
+ * Server and client then render different dates and hydration fails.
+ *
+ * Pinning is also editorially right: this is the masthead of a
+ * Portuguese newspaper, so the date is Portugal's, not the reader's.
+ * Matches settings.geral.timezone, which already defaults to
+ * Europe/Lisbon.
+ */
 function formatToday(): string {
   const long = new Intl.DateTimeFormat("pt-PT", {
     weekday: "long",
     day: "numeric",
     month: "long",
     year: "numeric",
+    timeZone: "Europe/Lisbon",
   }).format(new Date());
   return long.charAt(0).toUpperCase() + long.slice(1);
 }
@@ -51,7 +66,13 @@ export function TopBar() {
       <div className="bg-patriota-medium text-[#d0d5dd] text-[12px]">
         <Container className="flex h-9 items-center justify-between">
           <div className="flex items-center gap-4">
-            <span>{formatToday()}</span>
+            {/*
+              suppressHydrationWarning covers the one case pinning cannot:
+              a render and its hydration landing either side of midnight
+              in Lisbon. A sub-second window once a day, where the client
+              value is the correct one to keep.
+            */}
+            <span suppressHydrationWarning>{formatToday()}</span>
             <span aria-hidden className="h-3 w-px bg-white/20" />
             <span className="inline-flex items-center gap-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-patriota-accent animate-pulse" />
@@ -79,18 +100,17 @@ export function TopBar() {
             >
               Newsletter
             </button>
-            {FEATURES.publicAuth && (
+            {FEATURES.publicAuth && FEATURES.readerArea && (
               <>
                 <span aria-hidden className="h-3 w-px bg-white/20" />
-                <a className="hover:text-white" href="/admin/login">
-                  Login
-                </a>
-                <a
-                  className="rounded bg-patriota-accent px-2.5 py-0.5 text-[12px] font-medium text-patriota-medium hover:brightness-105"
-                  href="#"
-                >
-                  Registar
-                </a>
+                {/*
+                  Reader accounts, NOT /admin/login — the backoffice is a
+                  separate account system and stays URL-only.
+
+                  ReaderNav resolves the session on the client and swaps
+                  the two sign-in links for the reader name once it knows.
+                */}
+                <ReaderNav />
               </>
             )}
           </nav>

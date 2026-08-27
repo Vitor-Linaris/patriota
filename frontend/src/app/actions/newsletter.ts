@@ -1,12 +1,6 @@
 "use server";
 
-function apiUrl(): string {
-  return (
-    process.env.INTERNAL_API_URL ??
-    process.env.NEXT_PUBLIC_API_URL ??
-    "http://api:8585"
-  );
-}
+import { apiBaseUrl } from "@/lib/api-base";
 
 function validateEmail(email: string):
   | { ok: true; email: string }
@@ -23,7 +17,7 @@ export async function publicSubscribeAction(email: string, name?: string) {
   const v = validateEmail(email);
   if (!v.ok) return { ok: false as const, error: v.error };
   try {
-    const res = await fetch(`${apiUrl()}/public/newsletter/subscribe`, {
+    const res = await fetch(`${apiBaseUrl()}/public/newsletter/subscribe`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: v.email, name: name?.trim() }),
@@ -51,7 +45,7 @@ export async function publicUnsubscribeAction(email: string) {
   const v = validateEmail(email);
   if (!v.ok) return { ok: false as const, error: v.error };
   try {
-    const res = await fetch(`${apiUrl()}/public/newsletter/unsubscribe`, {
+    const res = await fetch(`${apiBaseUrl()}/public/newsletter/unsubscribe`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: v.email }),

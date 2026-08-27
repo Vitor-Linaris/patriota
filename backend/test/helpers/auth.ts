@@ -35,7 +35,14 @@ export async function makeUser(
     create: { email, name, role, isActive: true, password: passwordHash },
   });
 
-  const token = await jwt.signAsync({ sub: user.id, email: user.email, role });
+  // Must mirror AuthService.login exactly, including typ — JwtAuthGuard
+  // requires it, so an unstamped test token would 401 everywhere.
+  const token = await jwt.signAsync({
+    sub: user.id,
+    email: user.email,
+    role,
+    typ: 'staff',
+  });
   return { id: user.id, email: user.email, name, role, token };
 }
 
