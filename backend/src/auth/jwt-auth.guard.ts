@@ -43,11 +43,15 @@ export class JwtAuthGuard implements CanActivate {
     // they already fail verifyAsync above — this is the second layer, and
     // the one that still holds if the two secrets are ever unified.
     //
-    // Tolerating an ABSENT typ on purpose: staff tokens issued before this
-    // shipped (8h lifetime) and test/helpers/auth.ts do not set it. Once
-    // AuthService stamps typ:'staff' and one release has passed, tighten
-    // this to (payload.typ !== 'staff') — see milestone M10.
-    if (payload.typ !== undefined && payload.typ !== 'staff') {
+    // REQUIRED, not merely checked when present. The permissive version
+    // shipped one release earlier so that staff sessions already in the
+    // wild (8h lifetime) kept working through the rollout; that window
+    // has passed, so an unstamped token is now refused.
+    //
+    // Consequence to expect on deploy: anyone holding a session issued
+    // before this release is signed out and logs in again. That is the
+    // intended cost of closing the gap.
+    if (payload.typ !== 'staff') {
       throw new UnauthorizedException('Token inválido.');
     }
 

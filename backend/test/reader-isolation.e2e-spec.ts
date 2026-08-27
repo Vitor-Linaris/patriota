@@ -125,6 +125,23 @@ describe('Reader / staff session isolation (e2e)', () => {
       .expect(401);
   });
 
+  it('rejects a staff token with no audience claim at all', async () => {
+    // The shape every staff token had before M10. Tolerated for one
+    // release so live sessions survived the rollout; refused now, which
+    // is what closes the gap for good.
+    const jwt = app.get(JwtService);
+    const config = app.get(ConfigService);
+    const unstamped = await jwt.signAsync(
+      { sub: staff.id, email: staff.email, role: staff.role },
+      { secret: config.get<string>('JWT_SECRET')! },
+    );
+
+    await request(app.getHttpServer())
+      .get('/auth/me')
+      .set({ Authorization: `Bearer ${unstamped}` })
+      .expect(401);
+  });
+
   it('rejects a reader token whose tokenVersion is stale', async () => {
     // What a password change or "terminar todas as sessões" produces.
     const jwt = app.get(JwtService);
