@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { FEATURES } from "@/lib/features";
 import { AuthShell } from "../AuthShell";
 import { RegisterForm } from "./RegisterForm";
+import { SocialButtons } from "../SocialButtons";
 
 export const metadata = {
   title: "Criar conta — O Patriota Notícias",
@@ -28,6 +29,9 @@ export default function ReaderRegisterPage() {
         </>
       }
     >
+      {/* Signing up with a provider skips e-mail verification entirely,
+          so it goes first. */}
+      <SocialButtons />
       <RegisterForm />
     </AuthShell>
   );

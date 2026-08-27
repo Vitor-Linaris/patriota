@@ -4,6 +4,7 @@ import { FEATURES } from "@/lib/features";
 import { safeNext } from "@/lib/reader-api";
 import { AuthShell } from "../AuthShell";
 import { LoginForm } from "./LoginForm";
+import { SocialButtons } from "../SocialButtons";
 
 export const metadata = {
   title: "Iniciar sessão — O Patriota Notícias",
@@ -36,6 +37,8 @@ export default async function ReaderLoginPage({
         </>
       }
     >
+      {/* Renders nothing when no provider has credentials configured. */}
+      <SocialButtons next={safeNext(next)} />
       <LoginForm next={safeNext(next)} />
     </AuthShell>
   );
