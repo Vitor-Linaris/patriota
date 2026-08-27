@@ -12,7 +12,7 @@ import { ContextBox } from "@/components/article/ContextBox";
 import { Blockquote } from "@/components/article/Blockquote";
 import { AuthorBio } from "@/components/article/AuthorBio";
 import { ArticleSidebar } from "@/components/article/ArticleSidebar";
-import { ShareButtons } from "@/components/article/ShareButtons";
+import { ShareButtons, ICON_BUTTON } from "@/components/article/ShareButtons";
 import { ReaderActions } from "@/components/article/ReaderActions";
 import { ArticleComments } from "@/components/article/ArticleComments";
 import { FEATURES } from "@/lib/features";
@@ -104,51 +104,52 @@ export default async function ArticlePage({
                 </p>
               )}
 
-              {/* Author + share */}
-              <div className="mt-8 flex flex-wrap items-center gap-4 border-y border-slate-200 py-4">
+              {/*
+                Author row. Everything actionable sits on the right as
+                bare icons — the labels were noise on a line that already
+                carries a byline, a date and a reading time. Each control
+                keeps aria-label and title, so the meaning survives for
+                screen readers and on hover.
+              */}
+              <div className="mt-8 flex flex-wrap items-center gap-x-4 gap-y-3 border-y border-slate-200 py-4">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-patriota-pure text-[13px] font-bold text-patriota-accent">
                   {authorInitials}
                 </span>
-                <div className="flex-1">
+                <div className="min-w-0">
                   <p className="text-[14px] font-bold text-slate-900">
                     {article.author.name ?? "Redação"}
                   </p>
-                  <p className="text-[12px] text-slate-500">O Patriota Notícias</p>
+                  <p className="text-[12px] text-slate-500">
+                    {timeAgo(article.publishedAt)} · {article.readMinutes} min leitura
+                  </p>
                 </div>
-                <div className="text-right text-[12px] leading-relaxed text-slate-500">
-                  <p>{timeAgo(article.publishedAt)}</p>
-                  <p>{article.readMinutes} min leitura</p>
-                </div>
-                <ShareButtons url={shareUrl} title={article.title} />
-              </div>
 
-              {/* Interaction bar — comment counter, heart, follow category.
-                  The counter is a real anchor, not a button: it works with
-                  JS disabled, it is shareable, and the browser does the
-                  scrolling. The count comes from the SSR payload, so this
-                  costs no extra request. */}
-              {(FEATURES.comments || FEATURES.readerArea) && (
-                <div className="mt-4 flex flex-wrap items-center gap-3">
+                <div className="ml-auto flex items-center gap-1.5">
+                  {/*
+                    The comment counter is a real anchor, not a button: it
+                    works with JS disabled, it is shareable, and the browser
+                    does the scrolling. The number comes from the SSR
+                    payload, so it costs no extra request.
+                  */}
                   {FEATURES.comments && (
                     <a
                       href="#comentarios"
-                      className="inline-flex items-center gap-2.5 rounded-full border border-slate-200 px-3 py-1.5 text-[12px] font-medium text-slate-600 transition hover:border-slate-400 hover:text-slate-900"
-                    >
-                      <span className="relative inline-flex" aria-hidden>
-                        <span className="text-[15px] leading-none">❝</span>
-                        {article.commentCount > 0 && (
-                          <span className="absolute -right-2.5 -top-2 flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-patriota-accent px-1 text-[10px] font-bold text-patriota-ink">
-                            {article.commentCount > 99 ? "99+" : article.commentCount}
-                          </span>
-                        )}
-                      </span>
-                      <span>
-                        {article.commentCount === 1
+                      aria-label={
+                        article.commentCount === 1
                           ? "1 comentário"
-                          : article.commentCount + " comentários"}
-                      </span>
+                          : article.commentCount + " comentários"
+                      }
+                      title={
+                        article.commentCount === 1
+                          ? "1 comentário"
+                          : article.commentCount + " comentários"
+                      }
+                      className={`${ICON_BUTTON} border-patriota-medium/40 text-[12px] font-bold text-patriota-medium`}
+                    >
+                      {article.commentCount > 99 ? "99+" : article.commentCount}
                     </a>
                   )}
+
                   {FEATURES.readerArea && (
                     <ReaderActions
                       articleId={article.id}
@@ -156,8 +157,12 @@ export default async function ArticlePage({
                       categoryName={article.category.name}
                     />
                   )}
+
+                  <span aria-hidden className="mx-1 h-5 w-px bg-slate-200" />
+
+                  <ShareButtons url={shareUrl} title={article.title} />
                 </div>
-              )}
+              </div>
 
               {/* Essential */}
               {article.essentials && article.essentials.length > 0 && (

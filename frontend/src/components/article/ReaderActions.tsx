@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { FaBookmark, FaRegBookmark, FaRegStar, FaStar } from "react-icons/fa6";
+import { ICON_BUTTON } from "./ShareButtons";
 
 interface ReaderState {
-  /** Comes back from the API so the category toggle does not need it as a prop. */
+  /** Comes back from the API so the category toggle needs no extra prop. */
   categoryId: string;
   saved: boolean;
   followingCategory: boolean;
@@ -11,16 +13,16 @@ interface ReaderState {
 }
 
 /**
- * The heart and the "seguir categoria" toggle.
+ * Save and follow, as icons on the author row.
  *
  * Fetched CLIENT-side on mount, deliberately. categoria/[slug] runs
  * generateStaticParams and is prerendered, and the article page is cached
  * SSR — baking per-reader state into either would serve one visitor's
- * hearts to everyone. Keeping it client-only means the HTML is identical
- * for every visitor and only this small island varies.
+ * bookmarks to everyone. Keeping it client-only means the HTML is
+ * identical for every visitor and only this small island varies.
  *
  * Anonymous visitors still see the controls: hiding them means nobody
- * ever discovers the feature exists. They link to the login page instead.
+ * ever discovers the feature exists. They link to the login page.
  */
 export function ReaderActions({
   articleId,
@@ -74,8 +76,8 @@ export function ReaderActions({
       const on = type === "article" ? state.saved : state.followingCategory;
       setBusy(type);
 
-      // Optimistic: the toggle must feel instant, and it is reverted below
-      // if the server disagrees.
+      // Optimistic: the toggle must feel instant, and it is reverted
+      // below if the server disagrees.
       setState((s) =>
         s === null
           ? s
@@ -113,39 +115,45 @@ export function ReaderActions({
 
   if (anonymous) {
     return (
-      <div className="flex items-center gap-2">
-        <a
-          href={loginHref}
-          title="Inicie sessão para guardar"
-          className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5 text-[12px] font-medium text-slate-500 transition hover:border-slate-400 hover:text-slate-900"
-        >
-          <span aria-hidden>♡</span> Guardar
-        </a>
-      </div>
+      <a
+        href={loginHref}
+        aria-label="Inicie sessão para guardar esta notícia"
+        title="Inicie sessão para guardar"
+        className={ICON_BUTTON}
+      >
+        <FaRegBookmark size={14} aria-hidden />
+      </a>
     );
   }
 
-  // Nothing until the state lands, so the heart never flashes the wrong way.
+  // Reserve the space so the row does not jump when the state lands, and
+  // so the bookmark never flashes the wrong way.
   if (!state) {
-    return <div className="h-[34px] w-[104px]" aria-hidden />;
+    return <div className="h-9 w-[78px]" aria-hidden />;
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-1.5">
       <button
         type="button"
         onClick={() => void toggle("article")}
         disabled={busy === "article"}
         aria-pressed={state.saved}
+        aria-label={
+          state.saved ? "Remover dos guardados" : "Guardar esta notícia"
+        }
         title={state.saved ? "Remover dos guardados" : "Guardar esta notícia"}
-        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-medium transition disabled:opacity-60 ${
+        className={`${ICON_BUTTON} disabled:opacity-60 ${
           state.saved
-            ? "border-rose-300 bg-rose-50 text-rose-700"
-            : "border-slate-200 text-slate-600 hover:border-slate-400 hover:text-slate-900"
+            ? "border-patriota-medium bg-patriota-medium/10 text-patriota-medium"
+            : ""
         }`}
       >
-        <span aria-hidden>{state.saved ? "♥" : "♡"}</span>
-        {state.saved ? "Guardada" : "Guardar"}
+        {state.saved ? (
+          <FaBookmark size={14} aria-hidden />
+        ) : (
+          <FaRegBookmark size={14} aria-hidden />
+        )}
       </button>
 
       <button
@@ -153,19 +161,27 @@ export function ReaderActions({
         onClick={() => void toggle("category")}
         disabled={busy === "category"}
         aria-pressed={state.followingCategory}
+        aria-label={
+          state.followingCategory
+            ? `Deixar de seguir ${categoryName}`
+            : `Seguir ${categoryName}`
+        }
         title={
           state.followingCategory
             ? `Deixar de seguir ${categoryName}`
-            : `Receber novidades de ${categoryName}`
+            : `Seguir ${categoryName}`
         }
-        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-medium transition disabled:opacity-60 ${
+        className={`${ICON_BUTTON} disabled:opacity-60 ${
           state.followingCategory
-            ? "border-patriota-pure/40 bg-patriota-pure/10 text-patriota-pure"
-            : "border-slate-200 text-slate-600 hover:border-slate-400 hover:text-slate-900"
+            ? "border-amber-400 bg-amber-50 text-amber-500"
+            : ""
         }`}
       >
-        <span aria-hidden>{state.followingCategory ? "★" : "☆"}</span>
-        {state.followingCategory ? "A seguir" : `Seguir ${categoryName}`}
+        {state.followingCategory ? (
+          <FaStar size={14} aria-hidden />
+        ) : (
+          <FaRegStar size={14} aria-hidden />
+        )}
       </button>
     </div>
   );

@@ -1,18 +1,27 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
+import {
+  FaFacebookF,
+  FaLinkedinIn,
+  FaWhatsapp,
+  FaXTwitter,
+} from "react-icons/fa6";
+import { HiOutlineMail } from "react-icons/hi";
+import { FiCheck, FiLink, FiShare2 } from "react-icons/fi";
 
 /**
- * Share links — plain https:// URLs, no SDK.
+ * Share row — icons only, no labels.
  *
- * The Facebook SDK sets cookies and would drag this page into the consent
- * banner for no benefit; a sharer URL needs nothing but an anchor.
+ * Plain https:// links, no SDK: the Facebook SDK sets cookies and would
+ * drag this page into the consent banner for nothing. A sharer URL needs
+ * an anchor and that is all.
  *
- * Note the WhatsApp URL is https://wa.me/, NOT the whatsapp:// scheme
- * that some Portuguese titles use. The protocol scheme only resolves when
- * the desktop app is installed, which is why sites using it hide the
- * button on desktop. wa.me opens WhatsApp Web on desktop and the app on
- * mobile, so it can stay visible everywhere.
+ * The WhatsApp URL is https://wa.me/, NOT the whatsapp:// scheme some
+ * Portuguese titles use. That one only resolves when the desktop app is
+ * installed, which is why those sites hide the button on desktop; wa.me
+ * opens WhatsApp Web on desktop and the app on mobile, so it stays
+ * visible everywhere.
  */
 function targets(url: string, title: string) {
   const u = encodeURIComponent(url);
@@ -21,41 +30,47 @@ function targets(url: string, title: string) {
     {
       key: "whatsapp",
       label: "Partilhar no WhatsApp",
-      glyph: "✆",
+      Icon: FaWhatsapp,
       href: `https://wa.me/?text=${t}%20${u}`,
     },
     {
       key: "facebook",
       label: "Partilhar no Facebook",
-      glyph: "f",
+      Icon: FaFacebookF,
       href: `https://www.facebook.com/sharer/sharer.php?u=${u}`,
     },
     {
       key: "x",
       label: "Partilhar no X",
-      glyph: "𝕏",
+      Icon: FaXTwitter,
       href: `https://twitter.com/intent/tweet?text=${t}&url=${u}`,
+    },
+    {
+      key: "linkedin",
+      label: "Partilhar no LinkedIn",
+      Icon: FaLinkedinIn,
+      href: `https://www.linkedin.com/sharing/share-offsite/?url=${u}`,
     },
     {
       key: "email",
       label: "Enviar por e-mail",
-      glyph: "✉",
+      Icon: HiOutlineMail,
       href: `mailto:?subject=${t}&body=${u}`,
     },
   ];
 }
 
-const btn =
-  "flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-[13px] text-slate-600 transition hover:border-slate-400 hover:bg-slate-50 hover:text-slate-900";
+/** Shared circle. Exported so the comment counter matches it exactly. */
+export const ICON_BUTTON =
+  "flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 text-slate-600 transition hover:border-patriota-medium hover:bg-slate-50 hover:text-patriota-medium";
 
 export function ShareButtons({ url, title }: { url: string; title: string }) {
   const [copied, setCopied] = useState(false);
 
-  // Feature detection that is safe across hydration: the server snapshot
-  // is always false, so SSR and the first client render agree, and React
-  // swaps in the real value on the client without a cascading effect.
-  // navigator.share never changes for the life of the page, hence the
-  // no-op subscribe.
+  // Feature detection that survives hydration: the server snapshot is
+  // always false, so SSR and the first client render agree, and React
+  // swaps in the real value without a cascading effect. navigator.share
+  // never changes for the life of the page, hence the no-op subscribe.
   const canNativeShare = useSyncExternalStore(
     () => () => {},
     () => typeof navigator !== "undefined" && !!navigator.share,
@@ -72,42 +87,45 @@ export function ShareButtons({ url, title }: { url: string; title: string }) {
     }
   }
 
-  // On a phone the OS sheet beats a row of six icons on a narrow screen.
+  // On a phone the OS sheet beats a row of six circles on a narrow screen.
   if (canNativeShare) {
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
         <button
           type="button"
           onClick={() => void navigator.share({ title, url })}
-          className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5 text-[12px] font-medium text-slate-600 transition hover:border-slate-400 hover:text-slate-900"
+          aria-label="Partilhar"
+          title="Partilhar"
+          className={ICON_BUTTON}
         >
-          <span aria-hidden>⇪</span> Partilhar
+          <FiShare2 size={16} aria-hidden />
         </button>
         <button
           type="button"
           onClick={copy}
-          aria-label="Copiar ligação"
-          className={btn}
+          aria-label={copied ? "Ligação copiada" : "Copiar ligação"}
+          title={copied ? "Ligação copiada" : "Copiar ligação"}
+          className={ICON_BUTTON}
         >
-          {copied ? "✓" : "🔗"}
+          {copied ? <FiCheck size={16} aria-hidden /> : <FiLink size={16} aria-hidden />}
         </button>
       </div>
     );
   }
 
   return (
-    <div className="flex items-center gap-2">
-      {targets(url, title).map((s) => (
+    <div className="flex items-center gap-1.5">
+      {targets(url, title).map(({ key, label, Icon, href }) => (
         <a
-          key={s.key}
-          href={s.href}
+          key={key}
+          href={href}
           target="_blank"
           rel="noopener noreferrer"
-          aria-label={s.label}
-          title={s.label}
-          className={btn}
+          aria-label={label}
+          title={label}
+          className={ICON_BUTTON}
         >
-          <span aria-hidden>{s.glyph}</span>
+          <Icon size={15} aria-hidden />
         </a>
       ))}
       <button
@@ -115,9 +133,9 @@ export function ShareButtons({ url, title }: { url: string; title: string }) {
         onClick={copy}
         aria-label={copied ? "Ligação copiada" : "Copiar ligação"}
         title={copied ? "Ligação copiada" : "Copiar ligação"}
-        className={btn}
+        className={ICON_BUTTON}
       >
-        <span aria-hidden>{copied ? "✓" : "🔗"}</span>
+        {copied ? <FiCheck size={16} aria-hidden /> : <FiLink size={16} aria-hidden />}
       </button>
     </div>
   );

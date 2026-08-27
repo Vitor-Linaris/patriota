@@ -840,14 +840,22 @@ docker compose up -d --force-recreate api
 
 ### "Instalei um pacote e o container diz `Cannot find module`"
 
-O `node_modules` **não** é bind-mounted — vive na camada da imagem. Um
-`npm install` feito no host (ou dentro de um container a correr, que se
-perde na próxima recriação) é invisível. Depois de mexer no
-`package.json`:
+O `node_modules` **não** é bind-mounted em nenhum dos dois serviços —
+vive na camada da imagem. Um `npm install` feito no host (ou dentro de
+um container a correr, que se perde na próxima recriação) é invisível.
+
+Depois de mexer no `package.json`, reconstrua o serviço em causa:
 
 ```bash
-docker compose build api && docker compose up -d api
+# backend
+docker compose build api && docker compose up -d --force-recreate api
+
+# frontend
+docker compose build web && docker compose up -d --force-recreate web
 ```
+
+No frontend nem o `package.json` está montado (só `src`, `public` e as
+configs), por isso o rebuild é sempre obrigatório.
 
 ### "Criei uma página nova no frontend e dá 404"
 
