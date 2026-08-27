@@ -514,16 +514,44 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
 
   assinatura: {
     slug: "assinatura",
-    title: "Assinatura",
-    crumb: "Contacto",
-    updatedAt: "Maio 2026",
-    intro: `Em breve. A subscrição paga do ${SITE_NAME} está em preparação e dará acesso a conteúdo premium, newsletter exclusiva e arquivo histórico.`,
+    title: "Conta e assinatura",
+    crumb: "Leitores",
+    updatedAt: "Agosto 2026",
+    intro: `A conta de leitor do ${SITE_NAME} já está disponível e é gratuita. A assinatura paga, com conteúdo exclusivo, está em preparação.`,
     sections: [
       {
-        heading: "Quero ser informado",
+        heading: "Conta gratuita — disponível agora",
         blocks: [
           p(
-            "Subscreva a nossa newsletter gratuita para ser informado quando a assinatura paga estiver disponível, com condições de lançamento exclusivas para os primeiros subscritores.",
+            "Criar conta não custa nada e leva menos de um minuto. Com sessão iniciada passa a poder:",
+          ),
+          ul([
+            "Guardar notícias para ler mais tarde, com o coração no topo de cada artigo.",
+            "Seguir as categorias que lhe interessam e receber um e-mail quando sair notícia nova nesses temas.",
+            "Comentar e acompanhar, na sua área, em que notícias participou.",
+            "Consultar o histórico do que andou a ler.",
+          ]),
+          p(
+            "Pode escolher entre receber as novidades assim que saem, num resumo diário ou num resumo semanal — e desligar tudo a qualquer momento, categoria a categoria ou de uma só vez.",
+          ),
+        ],
+      },
+      {
+        heading: "Assinatura paga — em preparação",
+        blocks: [
+          p(
+            "Estamos a preparar uma subscrição paga que acrescentará conteúdo premium, newsletter exclusiva e acesso ao arquivo histórico. Não há ainda data de lançamento nem preço fechado.",
+          ),
+          p(
+            "Quem já tiver conta gratuita não precisa de fazer nada: a assinatura será um acréscimo à conta existente, sem registo novo e sem perder o que tiver guardado.",
+          ),
+        ],
+      },
+      {
+        heading: "Privacidade",
+        blocks: [
+          p(
+            "A conta de leitor é totalmente separada da área de administração do jornal e não dá qualquer acesso a ela. Pode apagar a sua conta quando quiser, nas definições — os seus dados pessoais são removidos e os comentários que deixou permanecem sem o seu nome, para não abrir buracos nas conversas de outras pessoas.",
           ),
         ],
       },
