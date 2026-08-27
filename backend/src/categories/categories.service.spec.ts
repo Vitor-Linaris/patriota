@@ -1,7 +1,12 @@
 import { Test } from '@nestjs/testing';
 import { CategoriesService } from './categories.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { CategoryTreeService } from './category-tree.service';
 import { ConflictException, NotFoundException } from '@nestjs/common';
+
+function makeTreeMock() {
+  return { invalidate: jest.fn().mockResolvedValue(undefined) };
+}
 
 /**
  * create() and addSubtopic() run inside prisma.$transaction(async tx => ...).
@@ -35,13 +40,16 @@ function makePrismaMock() {
 describe('CategoriesService', () => {
   let service: CategoriesService;
   let prisma: ReturnType<typeof makePrismaMock>;
+  let tree: ReturnType<typeof makeTreeMock>;
 
   beforeEach(async () => {
     prisma = makePrismaMock();
+    tree = makeTreeMock();
     const moduleRef = await Test.createTestingModule({
       providers: [
         CategoriesService,
         { provide: PrismaService, useValue: prisma },
+        { provide: CategoryTreeService, useValue: tree },
       ],
     }).compile();
     service = moduleRef.get(CategoriesService);
@@ -113,6 +121,16 @@ describe('CategoriesService', () => {
       expect(prisma.category.create.mock.calls[0][0].data.slug).toBe(
         'economia-2',
       );
+    });
+
+    it('invalidates the cached tree after a successful create', async () => {
+      prisma.category.findUnique.mockResolvedValueOnce(null);
+      prisma.category.create.mockResolvedValueOnce({ id: 'c1', path: '/' });
+      prisma.category.update.mockResolvedValueOnce({ id: 'c1', path: '/c1/' });
+
+      await service.create({ name: 'X', description: '', icon: '◆', color: '#000' });
+
+      expect(tree.invalidate).toHaveBeenCalledTimes(1);
     });
 
     it('throws ConflictException when the slug already exists', async () => {
@@ -224,6 +242,19 @@ describe('CategoriesService', () => {
       );
 
       await expect(service.remove('c1')).rejects.toThrow(ConflictException);
+    });
+
+    it('invalidates the cached tree after a successful delete', async () => {
+      prisma.category.findUnique.mockResolvedValueOnce({
+        id: 'c1',
+        name: 'Política',
+      });
+      prisma.article.count.mockResolvedValueOnce(0);
+      prisma.category.count.mockResolvedValueOnce(0);
+
+      await service.remove('c1');
+
+      expect(tree.invalidate).toHaveBeenCalledTimes(1);
     });
   });
 

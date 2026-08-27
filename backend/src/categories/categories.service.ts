@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreateSubtopicDto } from './dto/subtopic.dto';
+import { CategoryTreeService } from './category-tree.service';
 
 /** Max depth is 4 levels: categoria(0) -> subcategoria -> topico -> subtopico(3). */
 const MAX_DEPTH = 3;
@@ -34,7 +35,10 @@ const CHILDREN_INCLUDE = {
 
 @Injectable()
 export class CategoriesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tree: CategoryTreeService,
+  ) {}
 
   /**
    * Disambiguates a slug at authoring time rather than scoping
@@ -155,7 +159,7 @@ export class CategoriesService {
     // a live availability check, per the plan.
     const slug = dto.slug ?? (await this.uniqueSlug(baseSlug(dto.name)));
     try {
-      return await this.prisma.$transaction(async (tx) => {
+      const result = await this.prisma.$transaction(async (tx) => {
         const created = await tx.category.create({
           data: {
             name: dto.name,
@@ -174,6 +178,8 @@ export class CategoriesService {
           data: { path: `/${created.id}/` },
         });
       });
+      await this.tree.invalidate();
+      return result;
     } catch (e) {
       if (isPrismaCode(e, 'P2002')) {
         throw new ConflictException(`Slug "${slug}" já existe.`);
@@ -184,10 +190,12 @@ export class CategoriesService {
 
   async update(id: string, dto: UpdateCategoryDto) {
     try {
-      return await this.prisma.category.update({
+      const result = await this.prisma.category.update({
         where: { id },
         data: dto,
       });
+      await this.tree.invalidate();
+      return result;
     } catch (e) {
       if (isPrismaCode(e, 'P2025')) {
         throw new NotFoundException('Categoria não encontrada.');
@@ -239,6 +247,7 @@ export class CategoriesService {
 
     try {
       await this.prisma.category.delete({ where: { id } });
+      await this.tree.invalidate();
       return { ok: true };
     } catch (e) {
       if (isPrismaCode(e, 'P2025')) {
@@ -296,6 +305,7 @@ export class CategoriesService {
         data: { path: `${parent.path}${created.id}/` },
       });
     });
+    await this.tree.invalidate();
 
     // Shaped like the old Subtopic row (id/label/order) rather than the
     // raw Category, so callers that read `.label` off the response —
@@ -307,6 +317,7 @@ export class CategoriesService {
   async removeSubtopic(subtopicId: string) {
     try {
       await this.prisma.category.delete({ where: { id: subtopicId } });
+      await this.tree.invalidate();
       return { ok: true };
     } catch (e) {
       if (isPrismaCode(e, 'P2025')) {
