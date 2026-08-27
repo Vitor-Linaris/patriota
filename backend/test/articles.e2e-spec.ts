@@ -19,7 +19,7 @@ describe('Articles (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await truncate(app, ['Article', 'Subtopic', 'Category']);
+    await truncate(app, ['Article', 'Category']);
     const prisma = app.get(PrismaService);
     const cat = await prisma.category.create({
       data: {
@@ -30,6 +30,7 @@ describe('Articles (e2e)', () => {
         color: '#1e40af',
         order: 1,
         visible: true,
+        path: '/root/', // placeholder — these tests never assert on the tree
       },
     });
     categoryId = cat.id;
@@ -333,6 +334,7 @@ describe('Articles (e2e)', () => {
         color: '#059669',
         order: 2,
         visible: true,
+        path: '/root/', // placeholder — these tests never assert on the tree
       },
     });
 

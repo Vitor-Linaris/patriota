@@ -17,7 +17,7 @@ describe('Categories (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await truncate(app, ['Article', 'Subtopic', 'Category', 'User']);
+    await truncate(app, ['Article', 'Category', 'User']);
   });
 
   it('rejects POST /admin/categories without authentication', async () => {
@@ -76,7 +76,21 @@ describe('Categories (e2e)', () => {
       .expect(200);
     expect(pub.body[0].subtopics).toHaveLength(1);
 
-    // Delete
+    // The subtopic is now a real depth-1 Category child (parentId is
+    // onDelete: Restrict), so the parent refuses to delete while it
+    // exists — the same protection remove() gives a category with
+    // articles, extended to children.
+    await request(app.getHttpServer())
+      .delete(`/admin/categories/${created.body.id}`)
+      .set(bearer(admin))
+      .expect(409);
+
+    // Removing the child first clears the way.
+    await request(app.getHttpServer())
+      .delete(`/admin/categories/${created.body.id}/subtopics/${sub.body.id}`)
+      .set(bearer(admin))
+      .expect(200);
+
     await request(app.getHttpServer())
       .delete(`/admin/categories/${created.body.id}`)
       .set(bearer(admin))

@@ -64,6 +64,7 @@ describe('Reader notifications (e2e)', () => {
         color: '#1e40af',
         order: 1,
         visible: true,
+        path: '/root/', // placeholder — these tests never assert on the tree
       },
     });
     categoryId = cat.id;
