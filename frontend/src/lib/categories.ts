@@ -133,15 +133,15 @@ export async function getSiblings(slug: string): Promise<CategoryDef[]> {
 
 /**
  * Maximum number of TOP-LEVEL categories in the primary <SiteHeader> nav.
- * Anything beyond falls through to <SecondaryNav>.
+ * Anything beyond falls through to <SecondaryNav>, which pages through
+ * the overflow with a dot indicator rather than growing.
  *
- * Raised from 6 to 8 with the hierarchy: 6 was a limit imposed by having
- * nowhere to put depth. Now that a section with children opens a panel,
- * the bar carries more without becoming a wall of links. Subcategories
- * never enter either bar — letting them in makes the reader lose track
- * of what level they are on.
+ * Six is a deliberate editorial choice, not a technical ceiling: it is
+ * the masthead the newsroom recognises. Subcategories never enter either
+ * bar — they live in the section panel — so letting the primary grow
+ * would only push top-level sections around for no gain.
  */
-export const PRIMARY_NAV_LIMIT = 8;
+export const PRIMARY_NAV_LIMIT = 6;
 
 export async function getNavCategories(): Promise<{
   primary: CategoryDef[];
