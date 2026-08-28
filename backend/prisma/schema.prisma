@@ -273,6 +273,26 @@ model Article {
   /// published article - without that the first cron tick would email
   /// the entire archive to every reader.
   notificationsQueuedAt DateTime?
+  /// Edits made to an article that is ALREADY LIVE, held aside instead of
+  /// applied.
+  ///
+  /// The columns above keep serving readers untouched while this fills
+  /// up, so correcting a typo on a published piece never takes it off
+  /// the site — not even if the journalist wanders off mid-sentence and
+  /// the autosave is the only thing that ran. Promoting this into the
+  /// real columns is an explicit act (publish), never a side effect of
+  /// typing.
+  ///
+  /// A JSON blob rather than a parallel set of draft* columns: the
+  /// editable payload is ~14 fields and would double the width of this
+  /// model for something never queried by field, only read whole.
+  /// NULL means "what you see is what is live".
+  draft                 Json?
+  draftUpdatedAt        DateTime?
+  /// True when the pending edit came from someone without
+  /// artigos.publicar — it needs an approver before it can replace what
+  /// the public sees.
+  draftAwaitingReview   Boolean       @default(false)
   categoryId            String
   authorId              String
   createdAt             DateTime      @default(now())
@@ -288,6 +308,8 @@ model Article {
   @@index([categoryId, status, publishedAt])
   @@index([status, publishedAt])
   @@index([status, notificationsQueuedAt])
+  /// The approval queue asks for these on every load.
+  @@index([draftAwaitingReview])
 }
 
 model ActivityLog {

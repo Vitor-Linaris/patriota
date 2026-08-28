@@ -90,16 +90,23 @@ export async function updateArticleAction(
 export async function autosaveArticleAction(
   id: string | undefined,
   payload: Omit<Partial<ArticleFormPayload>, "status" | "scheduledAt">,
+  /**
+   * True when the article is currently on the public site. Its edits go
+   * to the draft column instead of the live one, so a correction that
+   * nobody finished never reaches readers and never takes the piece
+   * down. See ArticlesService.saveDraft.
+   */
+  isLive = false,
 ) {
-  const res = id
-    ? await apiFetch(`/admin/articles/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify(payload),
-      })
-    : await apiFetch("/admin/articles", {
+  const res = !id
+    ? await apiFetch("/admin/articles", {
         method: "POST",
         body: JSON.stringify(payload),
-      });
+      })
+    : await apiFetch(
+        isLive ? `/admin/articles/${id}/draft` : `/admin/articles/${id}`,
+        { method: "PATCH", body: JSON.stringify(payload) },
+      );
 
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { message?: string };

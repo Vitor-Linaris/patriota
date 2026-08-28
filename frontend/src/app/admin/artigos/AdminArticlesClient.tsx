@@ -55,6 +55,12 @@ export interface AdminArticle {
   metaTitle: string;
   metaDescription: string;
   coverImage: string;
+  /**
+   * There are edits parked on this article waiting for someone who can
+   * publish. The article itself is still live and unchanged — this is
+   * the only way an approver finds out the edits exist.
+   */
+  draftAwaitingReview?: boolean;
   scheduledAt: string | null;
   createdAt: string;
   publishedAt: string | null;
@@ -269,7 +275,18 @@ function ArticleEditor({
   // accept a create (CreateArticleDto), so there is nothing to save
   // until then — and pretending otherwise would just show the author a
   // string of validation failures they did not ask for.
-  const canAutosave = form.title.trim().length >= 2 && Boolean(form.categoryId);
+  const isSaveable = form.title.trim().length >= 2 && Boolean(form.categoryId);
+
+  // Opening an article and closing it again must change nothing. Without
+  // this, merely clicking "Editar" on a live piece would write a pending
+  // draft three seconds later and flag it for approval — a review task
+  // out of thin air for an edit nobody made.
+  const untouched = useMemo(
+    () => JSON.stringify(form) === JSON.stringify(initial),
+    [form, initial],
+  );
+
+  const isLive = form.status === "publicado";
 
   /**
    * What the autosave sends. Notably absent: `status` and `scheduledAt`.
@@ -280,22 +297,26 @@ function ArticleEditor({
    * words.
    */
   const runAutosave = useCallback(async () => {
-    const result = await autosaveArticleAction(form.id, {
-      title: form.title.trim(),
-      slug: form.slug || undefined,
-      summary: form.summary,
-      content: form.content,
-      categoryId: form.categoryId,
-      exclusive: form.exclusive,
-      readMinutes: form.readMinutes,
-      tags: form.tags,
-      essentials: form.essentials,
-      context: form.context ?? undefined,
-      pullQuote: form.pullQuote ?? undefined,
-      metaTitle: form.metaTitle || undefined,
-      metaDescription: form.metaDescription || undefined,
-      coverImageUrl: form.coverImage || undefined,
-    });
+    const result = await autosaveArticleAction(
+      form.id,
+      {
+        title: form.title.trim(),
+        slug: form.slug || undefined,
+        summary: form.summary,
+        content: form.content,
+        categoryId: form.categoryId,
+        exclusive: form.exclusive,
+        readMinutes: form.readMinutes,
+        tags: form.tags,
+        essentials: form.essentials,
+        context: form.context ?? undefined,
+        pullQuote: form.pullQuote ?? undefined,
+        metaTitle: form.metaTitle || undefined,
+        metaDescription: form.metaDescription || undefined,
+        coverImageUrl: form.coverImage || undefined,
+      },
+      isLive,
+    );
 
     // First autosave of a new article created the row. Adopt its id, or
     // every later tick would create another article instead of updating
@@ -304,10 +325,10 @@ function ArticleEditor({
     if (result.ok && !form.id && result.id) set({ id: result.id });
 
     return result;
-  }, [form]);
+  }, [form, isLive]);
 
   const { status: autosaveStatus, cancelPending } = useAutosave({
-    enabled: canAutosave,
+    enabled: isSaveable && !untouched,
     data: form,
     onSave: runAutosave,
     // While a manual save is in flight it owns the article — a
@@ -389,7 +410,7 @@ function ArticleEditor({
                 })}`
               : "◷ Agendar…"}
           </button>
-          <AutosaveIndicator status={autosaveStatus} />
+          <AutosaveIndicator status={autosaveStatus} isLive={isLive} />
           <button
             disabled={saving}
             onClick={() => {
@@ -398,7 +419,10 @@ function ArticleEditor({
             }}
             className="rounded-lg border border-[#0F2C6B]/20 px-4 py-2 text-xs font-bold text-[#0F2C6B] transition-colors hover:bg-[#0F2C6B]/5 disabled:opacity-50"
           >
-            Guardar rascunho
+            {/* On a live article this no longer makes it a draft — it
+                parks the edits. Saying "rascunho" there would promise a
+                state change that does not happen. */}
+            {isLive ? "Guardar alterações" : "Guardar rascunho"}
           </button>
           <button
             disabled={saving}
@@ -801,7 +825,7 @@ function ArticleEditor({
               }}
               className="w-full rounded-xl border border-[#0F2C6B]/20 py-2.5 text-sm font-bold text-[#0F2C6B] transition-colors hover:bg-[#0F2C6B]/5 disabled:opacity-50"
             >
-              Guardar como rascunho
+              {isLive ? "Guardar alterações" : "Guardar como rascunho"}
             </button>
             <button
               type="button"
@@ -1028,6 +1052,7 @@ export default function AdminArticlesClient({
     setEditorError(null);
 
     const isScheduled = Boolean(form.scheduledAt);
+    const isLive = form.status === "publicado";
 
     // Save-payload: we always save the row first as a "still pending"
     // state — never directly as PUBLICADO. The workflow transition is
@@ -1061,6 +1086,27 @@ export default function AdminArticlesClient({
       coverImageUrl: form.coverImage || undefined,
       scheduledAt: form.scheduledAt ?? undefined,
     };
+
+    // "Guardar" on an article that is ON THE SITE stores the edits aside
+    // instead of applying them — the same place autosave writes. It used
+    // to send status: RASCUNHO, which took the piece off the site: an
+    // editor fixing a comma and clicking Guardar would silently
+    // unpublish it. The live version now stays up until someone
+    // deliberately clicks Publicar, which promotes the pending edits.
+    if (isLive && !publish && form.id) {
+      const articleId = form.id;
+      startTransition(async () => {
+        const res = await autosaveArticleAction(articleId, payload, true);
+        if (!res.ok) {
+          setEditorError(res.error);
+          return;
+        }
+        setEditorOpen(false);
+        setEditorState(null);
+        router.refresh();
+      });
+      return;
+    }
 
     startTransition(async () => {
       let articleId = form.id;
@@ -1379,11 +1425,25 @@ export default function AdminArticlesClient({
                         <p className="line-clamp-2 text-sm font-semibold leading-snug text-gray-800">
                           {a.title}
                         </p>
-                        {a.exclusive && (
-                          <span className="mt-1 inline-block rounded-full bg-[#FFCC66]/20 px-1.5 py-0.5 text-[9px] font-black text-[#8B6900]">
-                            EXCLUSIVO
-                          </span>
-                        )}
+                        <div className="mt-1 flex flex-wrap items-center gap-1">
+                          {a.exclusive && (
+                            <span className="inline-block rounded-full bg-[#FFCC66]/20 px-1.5 py-0.5 text-[9px] font-black text-[#8B6900]">
+                              EXCLUSIVO
+                            </span>
+                          )}
+                          {/* The article itself is untouched and still
+                              live — without this the parked edits would
+                              be invisible to the person who has to
+                              approve them. */}
+                          {a.draftAwaitingReview && (
+                            <span
+                              title="Há alterações guardadas à espera de aprovação. O que está no site não mudou."
+                              className="inline-block rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-black text-blue-700"
+                            >
+                              ALTERAÇÕES POR APROVAR
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </td>

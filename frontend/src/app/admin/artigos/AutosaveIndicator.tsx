@@ -11,7 +11,18 @@ import type { AutosaveStatus } from "./useAutosave";
  * retries on its own, and a red banner over a half-written sentence
  * would cost more attention than the problem is worth.
  */
-export function AutosaveIndicator({ status }: { status: AutosaveStatus }) {
+export function AutosaveIndicator({
+  status,
+  isLive,
+}: {
+  status: AutosaveStatus;
+  /**
+   * The article is on the public site. "Saved" then means saved ASIDE —
+   * readers still see the old version — and saying just "Guardado" would
+   * let someone walk away believing their correction is live.
+   */
+  isLive: boolean;
+}) {
   if (status.kind === "idle") return null;
 
   if (status.kind === "saving") {
@@ -30,6 +41,17 @@ export function AutosaveIndicator({ status }: { status: AutosaveStatus }) {
       hour: "2-digit",
       minute: "2-digit",
     });
+    if (isLive) {
+      return (
+        <span
+          role="status"
+          title="A versão publicada continua no ar. Carregue em Publicar para as alterações ficarem visíveis."
+          className="whitespace-nowrap text-[11px] font-semibold text-blue-600"
+        >
+          ✓ Alterações guardadas às {at} — por publicar
+        </span>
+      );
+    }
     return (
       <span
         role="status"

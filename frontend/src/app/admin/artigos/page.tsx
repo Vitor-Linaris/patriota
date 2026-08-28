@@ -32,6 +32,7 @@ interface ArticleApi {
   scheduledAt: string | null;
   publishedAt: string | null;
   rejectionReason: string | null;
+  draftAwaitingReview: boolean;
   createdAt: string;
   categoryId: string;
   category: { slug: string; name: string; color: string } | null;
@@ -72,6 +73,7 @@ function toAdminArticle(a: ArticleApi): AdminArticle {
     metaDescription: a.metaDescription ?? "",
     coverImage: a.coverImageUrl ?? "",
     scheduledAt: a.scheduledAt,
+    draftAwaitingReview: a.draftAwaitingReview ?? false,
     createdAt: a.createdAt,
     publishedAt: a.publishedAt,
     rejectionReason: a.rejectionReason ?? null,
