@@ -15,11 +15,11 @@ export const metadata = {
 export default async function ReaderLoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string; erro?: string }>;
 }) {
   if (!FEATURES.readerArea) notFound();
 
-  const { next } = await searchParams;
+  const { next, erro } = await searchParams;
 
   return (
     <AuthShell
@@ -37,6 +37,20 @@ export default async function ReaderLoginPage({
         </>
       }
     >
+      {/* Where a failed social login lands. Same alert styling as the
+          form's own errors below, so a rejected Google sign-in and a
+          wrong password read as the same kind of thing. */}
+      {erro ? (
+        <p
+          role="alert"
+          className="mb-4 rounded-[8px] border border-red-200 bg-red-50 px-4 py-2.5 text-[13px] text-red-700"
+        >
+          {erro === "1"
+            ? "Não foi possível entrar. A ligação expirou ou já foi utilizada — tente novamente."
+            : decodeURIComponent(erro)}
+        </p>
+      ) : null}
+
       {/* Renders nothing when no provider has credentials configured. */}
       <SocialButtons next={safeNext(next)} />
       <LoginForm next={safeNext(next)} />
