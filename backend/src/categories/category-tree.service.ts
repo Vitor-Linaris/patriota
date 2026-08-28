@@ -124,6 +124,21 @@ export class CategoryTreeService {
     return descendantsOf(tree, tree.find((n) => n.id === id));
   }
 
+  /**
+   * The node and every ancestor above it, LEAF FIRST.
+   *
+   * Read straight off the materialised path rather than walked, so it
+   * costs one lookup whatever the depth. An unknown id yields just
+   * itself: a caller that cannot resolve the tree should still act on
+   * the category it was given rather than on nothing.
+   */
+  async resolveAncestorIds(id: string): Promise<string[]> {
+    const node = await this.getById(id);
+    if (!node) return [id];
+    const rootFirst = node.path.split('/').filter(Boolean);
+    return rootFirst.length > 0 ? rootFirst.reverse() : [id];
+  }
+
   async getBySlug(slug: string): Promise<CategoryTreeNode | null> {
     const tree = await this.getTree();
     return tree.find((n) => n.slug === slug) ?? null;
