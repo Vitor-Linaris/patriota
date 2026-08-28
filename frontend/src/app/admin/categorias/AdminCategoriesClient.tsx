@@ -264,7 +264,19 @@ export default function AdminCategoriesClient({ initial }: Props) {
         </div>
       )}
 
+      {/* id fixo, e não é decorativo: o dnd-kit gera o id do
+          aria-describedby das pegas com um contador AO NÍVEL DO MÓDULO
+          (useUniqueId em @dnd-kit/utilities), não com o useId do React.
+          No servidor esse módulo dura o tempo do processo e o contador
+          incrementa a cada pedido; no cliente arranca sempre do zero.
+          Sem este id, cada render servia DndDescribedBy-N e o cliente
+          hidratava com -0 — e o React não corrige o atributo, por isso
+          o aria-describedby ficava a apontar para um elemento que não
+          existe e as instruções de arrastar para leitores de ecrã
+          ficavam mudas. Passar um id faz o useUniqueId devolvê-lo tal
+          e qual. */}
       <DndContext
+        id="admin-categorias-dnd"
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragStart={onDragStart}
