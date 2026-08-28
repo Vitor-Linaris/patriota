@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { createTestApp } from './helpers/app';
-import { makeUser, bearer } from './helpers/auth';
+import { makeUser, bearer, type TestUser } from './helpers/auth';
 import { truncate } from './helpers/db';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { ArticlesScheduler } from '../src/articles/articles.scheduler';
@@ -526,6 +526,92 @@ describe('Articles (e2e)', () => {
       // Portugal holds nothing itself, but the reader gets one article.
       expect(portugal!.articleCount).toBe(0);
       expect(portugal!.articleCountTotal).toBe(1);
+    });
+  });
+
+  /**
+   * The guarantee the editor's autosave is built on.
+   *
+   * Autosave PATCHes while the journalist types, including on an article
+   * that is already live. It deliberately omits `status` from the
+   * payload, and the whole safety of that rests on update() leaving a
+   * field it was not sent alone. If that ever stops being true — someone
+   * "helpfully" defaulting status in the DTO, say — autosave would
+   * silently unpublish live articles, and it would show up here rather
+   * than on the website.
+   */
+  describe('a PATCH without status leaves the lifecycle alone', () => {
+    async function publishedArticle(editor: TestUser) {
+      const created = await request(app.getHttpServer())
+        .post('/admin/articles')
+        .set(bearer(editor))
+        .send({ title: 'Artigo ao vivo', summary: 's', content: '<p>a</p>', categoryId })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/admin/articles/${created.body.id}/publish`)
+        .set(bearer(editor))
+        .expect(201);
+      return created.body.id as string;
+    }
+
+    it('keeps a PUBLICADO article published', async () => {
+      const editor = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const id = await publishedArticle(editor);
+
+      // Exactly what autosave sends: content, no status.
+      await request(app.getHttpServer())
+        .patch(`/admin/articles/${id}`)
+        .set(bearer(editor))
+        .send({ content: '<p>corrigido a meio da escrita</p>' })
+        .expect(200);
+
+      const after = await request(app.getHttpServer())
+        .get(`/admin/articles/${id}`)
+        .set(bearer(editor))
+        .expect(200);
+
+      expect(after.body.status).toBe('PUBLICADO');
+      expect(after.body.content).toContain('corrigido');
+      // And it is still on the public site.
+      const publicRes = await request(app.getHttpServer())
+        .get(`/public/articles/by-slug/${after.body.slug}`)
+        .expect(200);
+      expect(publicRes.body.content).toContain('corrigido');
+    });
+
+    it('still lets an explicit status change through', async () => {
+      // The manual buttons DO send status — this proves the test above
+      // is about omission, not about update() ignoring status entirely.
+      const editor = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const id = await publishedArticle(editor);
+
+      await request(app.getHttpServer())
+        .patch(`/admin/articles/${id}`)
+        .set(bearer(editor))
+        .send({ status: 'RASCUNHO' })
+        .expect(200);
+
+      const after = await request(app.getHttpServer())
+        .get(`/admin/articles/${id}`)
+        .set(bearer(editor))
+        .expect(200);
+      expect(after.body.status).toBe('RASCUNHO');
+    });
+
+    it('creates a draft from the minimum the editor can offer', async () => {
+      // Autosave fires as soon as there is a 2-char title and a
+      // category — nothing else is typed yet. If CreateArticleDto ever
+      // demanded more, autosave would 400 on every keystroke.
+      const editor = await makeUser(app, { role: 'EDITOR_CHEFE' });
+
+      const created = await request(app.getHttpServer())
+        .post('/admin/articles')
+        .set(bearer(editor))
+        .send({ title: 'Ab', categoryId })
+        .expect(201);
+
+      expect(created.body.status).toBe('RASCUNHO');
+      expect(created.body.id).toBeTruthy();
     });
   });
 });

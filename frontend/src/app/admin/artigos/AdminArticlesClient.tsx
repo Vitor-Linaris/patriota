@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { RichTextEditor } from "@/components/admin/RichTextEditor";
 import { CoverImagePicker } from "@/components/admin/CoverImagePicker";
@@ -13,6 +13,7 @@ import { FEATURES } from "@/lib/features";
 import { Pagination } from "@/components/category/Pagination";
 import {
   archiveArticleAction,
+  autosaveArticleAction,
   createArticleAction,
   deleteArticleAction,
   publishArticleAction,
@@ -21,6 +22,8 @@ import {
   updateArticleAction,
   type ArticleFormPayload,
 } from "./actions";
+import { useAutosave } from "./useAutosave";
+import { AutosaveIndicator } from "./AutosaveIndicator";
 
 type ApiStatus =
   | "RASCUNHO"
@@ -261,6 +264,58 @@ function ArticleEditor({
   const set = (patch: Partial<EditorState>) =>
     setForm((p) => ({ ...p, ...patch }));
 
+  // ── Autosave ──────────────────────────────────────────────────────
+  // The backend needs a title of 2+ chars and a category before it will
+  // accept a create (CreateArticleDto), so there is nothing to save
+  // until then — and pretending otherwise would just show the author a
+  // string of validation failures they did not ask for.
+  const canAutosave = form.title.trim().length >= 2 && Boolean(form.categoryId);
+
+  /**
+   * What the autosave sends. Notably absent: `status` and `scheduledAt`.
+   *
+   * Omitting `status` is the whole reason autosave is safe on a
+   * published article — see the note on autosaveArticleAction. The
+   * manual buttons keep owning the lifecycle; this only ever preserves
+   * words.
+   */
+  const runAutosave = useCallback(async () => {
+    const result = await autosaveArticleAction(form.id, {
+      title: form.title.trim(),
+      slug: form.slug || undefined,
+      summary: form.summary,
+      content: form.content,
+      categoryId: form.categoryId,
+      exclusive: form.exclusive,
+      readMinutes: form.readMinutes,
+      tags: form.tags,
+      essentials: form.essentials,
+      context: form.context ?? undefined,
+      pullQuote: form.pullQuote ?? undefined,
+      metaTitle: form.metaTitle || undefined,
+      metaDescription: form.metaDescription || undefined,
+      coverImageUrl: form.coverImage || undefined,
+    });
+
+    // First autosave of a new article created the row. Adopt its id, or
+    // every later tick would create another article instead of updating
+    // this one. (The manual flow never needed this: it closes the editor
+    // immediately after saving.)
+    if (result.ok && !form.id && result.id) set({ id: result.id });
+
+    return result;
+  }, [form]);
+
+  const { status: autosaveStatus, cancelPending } = useAutosave({
+    enabled: canAutosave,
+    data: form,
+    onSave: runAutosave,
+    // While a manual save is in flight it owns the article — a
+    // concurrent autosave would race it and could re-send content the
+    // user has already superseded by clicking Publicar.
+    paused: saving,
+  });
+
   const handleTitleChange = (title: string) => {
     set({
       title,
@@ -334,16 +389,23 @@ function ArticleEditor({
                 })}`
               : "◷ Agendar…"}
           </button>
+          <AutosaveIndicator status={autosaveStatus} />
           <button
             disabled={saving}
-            onClick={() => onSave(form, false)}
+            onClick={() => {
+              cancelPending();
+              onSave(form, false);
+            }}
             className="rounded-lg border border-[#0F2C6B]/20 px-4 py-2 text-xs font-bold text-[#0F2C6B] transition-colors hover:bg-[#0F2C6B]/5 disabled:opacity-50"
           >
             Guardar rascunho
           </button>
           <button
             disabled={saving}
-            onClick={() => onSave(form, true)}
+            onClick={() => {
+              cancelPending();
+              onSave(form, true);
+            }}
             className="rounded-lg bg-[#0F2C6B] px-5 py-2 text-xs font-bold text-white transition-colors hover:bg-[#1A3A7A] disabled:opacity-50"
           >
             {form.scheduledAt
@@ -718,7 +780,10 @@ function ArticleEditor({
             <button
               type="button"
               disabled={saving}
-              onClick={() => onSave(form, true)}
+              onClick={() => {
+                cancelPending();
+                onSave(form, true);
+              }}
               className="w-full rounded-xl bg-[#0F2C6B] py-3 text-sm font-black text-white transition-colors hover:bg-[#1A3A7A] disabled:opacity-50"
             >
               {saving
@@ -730,7 +795,10 @@ function ArticleEditor({
             <button
               type="button"
               disabled={saving}
-              onClick={() => onSave(form, false)}
+              onClick={() => {
+                cancelPending();
+                onSave(form, false);
+              }}
               className="w-full rounded-xl border border-[#0F2C6B]/20 py-2.5 text-sm font-bold text-[#0F2C6B] transition-colors hover:bg-[#0F2C6B]/5 disabled:opacity-50"
             >
               Guardar como rascunho

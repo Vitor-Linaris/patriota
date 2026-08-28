@@ -67,6 +67,55 @@ export async function updateArticleAction(
   return { ok: true as const };
 }
 
+/**
+ * The autosave path. Deliberately NOT createArticleAction /
+ * updateArticleAction, for two reasons.
+ *
+ * 1. STATUS. The manual "Guardar rascunho" button sends status:
+ *    "RASCUNHO" — which is honest for a draft, but on an article that is
+ *    already live it takes it OFF the site. Autosave must never do that,
+ *    so it omits `status` entirely: ArticlesService.update() spreads the
+ *    DTO into Prisma, so a field that is not sent is a field that is not
+ *    touched, and the article stays exactly in whatever state it was.
+ *    `scheduledAt` is omitted for the same reason.
+ *
+ * 2. NO revalidatePath. The other actions invalidate /admin/artigos,
+ *    /admin and the public home on every save — right for a save the
+ *    author finished, wasteful every few seconds while they are still
+ *    typing, when the only page they are looking at is the editor.
+ *
+ * Errors come back as data, never thrown: a failed autosave must not
+ * interrupt someone mid-sentence.
+ */
+export async function autosaveArticleAction(
+  id: string | undefined,
+  payload: Omit<Partial<ArticleFormPayload>, "status" | "scheduledAt">,
+) {
+  const res = id
+    ? await apiFetch(`/admin/articles/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      })
+    : await apiFetch("/admin/articles", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { message?: string };
+    return {
+      ok: false as const,
+      error: body.message ?? "Não foi possível guardar.",
+    };
+  }
+
+  // POST returns the created row; PATCH returns the updated one. Either
+  // way the id is what the caller needs, so the next tick can PATCH
+  // instead of creating a second article.
+  const saved = (await res.json().catch(() => ({}))) as { id?: string };
+  return { ok: true as const, id: id ?? saved.id };
+}
+
 export async function publishArticleAction(id: string) {
   const res = await apiFetch(`/admin/articles/${id}/publish`, {
     method: "POST",
