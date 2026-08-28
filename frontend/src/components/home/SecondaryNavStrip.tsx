@@ -8,6 +8,18 @@ import type { CategoryDef } from "@/lib/categories";
 
 /** Long enough to read a bar of links before it moves under you. */
 const ROTATE_MS = 12_000;
+/**
+ * Width always kept clear at the right for the dot indicator.
+ *
+ * Reserved unconditionally, and the dots are taken out of the flow, so
+ * the width the paging maths runs against NEVER depends on how many dots
+ * happen to be rendered. Letting the dots sit in the flow created a
+ * feedback loop — dots appear, the bar narrows, the page count changes,
+ * the dots resize, it measures again — and the offsets you ended up with
+ * were wherever that oscillation happened to stop. That is what made a
+ * dot scroll by 10px instead of a full page.
+ */
+const DOTS_RESERVE = 72;
 /** Grace period so the pointer can cross from a link into its panel. */
 const CLOSE_DELAY_MS = 160;
 const PANEL_MAX_WIDTH = 640;
@@ -59,9 +71,9 @@ export function SecondaryNavStrip({ items }: { items: CategoryDef[] }) {
     if (!viewport || !track) return;
 
     const measure = () => {
-      const width = viewport.clientWidth;
+      const width = viewport.clientWidth - DOTS_RESERVE;
       const links = Array.from(track.children) as HTMLElement[];
-      if (links.length === 0 || width === 0) {
+      if (links.length === 0 || width <= 0) {
         setPageOffsets([0]);
         return;
       }
@@ -167,7 +179,7 @@ export function SecondaryNavStrip({ items }: { items: CategoryDef[] }) {
         scheduleClose();
       }}
     >
-      <Container className="flex h-9 items-center gap-4">
+      <Container className="relative flex h-9 items-center">
         <div ref={viewportRef} className="relative flex-1 overflow-hidden">
           <div
             ref={trackRef}
@@ -189,12 +201,21 @@ export function SecondaryNavStrip({ items }: { items: CategoryDef[] }) {
         </div>
 
         {pageCount > 1 && (
+          // Absolute, so the paging maths above never has to account for
+          // its own indicator. The space it sits in is already reserved
+          // by DOTS_RESERVE.
           <div
-            className="flex shrink-0 items-center gap-1.5"
+            className="absolute inset-y-0 right-0 flex items-center bg-[#f0f2f7] pl-2"
             role="tablist"
             aria-label="Páginas de rubricas"
           >
             {pageOffsets.map((offset, i) => (
+              // The button is a fixed 24×24 hit area; only the pill
+              // inside it changes. The dot used to BE the button at 6×6
+              // px — too small to hit, and growing it on hover reflowed
+              // the row and slid it out from under the pointer, so the
+              // click landed on nothing. The outer box never changes
+              // size now, so nothing moves while you aim at it.
               <button
                 key={`${i}-${offset}`}
                 type="button"
@@ -202,12 +223,17 @@ export function SecondaryNavStrip({ items }: { items: CategoryDef[] }) {
                 aria-selected={i === active}
                 aria-label={`Mostrar rubricas, página ${i + 1} de ${pageCount}`}
                 onClick={() => setActive(i)}
-                className={`rounded-full transition-all duration-300 ${
-                  i === active
-                    ? "h-1.5 w-5 bg-patriota-medium"
-                    : "h-1.5 w-1.5 bg-slate-300 hover:w-3 hover:bg-slate-400"
-                }`}
-              />
+                className="group/dot flex h-6 w-6 items-center justify-center"
+              >
+                <span
+                  aria-hidden
+                  className={`block h-1.5 rounded-full transition-all duration-300 ${
+                    i === active
+                      ? "w-5 bg-patriota-medium"
+                      : "w-1.5 bg-slate-300 group-hover/dot:bg-slate-500"
+                  }`}
+                />
+              </button>
             ))}
           </div>
         )}
