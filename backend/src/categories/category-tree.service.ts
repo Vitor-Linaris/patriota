@@ -50,14 +50,30 @@ export class CategoryTreeService {
     private readonly redis: RedisService,
   ) {}
 
-  /** The full tree, flat (every node once) with `children` populated for traversal. */
+  /**
+   * The full tree, flat (every node exactly once) with `children`
+   * populated for traversal.
+   *
+   * The linkage is rebuilt on the way out rather than stored, because
+   * `children` holds references: serialising it would write every subtree
+   * twice (once nested, once at top level), and JSON.parse would hand
+   * back COPIES, so `tree.find(byId)` and `parent.children[0]` would stop
+   * being the same object on a cache hit but not on a miss. Relinking
+   * after both paths keeps the two indistinguishable.
+   */
   async getTree(): Promise<CategoryTreeNode[]> {
     const cached = await this.readCache();
-    if (cached) return cached;
+    if (cached) return this.link(cached);
 
     const built = await this.buildTree();
-    await this.writeCache(built);
-    return built;
+    await this.writeCache(built); // unlinked: children is [] on every node
+    return this.link(built);
+  }
+
+  /** Just the roots, nested — the shape the admin tree UI consumes. */
+  async getForest(): Promise<CategoryTreeNode[]> {
+    const tree = await this.getTree();
+    return tree.filter((n) => n.parentId === null);
   }
 
   /**
@@ -176,17 +192,6 @@ export class CategoryTreeService {
       });
     }
 
-    const roots: CategoryTreeNode[] = [];
-    for (const row of rows) {
-      const node = byId.get(row.id)!;
-      if (row.parentId) {
-        byId.get(row.parentId)?.children.push(node);
-      } else {
-        roots.push(node);
-      }
-    }
-    void roots; // linkage above is what matters; callers use the flat list
-
     // Roll up leaf -> root in a single reverse pass. `rows` is sorted
     // depth ASC, so iterating backwards visits every depth-3 row before
     // any depth-2 row, every depth-2 before any depth-1, and so on. By
@@ -202,5 +207,22 @@ export class CategoryTreeService {
     }
 
     return [...byId.values()];
+  }
+
+  /**
+   * Populates `children` in place from `parentId`, ordered by `order`.
+   * Idempotent — clears first, so calling it on an already-linked tree
+   * doesn't append a second copy of every child.
+   */
+  private link(nodes: CategoryTreeNode[]): CategoryTreeNode[] {
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    for (const node of nodes) node.children = [];
+    for (const node of nodes) {
+      if (node.parentId) byId.get(node.parentId)?.children.push(node);
+    }
+    for (const node of nodes) {
+      node.children.sort((a, b) => a.order - b.order);
+    }
+    return nodes;
   }
 }

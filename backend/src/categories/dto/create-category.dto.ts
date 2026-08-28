@@ -36,4 +36,16 @@ export class CreateCategoryDto {
   @IsOptional()
   @IsBoolean()
   visible?: boolean;
+
+  /**
+   * Categoria-mãe. Omitir (ou null) cria uma raiz.
+   *
+   * A profundidade não é validada aqui: a regra é
+   * `parent.depth + 1 <= 3`, e a linha da mãe não está ao alcance de um
+   * validador de DTO. Fica no serviço, que é também onde tem de ficar a
+   * validação de ciclo ao mover.
+   */
+  @IsOptional()
+  @IsString()
+  parentId?: string | null;
 }

@@ -25,6 +25,14 @@ export class CategoriesController {
     return this.service.listAdmin();
   }
 
+  // Declared before any 'admin/categories/:id' route so 'tree' is never
+  // swallowed as an id.
+  @Get('admin/categories/tree')
+  @RequirePermissions('categorias.ver')
+  tree() {
+    return this.service.listTree();
+  }
+
   @Post('admin/categories')
   @RequirePermissions('categorias.criar')
   create(@Body() dto: CreateCategoryDto) {

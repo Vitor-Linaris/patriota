@@ -2,7 +2,11 @@ import { Test } from '@nestjs/testing';
 import { CategoriesService } from './categories.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CategoryTreeService } from './category-tree.service';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 
 function makeTreeMock() {
   return { invalidate: jest.fn().mockResolvedValue(undefined) };
@@ -25,11 +29,14 @@ function makePrismaMock() {
       delete: jest.fn(),
       // Children count, checked by remove() alongside article.count.
       count: jest.fn().mockResolvedValue(0),
+      // Deepest descendant, checked by moveTo() for the height rule.
+      aggregate: jest.fn().mockResolvedValue({ _max: { depth: null } }),
     },
     article: {
       count: jest.fn().mockResolvedValue(0),
     },
     $transaction: jest.fn(),
+    $executeRaw: jest.fn().mockResolvedValue(0),
   };
   mock.$transaction.mockImplementation((fn: (tx: typeof mock) => unknown) =>
     fn(mock),
@@ -164,6 +171,208 @@ describe('CategoriesService', () => {
       ).rejects.toThrow(ConflictException);
       // And critically: never even consulted uniqueSlug()'s lookup.
       expect(prisma.category.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('hangs a child off its parent, inheriting depth and path', async () => {
+      prisma.category.findUnique
+        .mockResolvedValueOnce({ id: 'pt', slug: 'portugal', path: '/pt/', depth: 0 }) // parent lookup
+        .mockResolvedValueOnce(null); // slug is free
+      prisma.category.create.mockResolvedValueOnce({ id: 'ma', path: '/' });
+      prisma.category.update.mockResolvedValueOnce({ id: 'ma', path: '/pt/ma/' });
+
+      await service.create({
+        name: 'Madeira',
+        description: '',
+        icon: '◆',
+        color: '#000',
+        parentId: 'pt',
+      });
+
+      expect(prisma.category.create.mock.calls[0][0].data).toMatchObject({
+        parentId: 'pt',
+        depth: 1,
+      });
+      expect(prisma.category.update).toHaveBeenCalledWith({
+        where: { id: 'ma' },
+        data: { path: '/pt/ma/' },
+      });
+    });
+
+    it('disambiguates a child slug using the parent slug first', async () => {
+      prisma.category.findUnique
+        .mockResolvedValueOnce({ id: 'mu', slug: 'mundo', path: '/mu/', depth: 0 }) // parent
+        .mockResolvedValueOnce({ id: 'other' }) // "economia" taken
+        .mockResolvedValueOnce(null); // "economia-mundo" free
+      prisma.category.create.mockResolvedValueOnce({ id: 'ec', path: '/' });
+      prisma.category.update.mockResolvedValueOnce({ id: 'ec' });
+
+      await service.create({
+        name: 'Economia',
+        description: '',
+        icon: '◆',
+        color: '#000',
+        parentId: 'mu',
+      });
+
+      expect(prisma.category.create.mock.calls[0][0].data.slug).toBe(
+        'economia-mundo',
+      );
+    });
+
+    it('refuses a fifth level', async () => {
+      prisma.category.findUnique.mockResolvedValueOnce({
+        id: 'se',
+        slug: 'se',
+        path: '/pt/ma/fu/se/',
+        depth: 3,
+      });
+
+      await expect(
+        service.create({
+          name: 'Rua',
+          description: '',
+          icon: '◆',
+          color: '#000',
+          parentId: 'se',
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.category.create).not.toHaveBeenCalled();
+    });
+
+    it('404s on an unknown parent instead of creating an orphan root', async () => {
+      prisma.category.findUnique.mockResolvedValueOnce(null);
+
+      await expect(
+        service.create({
+          name: 'X',
+          description: '',
+          icon: '◆',
+          color: '#000',
+          parentId: 'nao-existe',
+        }),
+      ).rejects.toThrow(NotFoundException);
+      expect(prisma.category.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('update() — moving a node', () => {
+    /** Sets up findUnique for: the node being moved, then its new parent. */
+    function movingFrom(
+      node: { id: string; parentId: string | null; path: string; depth: number },
+      newParent?: { id: string; path: string; depth: number } | null,
+    ) {
+      prisma.category.findUnique.mockResolvedValueOnce(node);
+      if (newParent !== undefined) {
+        prisma.category.findUnique.mockResolvedValueOnce(newParent);
+      }
+    }
+
+    it('leaves the hierarchy alone when parentId is absent from the payload', async () => {
+      movingFrom({ id: 'c1', parentId: 'pt', path: '/pt/c1/', depth: 1 });
+      prisma.category.update.mockResolvedValueOnce({ id: 'c1' });
+
+      await service.update('c1', { description: 'Atualizada' });
+
+      // Only the field write — no reparenting, no subtree rewrite.
+      expect(prisma.category.update).toHaveBeenCalledTimes(1);
+      expect(prisma.$executeRaw).not.toHaveBeenCalled();
+    });
+
+    it('promotes a node to the root when parentId is explicitly null', async () => {
+      // Absent vs null must not collapse into the same thing: this is a
+      // real move, and it has to reach moveTo().
+      movingFrom({ id: 'ma', parentId: 'pt', path: '/pt/ma/', depth: 1 });
+      prisma.category.aggregate.mockResolvedValueOnce({ _max: { depth: 2 } });
+      prisma.category.update.mockResolvedValue({ id: 'ma' });
+
+      await service.update('ma', { parentId: null });
+
+      expect(prisma.category.update).toHaveBeenCalledWith({
+        where: { id: 'ma' },
+        data: { parentId: null, depth: 0, path: '/ma/' },
+      });
+      expect(prisma.$executeRaw).toHaveBeenCalled();
+    });
+
+    it('rewrites depth and path for the node and its whole subtree', async () => {
+      movingFrom(
+        { id: 'fu', parentId: 'ma', path: '/pt/ma/fu/', depth: 2 },
+        { id: 'dp', path: '/dp/', depth: 0 },
+      );
+      prisma.category.aggregate.mockResolvedValueOnce({ _max: { depth: 3 } });
+      prisma.category.update.mockResolvedValue({ id: 'fu' });
+
+      await service.update('fu', { parentId: 'dp' });
+
+      expect(prisma.category.update).toHaveBeenCalledWith({
+        where: { id: 'fu' },
+        data: { parentId: 'dp', depth: 1, path: '/dp/fu/' },
+      });
+      // The descendants move in one statement, not one query each.
+      expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses to move a node inside its own descendant', async () => {
+      // The classic drag-and-drop bug: Funchal dropped into Sé, which
+      // would cut the whole branch loose from the root.
+      movingFrom(
+        { id: 'fu', parentId: 'ma', path: '/pt/ma/fu/', depth: 2 },
+        { id: 'se', path: '/pt/ma/fu/se/', depth: 3 },
+      );
+
+      await expect(service.update('fu', { parentId: 'se' })).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.$executeRaw).not.toHaveBeenCalled();
+    });
+
+    it('refuses to make a node its own mother', async () => {
+      movingFrom(
+        { id: 'fu', parentId: 'ma', path: '/pt/ma/fu/', depth: 2 },
+        { id: 'fu', path: '/pt/ma/fu/', depth: 2 },
+      );
+
+      await expect(service.update('fu', { parentId: 'fu' })).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('accounts for the height of the subtree it drags along', async () => {
+      // Madeira alone (depth 1) would fit under a depth-2 node. But it
+      // carries Funchal -> Sé with it, so the deepest leaf would land at
+      // level 5. This is the check that gets forgotten.
+      movingFrom(
+        { id: 'ma', parentId: 'pt', path: '/pt/ma/', depth: 1 },
+        { id: 'other', path: '/x/y/other/', depth: 2 },
+      );
+      prisma.category.aggregate.mockResolvedValueOnce({ _max: { depth: 3 } }); // height 2
+
+      await expect(service.update('ma', { parentId: 'other' })).rejects.toThrow(
+        /profundidade máxima/i,
+      );
+      expect(prisma.$executeRaw).not.toHaveBeenCalled();
+    });
+
+    it('allows a move that exactly fills the depth budget', async () => {
+      // Same subtree height of 2, but landing under a root: 0 + 1 + 2 = 3.
+      movingFrom(
+        { id: 'ma', parentId: 'pt', path: '/pt/ma/', depth: 1 },
+        { id: 'dp', path: '/dp/', depth: 0 },
+      );
+      prisma.category.aggregate.mockResolvedValueOnce({ _max: { depth: 3 } });
+      prisma.category.update.mockResolvedValue({ id: 'ma' });
+
+      await expect(
+        service.update('ma', { parentId: 'dp' }),
+      ).resolves.toBeDefined();
+    });
+
+    it('404s on an unknown new parent', async () => {
+      movingFrom({ id: 'c1', parentId: null, path: '/c1/', depth: 0 }, null);
+
+      await expect(
+        service.update('c1', { parentId: 'nao-existe' }),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 

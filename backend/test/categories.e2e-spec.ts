@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { createTestApp } from './helpers/app';
-import { makeUser, bearer } from './helpers/auth';
+import { makeUser, bearer, type TestUser } from './helpers/auth';
 import { truncate } from './helpers/db';
 import { PrismaService } from '../src/prisma/prisma.service';
 
@@ -136,6 +136,142 @@ describe('Categories (e2e)', () => {
       .delete(`/admin/categories/${created.body.id}`)
       .set(bearer(jorn))
       .expect(403);
+  });
+
+  describe('hierarchy', () => {
+    /**
+     * Against the real database on purpose: moveTo() rewrites the whole
+     * subtree with one $executeRaw, and the unit tests mock that call
+     * away. The path/depth arithmetic below is the part that can only
+     * be proven here.
+     */
+    const mk = (
+      admin: TestUser,
+      body: Record<string, unknown>,
+    ) =>
+      request(app.getHttpServer())
+        .post('/admin/categories')
+        .set(bearer(admin))
+        .send({ description: '', icon: '◆', color: '#000000', ...body });
+
+    async function makeChain(admin: TestUser) {
+      const pt = await mk(admin, { name: 'Portugal' }).expect(201);
+      const ma = await mk(admin, { name: 'Madeira', parentId: pt.body.id }).expect(201);
+      const fu = await mk(admin, { name: 'Funchal', parentId: ma.body.id }).expect(201);
+      const se = await mk(admin, { name: 'Sé', parentId: fu.body.id }).expect(201);
+      return { pt: pt.body, ma: ma.body, fu: fu.body, se: se.body };
+    }
+
+    it('builds a four-level chain with coherent path and depth', async () => {
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+      const { pt, ma, fu, se } = await makeChain(admin);
+
+      expect(pt.depth).toBe(0);
+      expect(pt.path).toBe(`/${pt.id}/`);
+      expect(se.depth).toBe(3);
+      expect(se.path).toBe(`/${pt.id}/${ma.id}/${fu.id}/${se.id}/`);
+    });
+
+    it('refuses a fifth level', async () => {
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+      const { se } = await makeChain(admin);
+
+      await mk(admin, { name: 'Rua Direita', parentId: se.id }).expect(400);
+    });
+
+    it('GET /admin/categories/tree nests the whole forest', async () => {
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+      await makeChain(admin);
+
+      const res = await request(app.getHttpServer())
+        .get('/admin/categories/tree')
+        .set(bearer(admin))
+        .expect(200);
+
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].name).toBe('Portugal');
+      expect(res.body[0].children[0].children[0].children[0].name).toBe('Sé');
+    });
+
+    it('moving a branch rewrites path and depth for every descendant', async () => {
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+      const prisma = app.get(PrismaService);
+      const { pt, ma, fu, se } = await makeChain(admin);
+
+      // Promote Madeira (and Funchal -> Sé with it) to a root.
+      await request(app.getHttpServer())
+        .patch(`/admin/categories/${ma.id}`)
+        .set(bearer(admin))
+        .send({ parentId: null })
+        .expect(200);
+
+      const rows = await prisma.category.findMany({
+        where: { id: { in: [ma.id, fu.id, se.id] } },
+        select: { id: true, depth: true, path: true, parentId: true },
+      });
+      const byId = Object.fromEntries(rows.map((r) => [r.id, r]));
+
+      expect(byId[ma.id]).toMatchObject({ depth: 0, parentId: null, path: `/${ma.id}/` });
+      // The two descendants moved up a level each, in the same statement.
+      expect(byId[fu.id]).toMatchObject({ depth: 1, path: `/${ma.id}/${fu.id}/` });
+      expect(byId[se.id]).toMatchObject({ depth: 2, path: `/${ma.id}/${fu.id}/${se.id}/` });
+      // And Portugal was left untouched.
+      expect(
+        await prisma.category.findUnique({ where: { id: pt.id }, select: { depth: true } }),
+      ).toMatchObject({ depth: 0 });
+    });
+
+    it('refuses to move a node into its own descendant, with 400', async () => {
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+      const prisma = app.get(PrismaService);
+      const { fu, se } = await makeChain(admin);
+
+      await request(app.getHttpServer())
+        .patch(`/admin/categories/${fu.id}`)
+        .set(bearer(admin))
+        .send({ parentId: se.id })
+        .expect(400);
+
+      // The tree is unchanged — no half-applied move.
+      expect(
+        await prisma.category.findUnique({
+          where: { id: fu.id },
+          select: { depth: true },
+        }),
+      ).toMatchObject({ depth: 2 });
+    });
+
+    it('refuses a move that would push the subtree past four levels', async () => {
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+      const { ma, fu } = await makeChain(admin);
+
+      // Madeira alone would fit under Funchal, but it drags Funchal -> Sé
+      // along, so the deepest leaf would land at level 5+.
+      await request(app.getHttpServer())
+        .patch(`/admin/categories/${ma.id}`)
+        .set(bearer(admin))
+        .send({ parentId: fu.id })
+        .expect(400);
+    });
+
+    it('a plain field edit does not disturb the hierarchy', async () => {
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+      const prisma = app.get(PrismaService);
+      const { fu, se } = await makeChain(admin);
+
+      await request(app.getHttpServer())
+        .patch(`/admin/categories/${fu.id}`)
+        .set(bearer(admin))
+        .send({ description: 'Capital da Madeira' })
+        .expect(200);
+
+      expect(
+        await prisma.category.findUnique({
+          where: { id: se.id },
+          select: { depth: true, parentId: true },
+        }),
+      ).toMatchObject({ depth: 3, parentId: fu.id });
+    });
   });
 
   it('refuses to delete a category with articles, with 409 not 500', async () => {

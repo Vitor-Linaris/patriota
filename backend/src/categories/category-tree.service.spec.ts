@@ -53,12 +53,17 @@ describe('CategoryTreeService', () => {
 
   describe('getTree()', () => {
     it('serves from Redis on a cache hit without touching Postgres', async () => {
-      const cached = [{ id: 'x' }];
-      redis.client.get.mockResolvedValueOnce(JSON.stringify(cached));
+      redis.client.get.mockResolvedValueOnce(JSON.stringify(fourLevelRows()));
 
       const result = await service.getTree();
 
-      expect(result).toEqual(cached);
+      expect(result.map((n) => n.id)).toEqual([
+        'pt',
+        'ma',
+        'fu',
+        'se',
+        'dp',
+      ]);
       expect(prisma.category.findMany).not.toHaveBeenCalled();
     });
 
@@ -104,6 +109,66 @@ describe('CategoryTreeService', () => {
 
       expect(pt.children.map((c) => c.id)).toEqual(['ma']);
       expect(ma.children.map((c) => c.id)).toEqual(['fu']);
+    });
+
+    it('caches the tree unlinked, so no subtree is serialised twice', async () => {
+      redis.client.get.mockResolvedValueOnce(null);
+      prisma.category.findMany.mockResolvedValueOnce(fourLevelRows());
+
+      await service.getTree();
+
+      const written = JSON.parse(redis.client.set.mock.calls[0][1]);
+      // Every node appears exactly once, at the top level. Storing the
+      // linked tree instead would nest each subtree inside its parent AND
+      // repeat it at top level, growing the blob with depth for nothing.
+      expect(written).toHaveLength(5);
+      expect(written.every((n: { children: unknown[] }) => n.children.length === 0)).toBe(true);
+    });
+
+    it('relinks children on a cache hit, identically to a cache miss', async () => {
+      // The regression this guards: children holds references, so a
+      // round-trip through JSON would hand back copies and `find(byId)`
+      // would stop being the same object as `parent.children[0]`.
+      redis.client.get.mockResolvedValueOnce(null);
+      prisma.category.findMany.mockResolvedValueOnce(fourLevelRows());
+      await service.getTree();
+      const cachedBlob = redis.client.set.mock.calls[0][1];
+
+      redis.client.get.mockResolvedValueOnce(cachedBlob);
+      const fromCache = await service.getTree();
+
+      const pt = fromCache.find((n) => n.id === 'pt')!;
+      expect(pt.children.map((c) => c.id)).toEqual(['ma']);
+      // Same object, not a copy.
+      expect(pt.children[0]).toBe(fromCache.find((n) => n.id === 'ma'));
+    });
+
+    it('orders siblings by their order column', async () => {
+      redis.client.get.mockResolvedValueOnce(null);
+      prisma.category.findMany.mockResolvedValueOnce([
+        { id: 'r', slug: 'r', name: 'R', icon: '◆', color: '#000', visible: true, parentId: null, depth: 0, path: '/r/', order: 0 },
+        { id: 'b', slug: 'b', name: 'B', icon: '◆', color: '#000', visible: true, parentId: 'r', depth: 1, path: '/r/b/', order: 5 },
+        { id: 'a', slug: 'a', name: 'A', icon: '◆', color: '#000', visible: true, parentId: 'r', depth: 1, path: '/r/a/', order: 1 },
+      ]);
+
+      const tree = await service.getTree();
+
+      expect(tree.find((n) => n.id === 'r')!.children.map((c) => c.id)).toEqual([
+        'a',
+        'b',
+      ]);
+    });
+  });
+
+  describe('getForest()', () => {
+    it('returns only roots, with their subtrees hanging off them', async () => {
+      redis.client.get.mockResolvedValueOnce(null);
+      prisma.category.findMany.mockResolvedValueOnce(fourLevelRows());
+
+      const forest = await service.getForest();
+
+      expect(forest.map((n) => n.id)).toEqual(['pt', 'dp']);
+      expect(forest[0].children[0].children[0].children[0].slug).toBe('se');
     });
 
     it('rolls up article counts through all four levels', async () => {

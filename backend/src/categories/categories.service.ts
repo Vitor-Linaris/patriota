@@ -9,6 +9,7 @@ import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreateSubtopicDto } from './dto/subtopic.dto';
 import { CategoryTreeService } from './category-tree.service';
+import type { Prisma } from '../../generated/prisma/client';
 
 /** Max depth is 4 levels: categoria(0) -> subcategoria -> topico -> subtopico(3). */
 const MAX_DEPTH = 3;
@@ -114,6 +115,11 @@ export class CategoriesService {
       .then((items) => items.map((c) => this.withSubtopicsAlias(c)));
   }
 
+  /** Nested roots, hidden categories included — this is the CMS view. */
+  listTree() {
+    return this.tree.getForest();
+  }
+
   async listPublic() {
     const items = await this.prisma.category.findMany({
       where: { visible: true, parentId: null },
@@ -151,13 +157,29 @@ export class CategoriesService {
    * the tree UI) have children.
    */
   async create(dto: CreateCategoryDto) {
+    const parent = dto.parentId
+      ? await this.prisma.category.findUnique({
+          where: { id: dto.parentId },
+          select: { id: true, slug: true, path: true, depth: true },
+        })
+      : null;
+    if (dto.parentId && !parent) {
+      throw new NotFoundException('Categoria-mãe não encontrada.');
+    }
+    if (parent && parent.depth + 1 > MAX_DEPTH) {
+      throw new BadRequestException(
+        'Profundidade máxima da árvore de categorias atingida.',
+      );
+    }
+
     // Auto-disambiguation only applies to a slug DERIVED from the name.
     // An explicitly chosen slug keeps the old strict behaviour — 409 on
     // collision — because silently renaming what an editor typed on
     // purpose (into "cultura-2") would be a surprise, not a courtesy.
     // The admin form is where disambiguation belongs for explicit input:
     // a live availability check, per the plan.
-    const slug = dto.slug ?? (await this.uniqueSlug(baseSlug(dto.name)));
+    const slug = dto.slug ?? (await this.uniqueSlug(baseSlug(dto.name), parent?.slug));
+    const parentPath = parent ? parent.path : '/';
     try {
       const result = await this.prisma.$transaction(async (tx) => {
         const created = await tx.category.create({
@@ -169,13 +191,14 @@ export class CategoriesService {
             color: dto.color,
             order: dto.order ?? 0,
             visible: dto.visible ?? true,
-            depth: 0,
+            parentId: parent?.id ?? null,
+            depth: parent ? parent.depth + 1 : 0,
             path: '/',
           },
         });
         return tx.category.update({
           where: { id: created.id },
-          data: { path: `/${created.id}/` },
+          data: { path: `${parentPath}${created.id}/` },
         });
       });
       await this.tree.invalidate();
@@ -188,11 +211,100 @@ export class CategoriesService {
     }
   }
 
+  /**
+   * Reparents `node` under `newParentId`, rewriting path/depth for the
+   * node AND every descendant.
+   *
+   * Shared with the drag-and-drop reorder endpoint, which is why it takes
+   * a transaction client rather than using this.prisma: a move that
+   * updated the node but died before its descendants would leave the
+   * whole subtree pointing at a path that no longer exists.
+   */
+  private async moveTo(
+    tx: Prisma.TransactionClient,
+    node: { id: string; path: string; depth: number },
+    newParentId: string | null,
+  ) {
+    let newParentPath = '/';
+    let newDepth = 0;
+
+    if (newParentId) {
+      const parent = await tx.category.findUnique({
+        where: { id: newParentId },
+        select: { id: true, path: true, depth: true },
+      });
+      if (!parent) throw new NotFoundException('Categoria-mãe não encontrada.');
+
+      // Cycle check, by path rather than by walking parents: the node's
+      // own path is a prefix of every descendant's path, so this single
+      // comparison rejects both "be your own mother" (paths equal) and
+      // "move inside your own grandchild" in one go.
+      if (parent.path.startsWith(node.path)) {
+        throw new BadRequestException(
+          'Não é possível mover uma categoria para dentro de si própria.',
+        );
+      }
+
+      newParentPath = parent.path;
+      newDepth = parent.depth + 1;
+    }
+
+    // The subtree travels with the node, so the limit applies to its
+    // DEEPEST leaf, not to the node itself. Moving a 2-level branch under
+    // a level-2 node has to fail even though the node alone would fit —
+    // this is the check that gets forgotten.
+    const deepest = await tx.category.aggregate({
+      where: { path: { startsWith: node.path } },
+      _max: { depth: true },
+    });
+    const subtreeHeight = (deepest._max.depth ?? node.depth) - node.depth;
+    if (newDepth + subtreeHeight > MAX_DEPTH) {
+      throw new BadRequestException(
+        `Movimento excede a profundidade máxima de ${MAX_DEPTH + 1} níveis: ` +
+          'esta categoria leva consigo as suas subcategorias.',
+      );
+    }
+
+    const newPath = `${newParentPath}${node.id}/`;
+    const delta = newDepth - node.depth;
+
+    await tx.category.update({
+      where: { id: node.id },
+      data: { parentId: newParentId, depth: newDepth, path: newPath },
+    });
+
+    // One statement for the whole subtree. A Prisma loop here would be a
+    // query per descendant; swapping the path prefix in SQL is a single
+    // indexed range update. substring() rather than replace() because the
+    // old path must only be stripped from the FRONT — a cuid that happens
+    // to recur later in a deeper path must not be touched.
+    await tx.$executeRaw`
+      UPDATE "Category"
+      SET "path" = ${newPath} || substring("path" from ${node.path.length + 1}::int),
+          "depth" = "depth" + ${delta}::int
+      WHERE "path" LIKE ${node.path + '%'} AND "id" <> ${node.id}
+    `;
+  }
+
   async update(id: string, dto: UpdateCategoryDto) {
+    const { parentId, ...fields } = dto;
+    // `'parentId' in dto` distinguishes "move me to the root" (null) from
+    // "I'm not touching the hierarchy" (absent). Reading the value alone
+    // would collapse those two into the same thing.
+    const isMove = 'parentId' in dto;
+
+    const current = await this.prisma.category.findUnique({
+      where: { id },
+      select: { id: true, parentId: true, path: true, depth: true },
+    });
+    if (!current) throw new NotFoundException('Categoria não encontrada.');
+
     try {
-      const result = await this.prisma.category.update({
-        where: { id },
-        data: dto,
+      const result = await this.prisma.$transaction(async (tx) => {
+        if (isMove && (parentId ?? null) !== current.parentId) {
+          await this.moveTo(tx, current, parentId ?? null);
+        }
+        return tx.category.update({ where: { id }, data: fields });
       });
       await this.tree.invalidate();
       return result;
