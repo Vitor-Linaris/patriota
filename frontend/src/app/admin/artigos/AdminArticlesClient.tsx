@@ -41,7 +41,7 @@ export interface AdminArticle {
   summary: string;
   content: string;
   status: ApiStatus;
-  premium: boolean;
+  exclusive: boolean;
   views: number;
   readMinutes: number;
   tags: string[];
@@ -158,7 +158,7 @@ interface EditorState {
   summary: string;
   content: string;
   status: UiStatus;
-  premium: boolean;
+  exclusive: boolean;
   readMinutes: number;
   tags: string[];
   essentials: string[];
@@ -184,7 +184,7 @@ function emptyEditor(categoryId: string): EditorState {
     summary: "",
     content: "",
     status: "rascunho",
-    premium: false,
+    exclusive: false,
     readMinutes: 3,
     tags: [],
     essentials: [],
@@ -207,7 +207,7 @@ function articleToEditor(a: AdminArticle): EditorState {
     summary: a.summary,
     content: a.content,
     status: API_TO_UI[a.status],
-    premium: a.premium,
+    exclusive: a.exclusive,
     readMinutes: a.readMinutes,
     tags: a.tags,
     essentials: a.essentials ?? [],
@@ -597,20 +597,20 @@ function ArticleEditor({
               <div className="flex items-center justify-between border-t border-gray-50 py-2">
                 <div>
                   <p className="text-sm font-bold text-gray-700">
-                    Conteúdo Premium
+                    Conteúdo Exclusivo
                   </p>
                   <p className="text-[10px] text-gray-400">
-                    Requer subscrição para aceder
+                    Só para assinantes
                   </p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => set({ premium: !form.premium })}
-                  aria-pressed={form.premium}
-                  className={`relative h-5 w-10 rounded-full transition-colors ${form.premium ? "bg-[#FFCC66]" : "bg-gray-200"}`}
+                  onClick={() => set({ exclusive: !form.exclusive })}
+                  aria-pressed={form.exclusive}
+                  className={`relative h-5 w-10 rounded-full transition-colors ${form.exclusive ? "bg-[#FFCC66]" : "bg-gray-200"}`}
                 >
                   <span
-                    className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${form.premium ? "translate-x-5" : "translate-x-0.5"}`}
+                    className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${form.exclusive ? "translate-x-5" : "translate-x-0.5"}`}
                   />
                 </button>
               </div>
@@ -975,7 +975,7 @@ export default function AdminArticlesClient({
       content: form.content,
       categoryId: form.categoryId,
       status: saveStatus,
-      premium: form.premium,
+      exclusive: form.exclusive,
       readMinutes: form.readMinutes,
       tags: form.tags,
       essentials: form.essentials,
@@ -1304,9 +1304,9 @@ export default function AdminArticlesClient({
                         <p className="line-clamp-2 text-sm font-semibold leading-snug text-gray-800">
                           {a.title}
                         </p>
-                        {a.premium && (
+                        {a.exclusive && (
                           <span className="mt-1 inline-block rounded-full bg-[#FFCC66]/20 px-1.5 py-0.5 text-[9px] font-black text-[#8B6900]">
-                            PREMIUM
+                            EXCLUSIVO
                           </span>
                         )}
                       </div>

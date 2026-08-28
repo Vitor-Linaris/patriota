@@ -540,7 +540,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
         heading: "Assinatura paga — em preparação",
         blocks: [
           p(
-            "Estamos a preparar uma subscrição paga que acrescentará conteúdo premium, newsletter exclusiva e acesso ao arquivo histórico. Não há ainda data de lançamento nem preço fechado.",
+            "Estamos a preparar uma subscrição paga que acrescentará conteúdo exclusivo, newsletter exclusiva e acesso ao arquivo histórico. Não há ainda data de lançamento nem preço fechado.",
           ),
           p(
             "Quem já tiver conta gratuita não precisa de fazer nada: a assinatura será um acréscimo à conta existente, sem registo novo e sem perder o que tiver guardado.",

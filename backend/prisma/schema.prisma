@@ -244,7 +244,11 @@ model Article {
   summary               String        @default("")
   content               String        @default("")
   status                ArticleStatus @default(RASCUNHO)
-  premium               Boolean       @default(false)
+  /// Requires a paid subscription to read. Named `premium` until the
+  /// subscription model was decided; the reader-facing word is now
+  /// "exclusivo", and Reader.plan (GRATIS | PREMIUM) is the SEPARATE
+  /// concept of whether a given reader pays.
+  exclusive             Boolean       @default(false)
   views                 Int           @default(0)
   readMinutes           Int           @default(3)
   tags                  String[]      @default([])

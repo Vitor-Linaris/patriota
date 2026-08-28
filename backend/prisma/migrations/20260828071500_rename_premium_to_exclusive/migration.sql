@@ -1,0 +1,14 @@
+-- Rename Article.premium -> Article.exclusive.
+--
+-- Name only: RENAME COLUMN keeps every existing value, so articles
+-- already flagged stay flagged. No data transformation, no backfill.
+--
+-- "premium" was chosen before the subscription model existed. Now that
+-- the product word is "assinatura"/"assinante", the reader-facing label
+-- is "Conteúdo Exclusivo" and the column follows it.
+--
+-- NOT touched here, deliberately: the ReaderPlan enum (GRATIS | PREMIUM)
+-- and Reader.plan. That is a different question — whether a READER pays
+-- — and it already surfaces correctly as "Assinante" in the UI. Renaming
+-- it is a separate decision.
+ALTER TABLE "Article" RENAME COLUMN "premium" TO "exclusive";

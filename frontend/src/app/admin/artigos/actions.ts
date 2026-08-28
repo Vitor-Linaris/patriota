@@ -21,7 +21,7 @@ export interface ArticleFormPayload {
     | "AGENDADO"
     | "PUBLICADO"
     | "ARQUIVADO";
-  premium?: boolean;
+  exclusive?: boolean;
   readMinutes?: number;
   tags?: string[];
   /** Up to 8 short bullets shown in the yellow "Essencial" box. */

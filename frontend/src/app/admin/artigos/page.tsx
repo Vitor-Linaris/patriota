@@ -19,7 +19,7 @@ interface ArticleApi {
   summary: string;
   content: string;
   status: "RASCUNHO" | "EM_REVISAO" | "AGENDADO" | "PUBLICADO" | "ARQUIVADO";
-  premium: boolean;
+  exclusive: boolean;
   views: number;
   readMinutes: number;
   tags: string[];
@@ -61,7 +61,7 @@ function toAdminArticle(a: ArticleApi): AdminArticle {
     summary: a.summary ?? "",
     content: a.content ?? "",
     status: a.status,
-    premium: a.premium,
+    exclusive: a.exclusive,
     views: a.views,
     readMinutes: a.readMinutes,
     tags: a.tags ?? [],

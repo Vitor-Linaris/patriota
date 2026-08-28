@@ -206,7 +206,7 @@ export class ArticlesService {
           summary: dto.summary ?? '',
           content: dto.content ?? '',
           status: (dto.status as ArticleStatus) ?? 'RASCUNHO',
-          premium: dto.premium ?? false,
+          exclusive: dto.exclusive ?? false,
           readMinutes: dto.readMinutes ?? 3,
           tags: dto.tags ?? [],
           essentials: dto.essentials ?? [],
