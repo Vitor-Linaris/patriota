@@ -31,6 +31,14 @@ export class FacebookOAuthStrategy extends PassportStrategy(
       callbackURL:
         process.env.FACEBOOK_CALLBACK_URL ??
         'http://localhost:8585/public/reader/auth/facebook/callback',
+      // passport-facebook defaults to v3.2 — October 2018 — for the
+      // dialog, the token exchange AND the profile fetch. Meta keeps
+      // answering calls to versions it no longer supports by routing
+      // them to the oldest one it does, which means the behaviour of a
+      // login that is pinned to nothing drifts on Meta's schedule, not
+      // ours. Pinned explicitly, and overridable, so the day this needs
+      // to move it is an env var and not a deploy.
+      graphAPIVersion: process.env.FACEBOOK_GRAPH_VERSION ?? 'v21.0',
       scope: ['email'],
       profileFields: ['id', 'emails', 'name', 'displayName', 'picture.type(large)'],
       state: false,
