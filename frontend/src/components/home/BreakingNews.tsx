@@ -108,12 +108,9 @@ export function BreakingNews({ items }: { items: BreakingItem[] }) {
           </div>
         </div>
 
-        {/* Dot indicator — clickable nav. Each button is a fixed 24×24
-            hit area with the pill drawn inside it: an 8px dot that also
-            grew on hover was both too small to aim at and liable to
-            reflow the row out from under the pointer. */}
+        {/* Dot indicator — clickable nav. */}
         {list.length > 1 && (
-          <div className="hidden shrink-0 items-center gap-1 md:flex">
+          <div className="hidden shrink-0 items-center gap-1.5 md:flex">
             {list.map((_, i) => {
               const isActive = i === active;
               return (
@@ -126,17 +123,12 @@ export function BreakingNews({ items }: { items: BreakingItem[] }) {
                   }}
                   aria-label={`Mostrar manchete ${i + 1}`}
                   aria-current={isActive ? "true" : undefined}
-                  className="group/dot flex h-6 w-6 items-center justify-end"
-                >
-                  <span
-                    aria-hidden
-                    className={`block h-2 rounded-full transition-all duration-300 ${
-                      isActive
-                        ? "w-5 bg-patriota-accent"
-                        : "w-2 bg-white/30 group-hover/dot:bg-white/70"
-                    }`}
-                  />
-                </button>
+                  className={`rounded-full transition-all duration-300 ${
+                    isActive
+                      ? "h-2 w-6 bg-patriota-accent"
+                      : "h-2 w-2 bg-white/30 hover:w-3 hover:bg-white/60"
+                  }`}
+                />
               );
             })}
           </div>
