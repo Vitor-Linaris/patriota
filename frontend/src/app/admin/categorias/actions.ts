@@ -1,7 +1,8 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { apiFetch } from "@/lib/api";
+import { CATEGORIES_TAG } from "@/lib/categories";
 
 export interface CategoryPayload {
   name: string;
@@ -18,6 +19,15 @@ export interface SubtopicPayload {
 }
 
 async function refresh() {
+  // The catalogue is now cached across requests, so this tag is what
+  // makes an edit visible at all. It has to come first and it has to be
+  // unconditional: the header and footer read the catalogue on EVERY
+  // page, and the revalidatePath calls below only cover three of them.
+  //
+  // updateTag rather than revalidateTag: this is a Server Action and the
+  // editor must see the change on the very next render, not on the one
+  // after. (revalidateTag's single-argument form is deprecated besides.)
+  updateTag(CATEGORIES_TAG);
   revalidatePath("/admin/categorias");
   revalidatePath("/");
   revalidatePath("/categoria", "layout");

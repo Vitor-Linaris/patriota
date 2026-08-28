@@ -48,6 +48,16 @@ function adapt(n: BackendNode): CategoryDef {
 }
 
 /**
+ * Cache tag for the category catalogue.
+ *
+ * Every mutation in /admin/categorias invalidates it — see the `refresh`
+ * helper in that folder's actions.ts. Anything that starts reading the
+ * catalogue from somewhere else must be invalidated by the same tag, or
+ * it will show a menu the editor already changed.
+ */
+export const CATEGORIES_TAG = "categories";
+
+/**
  * The visible category tree, nested, from `GET /public/categories/tree`.
  *
  * Wrapped in React's `cache()` so one request reuses the same payload
@@ -57,7 +67,22 @@ function adapt(n: BackendNode): CategoryDef {
 export const getCategoryTree = cache(async (): Promise<CategoryDef[]> => {
   try {
     const res = await fetch(`${apiBaseUrl()}/public/categories/tree`, {
-      cache: "no-store",
+      // Cached across requests, not just within one.
+      //
+      // The header and the footer both read this, so before it was an
+      // API round-trip on every single page render of the whole site —
+      // for data that changes when an editor changes it and not
+      // otherwise. React's cache() above only dedupes within ONE render;
+      // this is what stops the next reader paying for it again.
+      //
+      // Correctness comes from the tag, not from the clock: the admin
+      // invalidates it on every category mutation, so nobody ever sees a
+      // menu that is behind the CMS. The five minutes are only a
+      // backstop for changes that bypass the admin — a direct database
+      // edit, say — and match the backend's own Redis TTL for the same
+      // tree, so the two layers expire together rather than one holding
+      // the other stale.
+      next: { tags: [CATEGORIES_TAG], revalidate: 300 },
     });
     if (!res.ok) {
       // Loud on purpose. An empty tree renders the site with no

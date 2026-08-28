@@ -193,10 +193,20 @@ export interface SocialLinks {
 /** Fetch the public `redes` settings section so the footer can
  *  render the social icons. Returns empty object on error so the
  *  footer simply hides every icon rather than blowing up. */
+/**
+ * Cache tag for the public site settings. Invalidated when a section is
+ * saved in /admin/configuracoes.
+ */
+export const SETTINGS_TAG = "settings";
+
 export const getSocialLinks = cache(async (): Promise<SocialLinks> => {
   try {
     const res = await fetch(`${apiBaseUrl()}/public/settings/redes`, {
-      cache: "no-store",
+      // Same reasoning as the category catalogue: the footer reads this
+      // on every page, and it only changes when somebody edits it in the
+      // backoffice — which invalidates the tag. Uncached, it was a round
+      // trip per page render for five URLs that change once a year.
+      next: { tags: [SETTINGS_TAG], revalidate: 300 },
     });
     if (!res.ok) return {};
     const data = (await res.json()) as Partial<SocialLinks>;
