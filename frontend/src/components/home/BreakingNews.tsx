@@ -113,7 +113,7 @@ export function BreakingNews({ items }: { items: BreakingItem[] }) {
             grew on hover was both too small to aim at and liable to
             reflow the row out from under the pointer. */}
         {list.length > 1 && (
-          <div className="hidden shrink-0 items-center md:flex">
+          <div className="hidden shrink-0 items-center gap-1 md:flex">
             {list.map((_, i) => {
               const isActive = i === active;
               return (
@@ -126,7 +126,7 @@ export function BreakingNews({ items }: { items: BreakingItem[] }) {
                   }}
                   aria-label={`Mostrar manchete ${i + 1}`}
                   aria-current={isActive ? "true" : undefined}
-                  className="group/dot flex h-6 w-6 items-center justify-center"
+                  className="group/dot flex h-6 w-6 items-center justify-end"
                 >
                   <span
                     aria-hidden

@@ -46,7 +46,9 @@ export async function SiteHeader() {
         {/* Desktop: inline links, with a panel on sections that have
             subsections. Hidden below `lg`. */}
         {primary.length > 0 && (
-          <nav className="hidden items-center gap-7 text-[14px] lg:flex">
+          // relative: the megamenu panels are positioned against this
+          // bar, so they can never run off the edge of the page.
+          <nav className="relative hidden items-center gap-7 text-[14px] lg:flex">
             {primary.map((c) => (
               <CategoryMegaMenu key={c.slug} category={c} />
             ))}

@@ -28,6 +28,13 @@ interface PanelState {
   category: CategoryDef;
   left: number;
   top: number;
+  /**
+   * Carried in state rather than recomputed at render: the position was
+   * clamped against the narrowed width, so rendering at the unclamped
+   * max put the panel's right edge past the viewport, which pushed the
+   * document wider and let the whole page scroll sideways.
+   */
+  width: number;
 }
 
 /**
@@ -160,7 +167,11 @@ export function SecondaryNavStrip({ items }: { items: CategoryDef[] }) {
       12,
       Math.min(rect.left, window.innerWidth - width - 12),
     );
-    setPanel({ category, left, top: rect.bottom });
+    // Bottom of the BAR, not of the link: anchoring to the link's own
+    // box left the panel overlapping the last few pixels of the strip.
+    const barBottom =
+      viewportRef.current?.getBoundingClientRect().bottom ?? rect.bottom;
+    setPanel({ category, left, top: barBottom, width });
   };
 
   const scheduleClose = () => {
@@ -205,7 +216,7 @@ export function SecondaryNavStrip({ items }: { items: CategoryDef[] }) {
           // its own indicator. The space it sits in is already reserved
           // by DOTS_RESERVE.
           <div
-            className="absolute inset-y-0 right-0 flex items-center bg-[#f0f2f7] pl-2"
+            className="absolute inset-y-0 right-0 flex items-center gap-1 bg-[#f0f2f7] pl-2"
             role="tablist"
             aria-label="Páginas de rubricas"
           >
@@ -216,6 +227,13 @@ export function SecondaryNavStrip({ items }: { items: CategoryDef[] }) {
               // the row and slid it out from under the pointer, so the
               // click landed on nothing. The outer box never changes
               // size now, so nothing moves while you aim at it.
+              //
+              // justify-end pins every pill to the RIGHT of its box, so
+              // the active one grows leftwards. Centred, the last pill
+              // grew outwards into the grid's right edge — the row sits
+              // flush against it — and read as the bar bursting its
+              // container. Right-anchored, the row's right edge is the
+              // same x in every state.
               <button
                 key={`${i}-${offset}`}
                 type="button"
@@ -223,7 +241,7 @@ export function SecondaryNavStrip({ items }: { items: CategoryDef[] }) {
                 aria-selected={i === active}
                 aria-label={`Mostrar rubricas, página ${i + 1} de ${pageCount}`}
                 onClick={() => setActive(i)}
-                className="group/dot flex h-6 w-6 items-center justify-center"
+                className="group/dot flex h-6 w-6 items-center justify-end"
               >
                 <span
                   aria-hidden
@@ -242,11 +260,7 @@ export function SecondaryNavStrip({ items }: { items: CategoryDef[] }) {
       {panel && (
         <div
           className="fixed z-50 hidden lg:block"
-          style={{
-            left: panel.left,
-            top: panel.top,
-            width: Math.min(PANEL_MAX_WIDTH, 640),
-          }}
+          style={{ left: panel.left, top: panel.top, width: panel.width }}
           onMouseEnter={cancelClose}
           onMouseLeave={scheduleClose}
         >

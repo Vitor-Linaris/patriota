@@ -37,7 +37,9 @@ export function CategoryMegaMenu({ category }: { category: CategoryDef }) {
   }
 
   return (
-    <div className="group relative">
+    // Deliberately NOT `relative`: the panel below is positioned against
+    // the nav (which is), not against this item.
+    <div className="group">
       <Link
         href={href}
         className="text-slate-700 transition hover:text-patriota-medium group-focus-within:text-patriota-medium"
@@ -45,10 +47,18 @@ export function CategoryMegaMenu({ category }: { category: CategoryDef }) {
         {category.label}
       </Link>
 
-      {/* pt-3 rather than a margin: the padding is part of the hover
+      {/* Spans the nav rather than centring on the item.
+
+          Centred, a panel under one of the last links ran hundreds of
+          pixels past the right edge of the page — the nav sits flush
+          right, and CSS has no way to know how much room is left. Pinned
+          to the nav's own edges it cannot overflow, whichever item opened
+          it, and the columns get more room besides.
+
+          pt-3 rather than a margin: the padding is part of the hover
           target, so the pointer can cross the gap into the panel without
           it closing underneath them. */}
-      <div className="invisible absolute left-1/2 top-full z-50 w-max max-w-[min(46rem,90vw)] -translate-x-1/2 pt-3 opacity-0 transition-opacity duration-150 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
+      <div className="invisible absolute inset-x-0 top-full z-50 pt-3 opacity-0 transition-opacity duration-150 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
         <CategoryPanel category={category} />
       </div>
     </div>
