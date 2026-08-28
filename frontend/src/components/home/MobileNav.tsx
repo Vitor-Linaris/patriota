@@ -19,6 +19,109 @@ import type { CategoryDef } from "@/lib/categories";
  * + browse + subscribe" without having to remember where each lives
  * on a tiny viewport.
  */
+/**
+ * A top-level section in the drawer. If it has subsections, the row
+ * splits: the label navigates, the chevron expands.
+ *
+ * Exactly ONE level deep, and deliberately so. Level 3 and 4 are reached
+ * from inside the section page, not here — a four-level accordion on a
+ * phone is a scroll trap where the reader loses track of what they
+ * opened.
+ */
+function SectionRow({
+  category,
+  expanded,
+  onToggle,
+  onNavigate,
+}: {
+  category: CategoryDef;
+  expanded: boolean;
+  onToggle: () => void;
+  onNavigate: () => void;
+}) {
+  const href = `/categoria/${category.slug}`;
+  const count = category.articleCountTotal || category.articleCount;
+
+  if (category.children.length === 0) {
+    return (
+      <Link
+        href={href}
+        onClick={onNavigate}
+        className="flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-[15px] font-semibold text-slate-800 transition-colors hover:bg-patriota-pure hover:text-patriota-dark"
+      >
+        <span>{category.label}</span>
+        {count > 0 && (
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500">
+            {count}
+          </span>
+        )}
+      </Link>
+    );
+  }
+
+  return (
+    <>
+      <div className="flex items-center rounded-lg transition-colors hover:bg-patriota-pure">
+        <Link
+          href={href}
+          onClick={onNavigate}
+          className="flex-1 px-3 py-2.5 text-[15px] font-semibold text-slate-800 hover:text-patriota-dark"
+        >
+          {category.label}
+        </Link>
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          aria-label={
+            expanded
+              ? `Fechar subsecções de ${category.label}`
+              : `Ver subsecções de ${category.label}`
+          }
+          className="flex h-10 w-10 items-center justify-center text-slate-400 hover:text-patriota-dark"
+        >
+          <span
+            aria-hidden
+            className={`text-[10px] transition-transform ${expanded ? "rotate-180" : ""}`}
+          >
+            ▼
+          </span>
+        </button>
+      </div>
+
+      {expanded && (
+        <ul className="mb-1 ml-3 flex flex-col gap-0.5 border-l border-slate-100 pl-3">
+          <li>
+            <Link
+              href={href}
+              onClick={onNavigate}
+              className="block rounded-lg px-3 py-2 text-[13px] font-bold text-patriota-medium hover:bg-patriota-pure"
+            >
+              Ver tudo em {category.label} →
+            </Link>
+          </li>
+          {category.children.map((child) => (
+            <li key={child.slug}>
+              <Link
+                href={`/categoria/${child.slug}`}
+                onClick={onNavigate}
+                className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-[14px] text-slate-600 transition-colors hover:bg-patriota-pure hover:text-patriota-dark"
+              >
+                <span>{child.label}</span>
+                {child.articleCountTotal > 0 && (
+                  <span className="text-[11px] text-slate-400">
+                    {child.articleCountTotal}
+                  </span>
+                )}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
+}
+
 export function MobileNav({
   primary,
   secondary,
@@ -27,6 +130,10 @@ export function MobileNav({
   secondary: CategoryDef[];
 }) {
   const [open, setOpen] = useState(false);
+  // One section open at a time. A tap on another closes the first —
+  // a phone screen has no room for two expanded lists, and letting
+  // several stack turns the drawer into a scroll trap.
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   // Esc to close, body scroll lock while open.
   useEffect(() => {
@@ -120,18 +227,14 @@ export function MobileNav({
             <ul className="flex flex-col gap-0.5">
               {primary.map((c) => (
                 <li key={c.slug}>
-                  <Link
-                    href={`/categoria/${c.slug}`}
-                    onClick={() => setOpen(false)}
-                    className="flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-[15px] font-semibold text-slate-800 transition-colors hover:bg-patriota-pure hover:text-patriota-dark"
-                  >
-                    <span>{c.label}</span>
-                    {c.articleCount > 0 && (
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500">
-                        {c.articleCount}
-                      </span>
-                    )}
-                  </Link>
+                  <SectionRow
+                    category={c}
+                    expanded={expanded === c.slug}
+                    onToggle={() =>
+                      setExpanded((prev) => (prev === c.slug ? null : c.slug))
+                    }
+                    onNavigate={() => setOpen(false)}
+                  />
                 </li>
               ))}
             </ul>
@@ -159,9 +262,9 @@ export function MobileNav({
                     className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-[14px] text-slate-600 transition-colors hover:bg-patriota-pure hover:text-patriota-dark"
                   >
                     <span>{c.label}</span>
-                    {c.articleCount > 0 && (
+                    {c.articleCountTotal > 0 && (
                       <span className="text-[11px] text-slate-400">
-                        {c.articleCount}
+                        {c.articleCountTotal}
                       </span>
                     )}
                   </Link>

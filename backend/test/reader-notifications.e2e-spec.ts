@@ -64,6 +64,7 @@ describe('Reader notifications (e2e)', () => {
         color: '#1e40af',
         order: 1,
         visible: true,
+        path: '/root/', // placeholder — these tests never assert on the tree
       },
     });
     categoryId = cat.id;
@@ -443,6 +444,148 @@ describe('Reader notifications (e2e)', () => {
         where: { readerId: reader.id, status: 'PENDENTE' },
       });
       expect(rows.length).toBeGreaterThan(0);
+
+      spy.mockRestore();
+      await app.get(SettingsService).put('email', {});
+    });
+  });
+
+  /**
+   * The roll-up, against the real database and a real tree cache.
+   *
+   * Categories are created through the ADMIN API rather than Prisma
+   * directly, because that is what invalidates the cached tree — seeding
+   * rows behind the service's back would leave resolveAncestorIds
+   * reading a tree that predates them, and the test would pass or fail
+   * on cache timing rather than on behaviour.
+   */
+  describe('roll-up to ancestor categories', () => {
+    let admin: TestUser;
+    let chain: { pt: string; ma: string; fu: string; se: string };
+
+    const mkCategory = (name: string, parentId?: string) =>
+      request(app.getHttpServer())
+        .post('/admin/categories')
+        .set(bearer(admin))
+        .send({
+          name,
+          description: '',
+          icon: '◆',
+          color: '#000000',
+          ...(parentId ? { parentId } : {}),
+        })
+        .expect(201);
+
+    const follow = (categoryId: string) =>
+      request(app.getHttpServer())
+        .put(`/reader/favorites/categories/${categoryId}`)
+        .set(readerBearer(reader))
+        .send({})
+        .expect(200);
+
+    /** Publishes into Sé, four levels down, and runs the poller. */
+    async function publishInSe(slug: string) {
+      const article = await prisma.article.create({
+        data: {
+          slug,
+          title: 'Obras na Rua da Sé',
+          summary: 's',
+          content: 'c',
+          status: 'PUBLICADO',
+          publishedAt: new Date(),
+          categoryId: chain.se,
+          authorId: editor.id,
+        },
+      });
+      await service.enqueueDueArticles();
+      return article.id;
+    }
+
+    beforeEach(async () => {
+      admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+      const pt = await mkCategory('Portugal');
+      const ma = await mkCategory('Madeira', pt.body.id);
+      const fu = await mkCategory('Funchal', ma.body.id);
+      const se = await mkCategory('Sé', fu.body.id);
+      chain = {
+        pt: pt.body.id,
+        ma: ma.body.id,
+        fu: fu.body.id,
+        se: se.body.id,
+      };
+    });
+
+    it('reaches a reader who follows only the root', async () => {
+      // Nobody follows Sé. Following Portugal has to be enough, or
+      // creating a subsection would quietly cut existing followers off
+      // from coverage they were already getting.
+      await follow(chain.pt);
+
+      const articleId = await publishInSe('roll-up-raiz');
+
+      expect(await notificationsFor(articleId)).toHaveLength(1);
+    });
+
+    it('sends exactly ONE to a reader following the parent AND the child', async () => {
+      // The test that matters. Four fan-out passes match this reader
+      // twice; @@unique([readerId, articleId]) with skipDuplicates has to
+      // collapse them into a single row, and so a single e-mail.
+      await follow(chain.pt);
+      await follow(chain.se);
+
+      const articleId = await publishInSe('roll-up-duplo');
+
+      expect(await notificationsFor(articleId)).toHaveLength(1);
+    });
+
+    it('does not reach a reader following an unrelated branch', async () => {
+      const desporto = await mkCategory('Desporto');
+      await follow(desporto.body.id);
+
+      const articleId = await publishInSe('roll-up-outro-ramo');
+
+      expect(await notificationsFor(articleId)).toHaveLength(0);
+    });
+
+    it('respects a mute on the followed category', async () => {
+      // notify:false is the per-category mute, deliberately distinct
+      // from unfollowing. Rolling up must not resurrect it.
+      await request(app.getHttpServer())
+        .put(`/reader/favorites/categories/${chain.pt}`)
+        .set(readerBearer(reader))
+        .send({ notify: false })
+        .expect(200);
+
+      const articleId = await publishInSe('roll-up-silenciado');
+
+      expect(await notificationsFor(articleId)).toHaveLength(0);
+    });
+
+    it('delivers a single e-mail for the whole chain', async () => {
+      // emailArticlePublished defaults to FALSE — the newsroom opts in.
+      await app
+        .get(SettingsService)
+        .put('email', { emailArticlePublished: true });
+      const spy = jest
+        .spyOn(app.get(MailerService), 'sendOrThrow')
+        .mockResolvedValue({ messageId: 'test' });
+
+      await request(app.getHttpServer())
+        .patch('/reader/me')
+        .set(readerBearer(reader))
+        .send({ digestFrequency: 'IMEDIATO' })
+        .expect(200);
+
+      await follow(chain.pt);
+      await follow(chain.ma);
+      await follow(chain.se);
+
+      await publishInSe('roll-up-um-email');
+      const sent = await service.deliver('IMEDIATO');
+
+      // Three follows along one chain, one message.
+      expect(sent).toBe(1);
+      expect(spy).toHaveBeenCalledTimes(1);
 
       spy.mockRestore();
       await app.get(SettingsService).put('email', {});

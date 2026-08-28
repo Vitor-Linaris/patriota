@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { SectionHeading } from "./SectionHeading";
-import { CATEGORY_COLOR } from "./HeroGrid";
+import { CategoryBadge } from "../CategoryBadge";
 import { timeAgo, type ArticleSummary } from "@/lib/public-api";
 import { imageVariant } from "@/lib/images";
 
@@ -36,11 +36,10 @@ export function LatestNews({ items }: Props) {
               )}
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-                  <span
-                    className={`rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white ${CATEGORY_COLOR[item.category.name] ?? "bg-slate-600"}`}
-                  >
-                    {item.category.name}
-                  </span>
+                  <CategoryBadge
+                    name={item.category.name}
+                    color={item.category.color}
+                  />
                   <span aria-hidden>·</span>
                   <span>{timeAgo(item.publishedAt)}</span>
                   <span aria-hidden>·</span>

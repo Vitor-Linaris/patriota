@@ -10,6 +10,10 @@
     "module": "esnext",
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
+    // For the standalone `npm run check:*` scripts, which Node runs
+    // directly with its type-stripping loader and which therefore need the
+    // explicit .ts extension on relative imports. Safe with noEmit.
+    "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,

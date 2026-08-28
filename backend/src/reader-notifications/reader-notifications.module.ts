@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ReaderNotificationsService } from './reader-notifications.service';
 import { ReaderNotificationsScheduler } from './reader-notifications.scheduler';
 import { UnsubscribeController } from './unsubscribe.controller';
+import { CategoriesModule } from '../categories/categories.module';
 
 /**
  * "New article in a category you follow", end to end: the poller that
@@ -13,6 +14,9 @@ import { UnsubscribeController } from './unsubscribe.controller';
  * registration hazard. MailerModule is @Global.
  */
 @Module({
+  // CategoriesModule for CategoryTreeService: a notification rolls up to
+  // the ancestors of the article's category.
+  imports: [CategoriesModule],
   providers: [ReaderNotificationsService, ReaderNotificationsScheduler],
   controllers: [UnsubscribeController],
   exports: [ReaderNotificationsService],

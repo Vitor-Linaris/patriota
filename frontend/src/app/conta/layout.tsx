@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { BackForwardGuard } from "@/components/BackForwardGuard";
 
 /**
  * Pass-through layout.
@@ -14,5 +15,12 @@ import type { ReactNode } from "react";
  * side already pays per page through AdminShell.
  */
 export default function ContaLayout({ children }: { children: ReactNode }) {
-  return children;
+  return (
+    <>
+      {/* Back after "terminar sessão" must not restore the dashboard
+          from the browser's snapshot still looking signed in. */}
+      <BackForwardGuard />
+      {children}
+    </>
+  );
 }

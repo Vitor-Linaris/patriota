@@ -21,7 +21,6 @@ describe('Users (e2e)', () => {
       'ActivityLog',
       'Article',
       'User',
-      'Subtopic',
       'Category',
     ]);
   });

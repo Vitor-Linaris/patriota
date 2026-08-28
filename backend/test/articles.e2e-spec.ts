@@ -19,7 +19,7 @@ describe('Articles (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await truncate(app, ['Article', 'Subtopic', 'Category']);
+    await truncate(app, ['Article', 'Category']);
     const prisma = app.get(PrismaService);
     const cat = await prisma.category.create({
       data: {
@@ -30,6 +30,7 @@ describe('Articles (e2e)', () => {
         color: '#1e40af',
         order: 1,
         visible: true,
+        path: '/root/', // placeholder — these tests never assert on the tree
       },
     });
     categoryId = cat.id;
@@ -333,6 +334,7 @@ describe('Articles (e2e)', () => {
         color: '#059669',
         order: 2,
         visible: true,
+        path: '/root/', // placeholder — these tests never assert on the tree
       },
     });
 
@@ -399,5 +401,131 @@ describe('Articles (e2e)', () => {
     expect(titles).toContain('Published');
     expect(titles).not.toContain('Draft');
     void draft;
+  });
+
+  /**
+   * The funnel, end to end against the real database and a real Redis
+   * cache. Categories are created through the ADMIN API rather than
+   * Prisma directly, because that is what invalidates the cached tree —
+   * seeding rows behind the service's back would leave resolveSubtreeIds
+   * reading a tree that predates them.
+   */
+  describe('subtree funnel', () => {
+    const newCategory = (
+      admin: { token: string },
+      name: string,
+      parentId?: string,
+    ) =>
+      request(app.getHttpServer())
+        .post('/admin/categories')
+        .set(bearer(admin as never))
+        .send({
+          name,
+          description: '',
+          icon: '◆',
+          color: '#000000',
+          ...(parentId ? { parentId } : {}),
+        })
+        .expect(201);
+
+    async function scenario() {
+      const editor = await makeUser(app, { role: 'SUPER_ADMIN' });
+
+      // Portugal > Madeira > Funchal > Sé, plus an unrelated root.
+      const pt = await newCategory(editor, 'Portugal');
+      const ma = await newCategory(editor, 'Madeira', pt.body.id);
+      const fu = await newCategory(editor, 'Funchal', ma.body.id);
+      const se = await newCategory(editor, 'Sé', fu.body.id);
+      const dp = await newCategory(editor, 'Desporto');
+
+      const created = await request(app.getHttpServer())
+        .post('/admin/articles')
+        .set(bearer(editor))
+        .send({
+          title: 'Obras na Rua da Sé',
+          summary: 's',
+          content: '<p>c</p>',
+          categoryId: se.body.id,
+        })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/admin/articles/${created.body.id}/publish`)
+        .set(bearer(editor))
+        .expect(201);
+
+      return {
+        editor,
+        slugs: {
+          pt: pt.body.slug,
+          ma: ma.body.slug,
+          fu: fu.body.slug,
+          se: se.body.slug,
+          dp: dp.body.slug,
+        },
+      };
+    }
+
+    const publicTitles = async (query: string) => {
+      const res = await request(app.getHttpServer())
+        .get(`/public/articles?${query}`)
+        .expect(200);
+      return (res.body.items as { title: string }[]).map((a) => a.title);
+    };
+
+    it('surfaces a leaf article at every level above it', async () => {
+      const { slugs } = await scenario();
+
+      expect(await publicTitles(`category=${slugs.se}`)).toContain(
+        'Obras na Rua da Sé',
+      );
+      expect(await publicTitles(`category=${slugs.fu}`)).toContain(
+        'Obras na Rua da Sé',
+      );
+      expect(await publicTitles(`category=${slugs.pt}`)).toContain(
+        'Obras na Rua da Sé',
+      );
+    });
+
+    it('does not leak it into an unrelated branch', async () => {
+      const { slugs } = await scenario();
+
+      expect(await publicTitles(`category=${slugs.dp}`)).not.toContain(
+        'Obras na Rua da Sé',
+      );
+    });
+
+    it('the CMS list stays literal unless asked to widen', async () => {
+      const { editor, slugs } = await scenario();
+
+      const strict = await request(app.getHttpServer())
+        .get(`/admin/articles?category=${slugs.pt}`)
+        .set(bearer(editor))
+        .expect(200);
+      expect(strict.body.items).toHaveLength(0);
+
+      const widened = await request(app.getHttpServer())
+        .get(`/admin/articles?category=${slugs.pt}&includeDescendants=true`)
+        .set(bearer(editor))
+        .expect(200);
+      expect(
+        (widened.body.items as { title: string }[]).map((a) => a.title),
+      ).toContain('Obras na Rua da Sé');
+    });
+
+    it('rolls the count up to the ancestors, keeping the direct one honest', async () => {
+      const { slugs } = await scenario();
+
+      const res = await request(app.getHttpServer())
+        .get('/public/categories')
+        .expect(200);
+      const portugal = (
+        res.body as { slug: string; articleCount: number; articleCountTotal: number }[]
+      ).find((c) => c.slug === slugs.pt);
+
+      expect(portugal).toBeDefined();
+      // Portugal holds nothing itself, but the reader gets one article.
+      expect(portugal!.articleCount).toBe(0);
+      expect(portugal!.articleCountTotal).toBe(1);
+    });
   });
 });

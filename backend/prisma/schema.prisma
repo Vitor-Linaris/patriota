@@ -192,20 +192,49 @@ model User {
   moderatedComments Comment[]     @relation("CommentModerator")
 }
 
+/// Up to 4 levels: categoria (depth 0) -> subcategoria -> topico ->
+/// subtopico (depth 3). Enforced by the CHECK below AND in
+/// CategoryTreeService, because the "does this move fit" rule needs the
+/// parent row, which a DB constraint alone can't see for a whole subtree
+/// move.
+///
+/// path is materialised ("/<ancestorId>/.../<id>/", self-inclusive) so a
+/// subtree is `startsWith(path)` in memory against a cached tree, never a
+/// recursive query — Prisma 7 has no native recursive CTE, and this tree
+/// is small enough (a few hundred nodes at most) that a closure table
+/// would only add write-side bookkeeping for nothing gained.
 model Category {
   id          String             @id @default(cuid())
+  /// Globally unique regardless of depth, and deliberately so — see the
+  /// note on parentId. slugify() disambiguates collisions at creation
+  /// time (economia -> economia-mundo -> economia-2) rather than scoping
+  /// uniqueness to a parent.
   slug        String             @unique
   name        String
   description String             @default("")
   icon        String             @default("◆")
   color       String             @default("#1e40af")
+  /// Sibling order — renumbered densely within one parent on every
+  /// create, delete and reorder. NOT a global order across the tree.
   order       Int                @default(0)
   visible     Boolean            @default(true)
-  subtopics   Subtopic[]
   articles    Article[]
   favorites   CategoryFavorite[]
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
+
+  /// Restrict, not Cascade: deleting a category with children must be a
+  /// deliberate choice made through the service (which the reorder/move
+  /// endpoint also uses to re-home a subtree), never an accidental
+  /// cascade wiping out a whole branch.
+  parentId String?
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children Category[] @relation("CategoryTree")
+  path     String
+  depth    Int        @default(0)
+
+  @@index([parentId, order])
+  @@index([path])
 }
 
 model Article {
@@ -255,17 +284,6 @@ model Article {
   @@index([categoryId, status, publishedAt])
   @@index([status, publishedAt])
   @@index([status, notificationsQueuedAt])
-}
-
-model Subtopic {
-  id         String @id @default(cuid())
-  categoryId String
-  label      String
-  order      Int    @default(0)
-
-  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-
-  @@index([categoryId])
 }
 
 model ActivityLog {

@@ -3,6 +3,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { MailerService } from '../mailer/mailer.service';
 import { digestTemplate, type DigestArticle } from './digest.template';
 import type { DigestFrequency } from '../../generated/prisma/enums';
+import { ConfigService } from '@nestjs/config';
+import { CategoryTreeService } from '../categories/category-tree.service';
 
 /**
  * Only articles published in the last day are ever considered.
@@ -26,6 +28,8 @@ export class ReaderNotificationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly mailer: MailerService,
+    private readonly tree: CategoryTreeService,
+    private readonly config: ConfigService,
   ) {}
 
   // ─────────────────────────────── enqueue ───────────────────────────────
@@ -68,7 +72,23 @@ export class ReaderNotificationsService {
       });
       if (claim.count !== 1) continue;
 
-      queued += await this.fanOut(article.id, article.categoryId);
+      // One fan-out per category, from the article's own up to the root.
+      //
+      // NOT a single widened `categoryId: { in: [...] }`: fanOut pages
+      // with `cursor: { readerId_categoryId: ... }`, a composite key
+      // bound to ONE categoryId. Widening the where would leave that
+      // cursor non-unique in the ordering, and the loop would silently
+      // skip or repeat whole pages of followers — the failure would look
+      // like "some readers just didn't get it", which is close to
+      // undebuggable in production.
+      //
+      // Repeating the fan-out is safe by construction: someone following
+      // both Política and Política › Parlamento matches twice, and
+      // @@unique([readerId, articleId]) with skipDuplicates collapses it
+      // to one row, so one e-mail. At most four passes.
+      for (const categoryId of await this.notifyTargets(article.categoryId)) {
+        queued += await this.fanOut(article.id, categoryId);
+      }
     }
 
     if (queued > 0) {
@@ -77,6 +97,26 @@ export class ReaderNotificationsService {
       );
     }
     return queued;
+  }
+
+  /**
+   * Which categories should be notified for an article filed in
+   * `categoryId`: itself, then its ancestors.
+   *
+   * Following "Política" means following what the section publishes,
+   * including through its subsections — otherwise creating
+   * "Política › Parlamento" would silently cut existing followers off
+   * from coverage they had been receiving.
+   *
+   * Behind CATEGORY_FUNNEL, like the article listing: this is the same
+   * promise to the reader, and it is the one part of it that sends
+   * e-mail, so it gets the same kill switch. Off, the behaviour is
+   * exactly what it was — the article's own category and nothing else.
+   */
+  private async notifyTargets(categoryId: string): Promise<string[]> {
+    const raw = this.config.get<string>('CATEGORY_FUNNEL');
+    if (raw === '0' || raw === 'false') return [categoryId];
+    return this.tree.resolveAncestorIds(categoryId);
   }
 
   /** Rows for every eligible follower of the category, in batches. */

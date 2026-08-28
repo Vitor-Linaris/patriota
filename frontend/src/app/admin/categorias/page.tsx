@@ -1,24 +1,22 @@
 import { AdminShell } from "../AdminShell";
 import { apiFetch } from "@/lib/api";
-import AdminCategoriesClient, {
-  type Category,
-} from "./AdminCategoriesClient";
+import AdminCategoriesClient from "./AdminCategoriesClient";
+import type { TreeNode } from "./tree-utils";
 
-interface BackendCategory extends Category {}
-
-export default async function Page({
-  searchParams,
-}: {
-  searchParams: Promise<{ page?: string }>;
-}) {
-  const { page: pageParam } = await searchParams;
-  const currentPage = Math.max(1, Number(pageParam) || 1);
-  const res = await apiFetch("/admin/categories");
-  const initial: BackendCategory[] = res.ok ? await res.json() : [];
+export default async function Page() {
+  // The nested forest, hidden categories included — this is the CMS view,
+  // not the public menu.
+  const res = await apiFetch("/admin/categories/tree");
+  if (!res.ok) {
+    console.error(
+      `[admin/categorias] /admin/categories/tree falhou: ${res.status}`,
+    );
+  }
+  const initial: TreeNode[] = res.ok ? await res.json() : [];
 
   return (
     <AdminShell active="/admin/categorias">
-      <AdminCategoriesClient initial={initial} currentPage={currentPage} />
+      <AdminCategoriesClient initial={initial} />
     </AdminShell>
   );
 }

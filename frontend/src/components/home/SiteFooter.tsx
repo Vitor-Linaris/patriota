@@ -1,6 +1,8 @@
 import Image from "next/image";
+import Link from "next/link";
 import { Container } from "../Container";
 import { getSocialLinks, type SocialLinks } from "@/lib/public-api";
+import { getRootCategories } from "@/lib/categories";
 import { CookieConsent } from "./CookieConsent";
 
 interface FooterLink {
@@ -25,15 +27,9 @@ const COLUMNS: FooterColumn[] = [
       { label: "Transparência", href: "/p/transparencia" },
     ],
   },
-  {
-    title: "Rubricas",
-    items: [
-      { label: "Investigação", href: "/categoria/investigacao" },
-      { label: "Opinião", href: "/categoria/opiniao" },
-      { label: "Política", href: "/categoria/politica" },
-      { label: "Mundo", href: "/categoria/mundo" },
-    ],
-  },
+  // "Rubricas" is filled from the live catalogue at render time — see
+  // SiteFooter below. Hardcoding it meant a renamed or deleted category
+  // left a dead link in the footer that nothing would ever flag.
   {
     title: "Contacto",
     items: [
@@ -133,7 +129,25 @@ function SocialIcons({ links }: { links: SocialLinks }) {
 }
 
 export async function SiteFooter() {
-  const social = await getSocialLinks();
+  const [social, roots] = await Promise.all([
+    getSocialLinks(),
+    getRootCategories(),
+  ]);
+
+  // Top-level sections only, in the order the admin arranged them.
+  // Inserted after "Editorial" so the column order stays as designed.
+  const rubricas: FooterColumn = {
+    title: "Rubricas",
+    items: roots.slice(0, 5).map((c) => ({
+      label: c.label,
+      href: `/categoria/${c.slug}`,
+    })),
+  };
+  const columns =
+    rubricas.items.length > 0
+      ? [COLUMNS[0], rubricas, ...COLUMNS.slice(1)]
+      : COLUMNS;
+
   return (
     <>
     <footer className="bg-patriota-dark text-white">
@@ -141,7 +155,7 @@ export async function SiteFooter() {
         <div className="flex flex-col gap-10 md:flex-row md:items-start md:justify-between">
           {/* Brand + social */}
           <div>
-            <a href="/" aria-label="O Patriota" className="inline-flex">
+            <Link href="/" aria-label="O Patriota" className="inline-flex">
               <Image
                 src="/brand/Logo-footer.svg"
                 alt="O Patriota"
@@ -149,11 +163,11 @@ export async function SiteFooter() {
                 height={37}
                 className="h-auto"
               />
-            </a>
+            </Link>
             <SocialIcons links={social} />
           </div>
           <div className="grid grid-cols-2 gap-8 md:grid-cols-4 md:gap-12">
-            {COLUMNS.map((col) => (
+            {columns.map((col) => (
               <div key={col.title}>
                 <h4 className="text-[12px] font-bold uppercase tracking-wider text-patriota-accent">
                   {col.title}

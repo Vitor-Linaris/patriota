@@ -11,7 +11,11 @@ import { PrismaService } from '../../src/prisma/prisma.service';
  *   • truncating "Article"  also empties "Comment", "ArticleFavorite",
  *                           "ReadingHistory" and "ArticleNotification"
  *   • truncating "Reader"   empties all of the reader-owned tables
- *   • truncating "Category" also empties "CategoryFavorite"
+ *   • truncating "Category" also empties "CategoryFavorite" and every
+ *                           child Category (parentId is self-referencing,
+ *                           onDelete: Restrict — but CASCADE on TRUNCATE
+ *                           still empties referencing rows regardless of
+ *                           the FK's onDelete action)
  * Harmless for isolation — but if a spec truncates "Article" and then
  * expects its own seeded comments to survive, this is why they did not.
  */

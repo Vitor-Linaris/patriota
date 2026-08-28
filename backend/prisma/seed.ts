@@ -127,46 +127,189 @@ async function main() {
 
   // Default editorial categories — idempotent via upsert by slug.
   // `order` controls the left-to-right order in the public top menu.
+  //
+  // `children` used to seed a separate, purely decorative Subtopic
+  // model (nothing filtered by it, Article had no subtopicId). The
+  // category_hierarchy migration absorbed those rows into real depth-1
+  // Category nodes, so this seed now upserts them the same way —
+  // clickable sections instead of dead label chips.
   const CATEGORIES = [
-    { slug: 'portugal', name: 'Portugal', description: 'O país hoje: política, sociedade e regiões.', icon: '◆', color: '#dc2626', order: 1, subtopics: ['Norte', 'Centro', 'Lisboa', 'Sul', 'Ilhas'] },
-    { slug: 'politica', name: 'Política', description: 'Parlamento, governo, partidos e eleições em Portugal.', icon: '◆', color: '#1e40af', order: 2, subtopics: ['Orçamento 2026', 'Parlamento', 'Governo', 'Partidos', 'Eleições', 'Diplomacia'] },
-    { slug: 'economia', name: 'Economia', description: 'Análise económica, mercados, empresas e finanças públicas.', icon: '◈', color: '#065f46', order: 3, subtopics: ['Mercados', 'Empresas', 'Habitação', 'Turismo', 'Trabalho'] },
-    { slug: 'sociedade', name: 'Sociedade', description: 'Habitação, trabalho, saúde e os temas do dia a dia.', icon: '◎', color: '#7c3aed', order: 4, subtopics: ['Educação', 'Saúde', 'Ambiente', 'Imigração'] },
-    { slug: 'investigacao', name: 'Investigação', description: 'Jornalismo de investigação e dados em profundidade.', icon: '◉', color: '#991b1b', order: 5, subtopics: ['Corrupção', 'Justiça', 'Contratos públicos'] },
-    { slug: 'mundo', name: 'Mundo', description: 'Política internacional, conflitos e diplomacia global.', icon: '◇', color: '#0e7490', order: 6, subtopics: ['Europa', 'EUA', 'Brasil', 'Conflitos'] },
-    { slug: 'tecnologia', name: 'Tecnologia', description: 'IA, startups, regulação digital e telecomunicações.', icon: '▣', color: '#0891b2', order: 7, subtopics: ['IA', 'Startups', 'Cibersegurança'] },
-    { slug: 'saude', name: 'Saúde', description: 'SNS, doenças, prevenção e políticas de saúde.', icon: '◑', color: '#059669', order: 8, subtopics: ['SNS', 'Medicamentos', 'Saúde Mental'] },
-    { slug: 'cultura', name: 'Cultura', description: 'Livros, cinema, música e espetáculos.', icon: '◈', color: '#b45309', order: 9, subtopics: ['Cinema', 'Literatura', 'Música', 'Teatro'] },
-    { slug: 'desporto', name: 'Desporto', description: 'Futebol, modalidades e cobertura olímpica.', icon: '◎', color: '#dc2626', order: 10, subtopics: ['Futebol', 'Modalidades', 'Olimpíadas'] },
-    { slug: 'multimedia', name: 'Multimédia', description: 'Reportagens em vídeo, podcasts e galerias.', icon: '▶', color: '#7c2d12', order: 11, subtopics: ['Vídeo', 'Podcast', 'Fotorreportagem'] },
-    { slug: 'opiniao', name: 'Opinião', description: 'Análise, colunas e editoriais.', icon: '◌', color: '#4b5563', order: 12, subtopics: ['Editorial', 'Convidados', 'Colunistas'] },
+    { slug: 'portugal', name: 'Portugal', description: 'O país hoje: política, sociedade e regiões.', icon: '◆', color: '#dc2626', order: 1, children: ['Norte', 'Centro', 'Lisboa', 'Sul', 'Ilhas'] },
+    { slug: 'politica', name: 'Política', description: 'Parlamento, governo, partidos e eleições em Portugal.', icon: '◆', color: '#1e40af', order: 2, children: ['Orçamento 2026', 'Parlamento', 'Governo', 'Partidos', 'Eleições', 'Diplomacia'] },
+    { slug: 'economia', name: 'Economia', description: 'Análise económica, mercados, empresas e finanças públicas.', icon: '◈', color: '#065f46', order: 3, children: ['Mercados', 'Empresas', 'Habitação', 'Turismo', 'Trabalho'] },
+    { slug: 'sociedade', name: 'Sociedade', description: 'Habitação, trabalho, saúde e os temas do dia a dia.', icon: '◎', color: '#7c3aed', order: 4, children: ['Educação', 'Saúde', 'Ambiente', 'Imigração'] },
+    { slug: 'investigacao', name: 'Investigação', description: 'Jornalismo de investigação e dados em profundidade.', icon: '◉', color: '#991b1b', order: 5, children: ['Corrupção', 'Justiça', 'Contratos públicos'] },
+    { slug: 'mundo', name: 'Mundo', description: 'Política internacional, conflitos e diplomacia global.', icon: '◇', color: '#0e7490', order: 6, children: ['Europa', 'EUA', 'Brasil', 'Conflitos'] },
+    { slug: 'tecnologia', name: 'Tecnologia', description: 'IA, startups, regulação digital e telecomunicações.', icon: '▣', color: '#0891b2', order: 7, children: ['IA', 'Startups', 'Cibersegurança'] },
+    { slug: 'saude', name: 'Saúde', description: 'SNS, doenças, prevenção e políticas de saúde.', icon: '◑', color: '#059669', order: 8, children: ['SNS', 'Medicamentos', 'Saúde Mental'] },
+    { slug: 'cultura', name: 'Cultura', description: 'Livros, cinema, música e espetáculos.', icon: '◈', color: '#b45309', order: 9, children: ['Cinema', 'Literatura', 'Música', 'Teatro'] },
+    { slug: 'desporto', name: 'Desporto', description: 'Futebol, modalidades e cobertura olímpica.', icon: '◎', color: '#dc2626', order: 10, children: ['Futebol', 'Modalidades', 'Olimpíadas'] },
+    { slug: 'multimedia', name: 'Multimédia', description: 'Reportagens em vídeo, podcasts e galerias.', icon: '▶', color: '#7c2d12', order: 11, children: ['Vídeo', 'Podcast', 'Fotorreportagem'] },
+    { slug: 'opiniao', name: 'Opinião', description: 'Análise, colunas e editoriais.', icon: '◌', color: '#4b5563', order: 12, children: ['Editorial', 'Convidados', 'Colunistas'] },
   ];
 
-  for (const c of CATEGORIES) {
-    const cat = await prisma.category.upsert({
-      where: { slug: c.slug },
-      update: { name: c.name, description: c.description, icon: c.icon, color: c.color, order: c.order },
+  /** Matches CategoriesService's slugify + parent-suffix disambiguation. */
+  function seedSlug(label: string, parentSlug: string): string {
+    const base = label
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '');
+    return `${base}-${parentSlug}`;
+  }
+
+  type CategoryRow = Awaited<ReturnType<typeof prisma.category.findFirstOrThrow>>;
+
+  /** Fills in the real self-inclusive path once the row's id is known. */
+  async function finalisePath(
+    row: CategoryRow,
+    parentPath: string | undefined,
+  ): Promise<CategoryRow> {
+    if (row.path !== '/pending/') return row;
+    const path = `${parentPath ?? '/'}${row.id}/`;
+    return prisma.category.update({ where: { id: row.id }, data: { path } });
+  }
+
+  /** Roots are, and always were, keyed by slug — this part is unchanged. */
+  async function upsertRoot(input: {
+    slug: string;
+    name: string;
+    description: string;
+    icon: string;
+    color: string;
+    order: number;
+  }): Promise<CategoryRow> {
+    const row = await prisma.category.upsert({
+      where: { slug: input.slug },
+      update: { name: input.name, order: input.order },
       create: {
-        slug: c.slug,
-        name: c.name,
-        description: c.description,
-        icon: c.icon,
-        color: c.color,
-        order: c.order,
+        slug: input.slug,
+        name: input.name,
+        description: input.description,
+        icon: input.icon,
+        color: input.color,
+        order: input.order,
         visible: true,
+        depth: 0,
+        path: '/pending/',
       },
     });
-    // Only seed subtopics if the category has none yet
-    const existing = await prisma.subtopic.count({ where: { categoryId: cat.id } });
-    if (existing === 0) {
-      await prisma.subtopic.createMany({
-        data: c.subtopics.map((label, i) => ({
-          categoryId: cat.id,
-          label,
-          order: i,
-        })),
+    return finalisePath(row, undefined);
+  }
+
+  /**
+   * Children are matched by (parentId, name), NOT by a freshly computed
+   * slug.
+   *
+   * The category_hierarchy migration already absorbed the real Subtopic
+   * rows into Category children, using label + a fragment of the row's
+   * OWN id as the slug (it had to disambiguate without knowing what this
+   * seed would ever choose). This seed's own slug scheme is label +
+   * parent SLUG. On any database where the migration ran against real
+   * data, those two schemes produce different slugs for what is
+   * semantically the same node — matching on slug would create a
+   * duplicate every single time this seed runs. Matching on the parent
+   * + name it was actually keyed on in the UI does not.
+   */
+  async function upsertChild(input: {
+    slug: string;
+    name: string;
+    icon: string;
+    color: string;
+    order: number;
+    parentId: string;
+    depth: number;
+    parentPath: string;
+  }): Promise<CategoryRow> {
+    const existing = await prisma.category.findFirst({
+      where: { parentId: input.parentId, name: input.name },
+    });
+    if (existing) {
+      return prisma.category.update({
+        where: { id: existing.id },
+        data: { order: input.order },
       });
     }
+
+    const row = await prisma.category.create({
+      data: {
+        slug: input.slug,
+        name: input.name,
+        description: '',
+        icon: input.icon,
+        color: input.color,
+        order: input.order,
+        visible: true,
+        parentId: input.parentId,
+        depth: input.depth,
+        path: '/pending/',
+      },
+    });
+    return finalisePath(row, input.parentPath);
+  }
+
+  for (const c of CATEGORIES) {
+    const cat = await upsertRoot({
+      slug: c.slug,
+      name: c.name,
+      description: c.description,
+      icon: c.icon,
+      color: c.color,
+      order: c.order,
+    });
+
+    for (const [i, label] of c.children.entries()) {
+      await upsertChild({
+        slug: seedSlug(label, c.slug),
+        name: label,
+        icon: c.icon,
+        color: c.color,
+        order: i,
+        parentId: cat.id,
+        depth: 1,
+        parentPath: cat.path,
+      });
+    }
+  }
+
+  // Demonstration geographic branch, 4 levels deep, so a fresh clone
+  // shows the funnel immediately: Portugal -> Madeira -> Funchal -> Sé.
+  // Nested under the existing "portugal" root rather than its own entry
+  // in CATEGORIES above, since it is not itself a root. Dev-only, like
+  // the rest of this seed (see the NODE_ENV guard at the top of the file).
+  const portugal = await prisma.category.findUnique({ where: { slug: 'portugal' } });
+  if (portugal) {
+    const madeira = await upsertChild({
+      slug: 'madeira-portugal',
+      name: 'Madeira',
+      icon: portugal.icon,
+      color: portugal.color,
+      order: 100,
+      parentId: portugal.id,
+      depth: 1,
+      parentPath: portugal.path,
+    });
+    const funchal = await upsertChild({
+      slug: 'funchal',
+      name: 'Funchal',
+      icon: portugal.icon,
+      color: portugal.color,
+      order: 0,
+      parentId: madeira.id,
+      depth: 2,
+      parentPath: madeira.path,
+    });
+    await upsertChild({
+      slug: 'se-funchal',
+      name: 'Sé',
+      icon: portugal.icon,
+      color: portugal.color,
+      order: 0,
+      parentId: funchal.id,
+      depth: 3,
+      parentPath: funchal.path,
+    });
   }
 
   // ── Editorial team (10 demo users) ───────────────────────────────
@@ -399,6 +542,37 @@ async function main() {
           },
         });
       }
+    }
+
+    // ── The funnel, demonstrated ────────────────────────────────────
+    // One published article at the very bottom of Portugal › Madeira ›
+    // Funchal › Sé. Without it the demo branch exists but demonstrates
+    // nothing: the point is that opening "Portugal" on the public site
+    // surfaces a piece filed four levels down.
+    const se = await prisma.category.findUnique({ where: { slug: 'se-funchal' } });
+    if (se) {
+      await prisma.article.upsert({
+        where: { slug: 'obras-de-requalificacao-na-rua-da-se' },
+        update: {},
+        create: {
+          slug: 'obras-de-requalificacao-na-rua-da-se',
+          title: 'Obras de requalificação arrancam na Rua da Sé',
+          summary:
+            'A empreitada na zona velha do Funchal deverá estar concluída antes do verão.',
+          content:
+            '<p>As obras de requalificação da Rua da Sé arrancaram esta semana.</p>' +
+            '<p>Este artigo está publicado no <strong>subtópico</strong> Sé — quatro ' +
+            'níveis abaixo de Portugal — e aparece na página de Portugal, da Madeira ' +
+            'e do Funchal por causa do afunilamento.</p>',
+          status: 'PUBLICADO',
+          categoryId: se.id,
+          authorId: authors[0]?.id ?? user.id,
+          readMinutes: 3,
+          views: 412,
+          publishedAt: new Date(),
+          essentials: [],
+        },
+      });
     }
   }
 

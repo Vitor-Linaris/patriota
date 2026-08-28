@@ -17,7 +17,10 @@ export interface ArticleSummary {
   coverImageUrl: string | null;
   /** Denormalised count of APPROVED comments — drives the counter badge. */
   commentCount: number;
-  category: { slug: string; name: string };
+  // color comes from the category row the admin edits, so a badge is
+  // right for any category that ever exists — the old lookup was keyed
+  // by category NAME and turned every new section grey.
+  category: { slug: string; name: string; color?: string };
   author: { name: string | null };
 }
 

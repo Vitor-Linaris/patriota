@@ -15,6 +15,8 @@ import { ArticleSidebar } from "@/components/article/ArticleSidebar";
 import { ShareButtons, ICON_BUTTON } from "@/components/article/ShareButtons";
 import { ReaderActions } from "@/components/article/ReaderActions";
 import { ArticleComments } from "@/components/article/ArticleComments";
+import { Breadcrumb } from "@/components/Breadcrumb";
+import { getAncestors } from "@/lib/categories";
 import { FEATURES } from "@/lib/features";
 import { imageVariant } from "@/lib/images";
 import {
@@ -33,10 +35,11 @@ export default async function ArticlePage({
   const { slug } = await params;
   const article = await getArticleBySlug(slug);
   if (!article) notFound();
-  const [related, breaking, ads] = await Promise.all([
+  const [related, breaking, ads, trail] = await Promise.all([
     listRelated(slug, 4),
     listBreaking(4),
     getAdsByPage("Artigo"),
+    getAncestors(article.category.slug),
   ]);
   // Built from the configured site URL rather than window.location so
   // what gets shared is always the canonical address, whichever host
@@ -68,22 +71,31 @@ export default async function ArticlePage({
           <div className="grid grid-cols-1 gap-10 lg:grid-cols-12 lg:gap-12">
             {/* Article column */}
             <article className="col-span-1 lg:col-span-8">
-              {/* Breadcrumb */}
-              <nav
-                aria-label="Breadcrumb"
-                className="flex items-center gap-2 text-[13px] text-slate-500"
-              >
-                <Link href="/" className="hover:text-slate-900">
-                  Início
-                </Link>
-                <span aria-hidden>/</span>
-                <Link
-                  href={`/categoria/${article.category.slug}`}
-                  className="hover:text-slate-900"
-                >
-                  {article.category.name}
-                </Link>
-              </nav>
+              {/* Breadcrumb — the full ancestry, and the JSON-LD with
+                  it. Article pages are what rank, and with flat URLs
+                  this markup is the only thing that tells a crawler the
+                  piece sits four levels down rather than at the top. */}
+              <Breadcrumb
+                items={[
+                  { label: "Início", href: "/" },
+                  ...(trail.length > 0
+                    ? trail
+                    : [
+                        // The category is not in the public tree (hidden,
+                        // or the tree failed to load). Better a two-level
+                        // trail than none.
+                        {
+                          slug: article.category.slug,
+                          label: article.category.name,
+                        },
+                      ]
+                  ).map((c) => ({
+                    label: c.label,
+                    href: `/categoria/${c.slug}`,
+                  })),
+                  { label: article.title },
+                ]}
+              />
 
               {/* Category + topic */}
               <div className="mt-5 flex flex-wrap items-center gap-3">

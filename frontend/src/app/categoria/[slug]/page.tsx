@@ -8,14 +8,15 @@ import { AdSlot } from "@/components/ads/AdSlot";
 import { SiteFooter } from "@/components/home/SiteFooter";
 import { CategoryHero } from "@/components/category/CategoryHero";
 import { FeaturedArticle } from "@/components/category/FeaturedArticle";
-import {
-  ArticleListItem,
-  type ArticleListItemData,
-} from "@/components/category/ArticleListItem";
+import { ArticleListItem } from "@/components/category/ArticleListItem";
 import { Pagination } from "@/components/category/Pagination";
 import { CategorySidebar } from "@/components/category/CategorySidebar";
 import { SectionMarker } from "@/components/category/SectionMarker";
-import { getCategoryBySlug, getCategories } from "@/lib/categories";
+import {
+  getAllCategories,
+  getAncestors,
+  getCategoryBySlug,
+} from "@/lib/categories";
 import {
   getAdsByPage,
   listBreaking,
@@ -24,8 +25,11 @@ import {
 } from "@/lib/public-api";
 
 // Pre-render the category routes that we know about at build time.
+// Every level, not just the roots — a subtópico has its own page and
+// its own URL, and leaving it out would make the deepest pages the only
+// ones rendered on demand.
 export async function generateStaticParams() {
-  const cats = await getCategories();
+  const cats = await getAllCategories();
   return cats.map((c) => ({ slug: c.slug }));
 }
 
@@ -49,11 +53,13 @@ export default async function CategoryPage({
   // 1-based, clamp to a sane lower bound.
   const page = Math.max(1, Number(pageParam) || 1);
 
-  const [{ items: rawArticles, total }, breaking, ads] = await Promise.all([
-    listPublicArticles({ category: slug, page, pageSize: PAGE_SIZE }),
-    listBreaking(4),
-    getAdsByPage("Categoria"),
-  ]);
+  const [{ items: rawArticles, total }, breaking, ads, trail] =
+    await Promise.all([
+      listPublicArticles({ category: slug, page, pageSize: PAGE_SIZE }),
+      listBreaking(4),
+      getAdsByPage("Categoria"),
+      getAncestors(slug),
+    ]);
   // Only treat the first article as "featured" on page 1 — otherwise
   // page 2+ would have a confusing oversized card from the middle of
   // the list.
@@ -93,8 +99,17 @@ export default async function CategoryPage({
       <CategoryHero
         label={category.label}
         description={category.description}
-        subtopics={category.subtopics}
+        trail={[
+          { label: "Início", href: "/" },
+          ...trail.map((c, i) => ({
+            label: c.label,
+            // The current category is the last crumb and gets no link.
+            href: i === trail.length - 1 ? undefined : `/categoria/${c.slug}`,
+          })),
+        ]}
+        subsections={category.children}
         articleCount={articleCount}
+        directCount={category.articleCount}
       />
 
       <AdSlot ad={ads["category-leaderboard"]} />
@@ -137,7 +152,7 @@ export default async function CategoryPage({
                   title="Todos os artigos"
                   trailing={
                     <span className="rounded-full bg-slate-100 px-3 py-1 text-[12px] font-semibold text-slate-700">
-                      {articleCount} artigos
+                      {articleCount} {articleCount === 1 ? "artigo" : "artigos"}
                     </span>
                   }
                 />
@@ -168,7 +183,12 @@ export default async function CategoryPage({
               <ul className="mt-5 flex flex-col gap-4">
                 {listItems.length === 0 ? (
                   <li className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
-                    Ainda não existem artigos publicados nesta rubrica.
+                    {featured
+                      ? // The only article there is has just been shown
+                        // above as the featured one — saying "there are
+                        // none" right under it reads as a bug.
+                        "Não há mais artigos nesta secção, para já."
+                      : "Ainda não existem artigos publicados nesta rubrica."}
                   </li>
                 ) : (
                   listItems.map((a) => (

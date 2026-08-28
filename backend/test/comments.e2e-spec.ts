@@ -33,6 +33,7 @@ describe('Comments (e2e)', () => {
         color: '#1e40af',
         order: 1,
         visible: true,
+        path: '/root/', // placeholder — these tests never assert on the tree
       },
     });
     const author = await makeUser(app, { role: 'EDITOR_CHEFE' });
