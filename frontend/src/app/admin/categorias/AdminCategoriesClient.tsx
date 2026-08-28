@@ -1,60 +1,80 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
-import { Pagination } from "@/components/category/Pagination";
+import { useMemo, useRef, useState, useTransition } from "react";
 import {
-  addSubtopicAction,
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragMoveEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { SortableRow } from "./SortableRow";
+import {
+  MAX_DEPTH,
+  applyMove,
+  flatten,
+  getProjection,
+  hasChildren,
+  subtreeHeight,
+  withoutCollapsed,
+  withoutDescendants,
+  type FlatNode,
+  type Projection,
+  type TreeNode,
+} from "./tree-utils";
+import {
   createCategoryAction,
   deleteCategoryAction,
-  removeSubtopicAction,
+  reorderCategoryAction,
   toggleCategoryVisibilityAction,
   updateCategoryAction,
 } from "./actions";
 
-interface SubTopic {
-  id: string;
-  label: string;
-}
-
-export interface Category {
-  id: string;
-  name: string;
-  slug: string;
-  description: string;
-  icon: string;
-  color: string;
-  visible: boolean;
-  subtopics: SubTopic[];
-}
-
 const iconOptions = ["◆", "◈", "◎", "◉", "◇", "▣", "◑", "⊙", "◐", "◍"];
 
+const LEVEL_LABEL = ["Categoria", "Subcategoria", "Tópico", "Subtópico"];
+
 interface Props {
-  initial: Category[];
+  initial: TreeNode[];
 }
 
-const PAGE_SIZE = 20;
-
-export default function AdminCategoriesClient({
-  initial,
-  currentPage,
-}: Props & { currentPage: number }) {
+export default function AdminCategoriesClient({ initial }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const categories = initial;
 
-  // Client-side pagination — the categories endpoint returns the
-  // whole catalogue in one go (typically ≤30 items) so we slice
-  // here rather than refetching per page.
-  const totalPages = Math.max(1, Math.ceil(categories.length / PAGE_SIZE));
-  const safePage = Math.min(Math.max(1, currentPage), totalPages);
-  const start = (safePage - 1) * PAGE_SIZE;
-  const paged = categories.slice(start, start + PAGE_SIZE);
+  // Server truth, mirrored locally so a drop can be shown before the
+  // round trip finishes. Re-synced during render — not in an effect —
+  // whenever the server sends a new tree: an effect here would commit a
+  // stale tree first and then cascade a second render over it.
+  const [items, setItems] = useState<FlatNode[]>(() => flatten(initial));
+  const [syncedFrom, setSyncedFrom] = useState(initial);
+  if (syncedFrom !== initial) {
+    setSyncedFrom(initial);
+    setItems(flatten(initial));
+  }
+
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [offsetLeft, setOffsetLeft] = useState(0);
+  const [overId, setOverId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editData, setEditData] = useState<Partial<Category>>({});
-  const [showNew, setShowNew] = useState(false);
-  const [newTag, setNewTag] = useState("");
+  const [editData, setEditData] = useState<Record<string, string>>({});
+  const [newParent, setNewParent] = useState<FlatNode | null | undefined>(
+    undefined,
+  );
   const [newCat, setNewCat] = useState({
     name: "",
     slug: "",
@@ -62,9 +82,33 @@ export default function AdminCategoriesClient({
     icon: "◆",
     color: "#0F2C6B",
   });
-  const [error, setError] = useState<string | null>(null);
 
-  const refresh = () => router.refresh();
+  /** The list a drag is measured against, and the one rendered. */
+  const visible = useMemo(
+    () => withoutCollapsed(items, collapsed),
+    [items, collapsed],
+  );
+  const dragList = useMemo(
+    () => (activeId ? withoutDescendants(visible, activeId) : visible),
+    [visible, activeId],
+  );
+  const activeHeight = useMemo(
+    () => (activeId ? subtreeHeight(items, activeId) : 0),
+    [items, activeId],
+  );
+
+  const projection: Projection | null =
+    activeId && overId
+      ? getProjection(dragList, activeId, overId, offsetLeft, activeHeight)
+      : null;
+
+  const sensors = useSensors(
+    // A few pixels of slack so a click on the handle isn't read as a drag.
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
 
   const wrap = (fn: () => Promise<{ ok: boolean; error?: string }>) =>
     startTransition(async () => {
@@ -72,11 +116,78 @@ export default function AdminCategoriesClient({
       if (!r.ok) setError(r.error ?? "Falha.");
       else {
         setError(null);
-        refresh();
+        router.refresh();
       }
     });
 
-  const startEdit = (c: Category) => {
+  // ── drag ────────────────────────────────────────────────────────────
+  const snapshot = useRef<FlatNode[]>([]);
+
+  const onDragStart = ({ active }: DragStartEvent) => {
+    setActiveId(String(active.id));
+    setOverId(String(active.id));
+    setError(null);
+    snapshot.current = items;
+  };
+
+  const onDragMove = ({ delta, over }: DragMoveEvent) => {
+    setOffsetLeft(delta.x);
+    if (over) setOverId(String(over.id));
+  };
+
+  const onDragEnd = ({ active, over }: DragEndEvent) => {
+    const id = String(active.id);
+    const target = over && projection ? projection : null;
+    reset();
+    if (!target) return;
+
+    const before = snapshot.current;
+    const node = before.find((i) => i.id === id);
+    if (!node) return;
+
+    // Dropped exactly where it started — same mother, same position among
+    // its siblings. Don't spend a request, and don't flash the row.
+    const currentIndex = before
+      .filter((i) => i.parentId === node.parentId)
+      .findIndex((i) => i.id === id);
+    if (node.parentId === target.parentId && currentIndex === target.index) {
+      return;
+    }
+
+    // Optimistic: show the result now, undo it if the server refuses.
+    setItems(applyMove(before, id, target));
+    startTransition(async () => {
+      const r = await reorderCategoryAction({
+        id,
+        parentId: target.parentId,
+        index: target.index,
+      });
+      if (!r.ok) {
+        setItems(before);
+        setError(r.error ?? "Não foi possível mover.");
+      } else {
+        setError(null);
+        router.refresh();
+      }
+    });
+  };
+
+  const reset = () => {
+    setActiveId(null);
+    setOverId(null);
+    setOffsetLeft(0);
+  };
+
+  const toggleCollapse = (id: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  // ── CRUD ────────────────────────────────────────────────────────────
+  const startEdit = (c: FlatNode) => {
     setEditingId(c.id);
     setEditData({
       name: c.name,
@@ -92,129 +203,52 @@ export default function AdminCategoriesClient({
     setEditingId(null);
   };
 
-  const toggleVisible = (id: string, current: boolean) =>
-    wrap(async () => toggleCategoryVisibilityAction(id, !current));
-
-  const removeSub = (catId: string, subId: string) =>
-    wrap(async () => removeSubtopicAction(catId, subId));
-
-  const addSub = (catId: string) => {
-    const label = newTag.trim();
-    if (!label) return;
-    wrap(async () => addSubtopicAction(catId, { label }));
-    setNewTag("");
-  };
-
   const addCategory = () => {
     if (!newCat.name.trim()) return;
-    wrap(async () => createCategoryAction(newCat));
+    const parentId = newParent ? newParent.id : null;
+    wrap(async () =>
+      createCategoryAction({
+        ...newCat,
+        slug: newCat.slug.trim() || undefined,
+        parentId,
+      }),
+    );
     setNewCat({ name: "", slug: "", description: "", icon: "◆", color: "#0F2C6B" });
-    setShowNew(false);
+    setNewParent(undefined);
   };
 
-  const deleteCategory = (id: string) =>
-    wrap(async () => deleteCategoryAction(id));
+  const activeNode = activeId ? items.find((i) => i.id === activeId) : null;
+  const rootCount = items.filter((i) => i.parentId === null).length;
 
   return (
     <main className="bg-[#f6f7fb] p-8">
-      {showNew && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-          onClick={() => setShowNew(false)}
-        >
-          <div
-            className="w-full max-w-md rounded-2xl bg-white p-7 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="mb-5 text-xl font-black text-[#0F2C6B]">Nova categoria</h2>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">Nome</label>
-                  <input
-                    value={newCat.name}
-                    onChange={(e) => setNewCat((p) => ({ ...p, name: e.target.value }))}
-                    placeholder="Ex: Desporto"
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:border-[#0F2C6B] focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">Slug</label>
-                  <input
-                    value={newCat.slug}
-                    onChange={(e) => setNewCat((p) => ({ ...p, slug: e.target.value }))}
-                    placeholder="ex: desporto"
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2.5 font-mono text-sm focus:border-[#0F2C6B] focus:outline-none"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">Descrição</label>
-                <textarea
-                  value={newCat.description}
-                  onChange={(e) => setNewCat((p) => ({ ...p, description: e.target.value }))}
-                  rows={3}
-                  className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:border-[#0F2C6B] focus:outline-none"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">Ícone</label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {iconOptions.map((ic) => (
-                      <button
-                        key={ic}
-                        type="button"
-                        onClick={() => setNewCat((p) => ({ ...p, icon: ic }))}
-                        className={`flex h-8 w-8 items-center justify-center rounded-lg text-base ${newCat.icon === ic ? "bg-[#0F2C6B] text-[#FFCC66]" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}
-                      >
-                        {ic}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">Cor</label>
-                  <input
-                    type="color"
-                    value={newCat.color}
-                    onChange={(e) => setNewCat((p) => ({ ...p, color: e.target.value }))}
-                    className="h-10 w-full cursor-pointer rounded-lg border border-gray-200"
-                  />
-                </div>
-              </div>
-            </div>
-            <div className="mt-6 flex gap-3">
-              <button
-                type="button"
-                onClick={() => setShowNew(false)}
-                className="flex-1 rounded-lg border border-gray-200 py-2.5 text-sm font-semibold text-gray-500 hover:bg-gray-50"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={addCategory}
-                disabled={isPending}
-                className="flex-1 rounded-lg bg-[#0F2C6B] py-2.5 text-sm font-bold text-white hover:bg-[#1A3A7A] disabled:opacity-50"
-              >
-                {isPending ? "A criar…" : "Criar categoria"}
-              </button>
-            </div>
-          </div>
-        </div>
+      {newParent !== undefined && (
+        <NewCategoryDialog
+          parent={newParent}
+          value={newCat}
+          onChange={setNewCat}
+          onCancel={() => setNewParent(undefined)}
+          onSubmit={addCategory}
+          pending={isPending}
+        />
       )}
 
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-black text-[#0F2C6B]">Categorias</h1>
           <p className="mt-1 text-sm text-gray-500">
-            {categories.length} rubricas · {categories.filter((c) => c.visible).length} visíveis no site
+            {rootCount} de topo · {items.length} no total ·{" "}
+            {items.filter((c) => c.visible).length} visíveis no site
+          </p>
+          <p className="mt-1 text-xs text-gray-400">
+            Arraste pelo <span aria-hidden>⠿</span> para reordenar. Arraste para
+            a direita para tornar subcategoria, para a esquerda para promover.
+            Até {MAX_DEPTH + 1} níveis.
           </p>
         </div>
         <button
           type="button"
-          onClick={() => setShowNew(true)}
+          onClick={() => setNewParent(null)}
           className="shrink-0 rounded-lg bg-[#0F2C6B] px-5 py-2 text-sm font-bold text-white transition-colors hover:bg-[#1A3A7A]"
         >
           + Nova categoria
@@ -222,196 +256,496 @@ export default function AdminCategoriesClient({
       </div>
 
       {error && (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+        <div
+          role="alert"
+          className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700"
+        >
           {error}
         </div>
       )}
 
-      <div className="space-y-3">
-        {paged.map((cat) => {
-          const isEditing = editingId === cat.id;
-          return (
-            <div
-              key={cat.id}
-              className={`rounded-xl border bg-white transition-all ${isEditing ? "border-[#0F2C6B]/30 shadow-md" : "border-gray-200 shadow-sm"}`}
-            >
-              <div className="flex items-center gap-4 p-4">
-                <div
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg text-white shadow-sm"
-                  style={{ backgroundColor: isEditing ? (editData.color ?? cat.color) : cat.color }}
-                >
-                  {isEditing ? (editData.icon ?? cat.icon) : cat.icon}
-                </div>
-
-                {isEditing ? (
-                  <div className="grid flex-1 grid-cols-2 gap-3">
-                    <input
-                      value={editData.name ?? ""}
-                      onChange={(e) => setEditData((p) => ({ ...p, name: e.target.value }))}
-                      className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-bold focus:border-[#0F2C6B] focus:outline-none"
-                    />
-                    <input
-                      value={editData.slug ?? ""}
-                      onChange={(e) => setEditData((p) => ({ ...p, slug: e.target.value }))}
-                      className="rounded-lg border border-gray-200 px-3 py-1.5 font-mono text-sm focus:border-[#0F2C6B] focus:outline-none"
-                    />
-                    <input
-                      value={editData.description ?? ""}
-                      onChange={(e) => setEditData((p) => ({ ...p, description: e.target.value }))}
-                      className="col-span-2 rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-[#0F2C6B] focus:outline-none"
-                    />
-                    <div className="col-span-2 flex items-center gap-2">
-                      <span className="text-xs font-semibold text-gray-500">Ícone:</span>
-                      {iconOptions.map((ic) => (
-                        <button
-                          key={ic}
-                          type="button"
-                          onClick={() => setEditData((p) => ({ ...p, icon: ic }))}
-                          className={`flex h-7 w-7 items-center justify-center rounded text-sm ${(editData.icon ?? cat.icon) === ic ? "bg-[#0F2C6B] text-[#FFCC66]" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}
-                        >
-                          {ic}
-                        </button>
-                      ))}
-                      <span className="ml-2 text-xs font-semibold text-gray-500">Cor:</span>
-                      <input
-                        type="color"
-                        value={editData.color ?? cat.color}
-                        onChange={(e) => setEditData((p) => ({ ...p, color: e.target.value }))}
-                        className="h-7 w-8 cursor-pointer rounded border border-gray-200"
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-base font-black text-[#0F2C6B]">{cat.name}</h3>
-                      <span className="font-mono text-xs text-gray-400">/{cat.slug}</span>
-                      {!cat.visible && (
-                        <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">OCULTA</span>
-                      )}
-                    </div>
-                    <p className="mt-0.5 line-clamp-1 text-xs text-gray-500">{cat.description}</p>
-                  </div>
-                )}
-
-                <div className="ml-auto flex shrink-0 items-center gap-2">
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={cat.visible}
-                    aria-label={
-                      cat.visible
-                        ? "Ocultar do menu público"
-                        : "Mostrar no menu público"
-                    }
-                    onClick={() => toggleVisible(cat.id, cat.visible)}
-                    disabled={isPending}
-                    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[#0F2C6B]/30 disabled:opacity-50 ${
-                      cat.visible
-                        ? "border-green-600 bg-green-500"
-                        : "border-gray-300 bg-gray-200"
-                    }`}
-                  >
-                    <span
-                      aria-hidden
-                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition-transform duration-200 ease-in-out ${
-                        cat.visible ? "translate-x-5" : "translate-x-0.5"
-                      }`}
-                    />
-                  </button>
-                  <span
-                    className={`text-[11px] font-semibold ${cat.visible ? "text-green-700" : "text-gray-400"}`}
-                  >
-                    {cat.visible ? "Visível" : "Oculta"}
-                  </span>
-
-                  {isEditing ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => setEditingId(null)}
-                        className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-400 hover:bg-gray-50"
-                      >
-                        Cancelar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => saveEdit(cat.id)}
-                        disabled={isPending}
-                        className="rounded-lg bg-[#0F2C6B] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#1A3A7A] disabled:opacity-50"
-                      >
-                        Guardar
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => startEdit(cat)}
-                        className="rounded-lg border border-[#0F2C6B]/20 px-2.5 py-1.5 text-xs font-semibold text-[#0F2C6B] hover:bg-[#0F2C6B]/5"
-                      >
-                        Editar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => deleteCategory(cat.id)}
-                        disabled={isPending}
-                        className="rounded-lg border border-gray-100 px-2 py-1.5 text-xs text-gray-300 transition-colors hover:border-red-200 hover:text-red-600"
-                      >
-                        ✕
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 border-t border-gray-50 px-4 py-3">
-                <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-gray-400">
-                  Sub-tópicos:
-                </span>
-                {cat.subtopics.map((s) => (
-                  <span
-                    key={s.id}
-                    className="group inline-flex items-center gap-1 rounded-full bg-[#F0F2F7] px-2.5 py-1 text-[11px] font-semibold text-[#0F2C6B]"
-                  >
-                    {s.label}
-                    <button
-                      type="button"
-                      onClick={() => removeSub(cat.id, s.id)}
-                      className="ml-0.5 leading-none text-gray-300 hover:text-red-500"
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-                <input
-                  value={editingId === cat.id ? newTag : ""}
-                  onFocus={() => editingId !== cat.id && setEditingId(cat.id)}
-                  onChange={(e) => setNewTag(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      addSub(cat.id);
-                    }
-                  }}
-                  placeholder="+ Adicionar…"
-                  className="w-28 rounded-full border border-dashed border-gray-200 px-2.5 py-0.5 text-[11px] text-gray-400 focus:border-[#0F2C6B] focus:text-gray-700 focus:outline-none"
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={onDragStart}
+        onDragMove={onDragMove}
+        onDragEnd={onDragEnd}
+        onDragCancel={reset}
+      >
+        <SortableContext
+          items={dragList.map((i) => i.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          <div className="space-y-2">
+            {dragList.map((cat) => (
+              <SortableRow
+                key={cat.id}
+                id={cat.id}
+                depth={
+                  activeId === cat.id && projection ? projection.depth : cat.depth
+                }
+                handleLabel={`Mover ${cat.name}`}
+              >
+                <CategoryRow
+                  cat={cat}
+                  editing={editingId === cat.id}
+                  editData={editData}
+                  setEditData={setEditData}
+                  onStartEdit={() => startEdit(cat)}
+                  onCancelEdit={() => setEditingId(null)}
+                  onSave={() => saveEdit(cat.id)}
+                  onDelete={() => wrap(async () => deleteCategoryAction(cat.id))}
+                  onToggleVisible={() =>
+                    wrap(async () =>
+                      toggleCategoryVisibilityAction(cat.id, !cat.visible),
+                    )
+                  }
+                  onAddChild={() => setNewParent(cat)}
+                  collapsible={hasChildren(items, cat.id)}
+                  collapsed={collapsed.has(cat.id)}
+                  onToggleCollapse={() => toggleCollapse(cat.id)}
+                  childCount={countChildren(items, cat.id)}
+                  pending={isPending}
                 />
-              </div>
-            </div>
-          );
-        })}
-      </div>
+              </SortableRow>
+            ))}
+          </div>
+        </SortableContext>
 
-      {totalPages > 1 && (
-        <Pagination
-          current={safePage}
-          totalPages={totalPages}
-          hrefForPage={(p) =>
-            p === 1 ? "/admin/categorias" : `/admin/categorias?page=${p}`
-          }
-        />
+        <DragOverlay>
+          {activeNode ? (
+            <div className="flex items-center gap-3 rounded-xl border border-[#0F2C6B]/30 bg-white px-4 py-3 shadow-2xl">
+              <span
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-sm text-white"
+                style={{ backgroundColor: activeNode.color }}
+              >
+                {activeNode.icon}
+              </span>
+              <span className="text-sm font-black text-[#0F2C6B]">
+                {activeNode.name}
+              </span>
+              {activeHeight > 0 && (
+                <span className="rounded-full bg-[#F0F2F7] px-2 py-0.5 text-[10px] font-bold text-gray-500">
+                  + subcategorias
+                </span>
+              )}
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
+
+      {items.length === 0 && (
+        <p className="rounded-xl border border-dashed border-gray-200 bg-white p-8 text-center text-sm text-gray-400">
+          Ainda não há categorias.
+        </p>
       )}
     </main>
+  );
+}
+
+function countChildren(items: FlatNode[], id: string): number {
+  return items.filter((i) => i.parentId === id).length;
+}
+
+// ── row ───────────────────────────────────────────────────────────────
+function CategoryRow({
+  cat,
+  editing,
+  editData,
+  setEditData,
+  onStartEdit,
+  onCancelEdit,
+  onSave,
+  onDelete,
+  onToggleVisible,
+  onAddChild,
+  collapsible,
+  collapsed,
+  onToggleCollapse,
+  childCount,
+  pending,
+}: {
+  cat: FlatNode;
+  editing: boolean;
+  editData: Record<string, string>;
+  setEditData: (fn: (p: Record<string, string>) => Record<string, string>) => void;
+  onStartEdit: () => void;
+  onCancelEdit: () => void;
+  onSave: () => void;
+  onDelete: () => void;
+  onToggleVisible: () => void;
+  onAddChild: () => void;
+  collapsible: boolean;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+  childCount: number;
+  pending: boolean;
+}) {
+  const atMaxDepth = cat.depth >= MAX_DEPTH;
+
+  return (
+    <div
+      className={`rounded-r-xl border bg-white transition-all ${
+        editing ? "border-[#0F2C6B]/30 shadow-md" : "border-gray-200 shadow-sm"
+      }`}
+    >
+      <div className="flex items-center gap-3 p-3">
+        <button
+          type="button"
+          onClick={onToggleCollapse}
+          disabled={!collapsible}
+          aria-label={
+            collapsible
+              ? collapsed
+                ? `Expandir ${cat.name}`
+                : `Colapsar ${cat.name}`
+              : undefined
+          }
+          aria-expanded={collapsible ? !collapsed : undefined}
+          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded text-[10px] ${
+            collapsible
+              ? "text-gray-400 hover:bg-gray-100 hover:text-[#0F2C6B]"
+              : "invisible"
+          }`}
+        >
+          <span aria-hidden>{collapsed ? "▶" : "▼"}</span>
+        </button>
+
+        <div
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-base text-white shadow-sm"
+          style={{ backgroundColor: editing ? editData.color : cat.color }}
+        >
+          {editing ? editData.icon : cat.icon}
+        </div>
+
+        {editing ? (
+          <div className="grid flex-1 grid-cols-2 gap-2">
+            <input
+              value={editData.name ?? ""}
+              onChange={(e) =>
+                setEditData((p) => ({ ...p, name: e.target.value }))
+              }
+              aria-label="Nome"
+              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-bold focus:border-[#0F2C6B] focus:outline-none"
+            />
+            <input
+              value={editData.slug ?? ""}
+              onChange={(e) =>
+                setEditData((p) => ({ ...p, slug: e.target.value }))
+              }
+              aria-label="Slug"
+              className="rounded-lg border border-gray-200 px-3 py-1.5 font-mono text-sm focus:border-[#0F2C6B] focus:outline-none"
+            />
+            <input
+              value={editData.description ?? ""}
+              onChange={(e) =>
+                setEditData((p) => ({ ...p, description: e.target.value }))
+              }
+              aria-label="Descrição"
+              className="col-span-2 rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-[#0F2C6B] focus:outline-none"
+            />
+            <div className="col-span-2 flex flex-wrap items-center gap-1.5">
+              <span className="text-xs font-semibold text-gray-500">Ícone:</span>
+              {iconOptions.map((ic) => (
+                <button
+                  key={ic}
+                  type="button"
+                  onClick={() => setEditData((p) => ({ ...p, icon: ic }))}
+                  aria-label={`Ícone ${ic}`}
+                  aria-pressed={editData.icon === ic}
+                  className={`flex h-7 w-7 items-center justify-center rounded text-sm ${
+                    editData.icon === ic
+                      ? "bg-[#0F2C6B] text-[#FFCC66]"
+                      : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                  }`}
+                >
+                  {ic}
+                </button>
+              ))}
+              <span className="ml-2 text-xs font-semibold text-gray-500">Cor:</span>
+              <input
+                type="color"
+                aria-label="Cor"
+                value={editData.color ?? cat.color}
+                onChange={(e) =>
+                  setEditData((p) => ({ ...p, color: e.target.value }))
+                }
+                className="h-7 w-8 cursor-pointer rounded border border-gray-200"
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-sm font-black text-[#0F2C6B]">{cat.name}</h3>
+              <span className="font-mono text-xs text-gray-400">/{cat.slug}</span>
+              <span className="rounded-full bg-[#F0F2F7] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-gray-500">
+                {LEVEL_LABEL[cat.depth]}
+              </span>
+              {!cat.visible && (
+                <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">
+                  OCULTA
+                </span>
+              )}
+              {childCount > 0 && (
+                <span className="text-[10px] font-semibold text-gray-400">
+                  {childCount} {childCount === 1 ? "filha" : "filhas"}
+                </span>
+              )}
+            </div>
+            <p className="mt-0.5 line-clamp-1 text-xs text-gray-500">
+              {cat.description}
+              {cat.articleCountTotal > 0 && (
+                <span className="ml-2 text-gray-400">
+                  · {cat.articleCount} próprios / {cat.articleCountTotal} com
+                  subcategorias
+                </span>
+              )}
+            </p>
+          </div>
+        )}
+
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={cat.visible}
+            aria-label={
+              cat.visible ? "Ocultar do menu público" : "Mostrar no menu público"
+            }
+            onClick={onToggleVisible}
+            disabled={pending}
+            className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[#0F2C6B]/30 disabled:opacity-50 ${
+              cat.visible
+                ? "border-green-600 bg-green-500"
+                : "border-gray-300 bg-gray-200"
+            }`}
+          >
+            <span
+              aria-hidden
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition-transform duration-200 ease-in-out ${
+                cat.visible ? "translate-x-5" : "translate-x-0.5"
+              }`}
+            />
+          </button>
+
+          {editing ? (
+            <>
+              <button
+                type="button"
+                onClick={onCancelEdit}
+                className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-400 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={onSave}
+                disabled={pending}
+                className="rounded-lg bg-[#0F2C6B] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#1A3A7A] disabled:opacity-50"
+              >
+                Guardar
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={onAddChild}
+                disabled={atMaxDepth}
+                title={
+                  atMaxDepth
+                    ? `Profundidade máxima de ${MAX_DEPTH + 1} níveis atingida`
+                    : `Nova subcategoria em ${cat.name}`
+                }
+                className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs font-semibold text-gray-500 hover:border-[#0F2C6B]/30 hover:text-[#0F2C6B] disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                + sub
+              </button>
+              <button
+                type="button"
+                onClick={onStartEdit}
+                className="rounded-lg border border-[#0F2C6B]/20 px-2.5 py-1.5 text-xs font-semibold text-[#0F2C6B] hover:bg-[#0F2C6B]/5"
+              >
+                Editar
+              </button>
+              <button
+                type="button"
+                onClick={onDelete}
+                disabled={pending}
+                aria-label={`Eliminar ${cat.name}`}
+                className="rounded-lg border border-gray-100 px-2 py-1.5 text-xs text-gray-300 transition-colors hover:border-red-200 hover:text-red-600"
+              >
+                ✕
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── new category dialog ───────────────────────────────────────────────
+function NewCategoryDialog({
+  parent,
+  value,
+  onChange,
+  onCancel,
+  onSubmit,
+  pending,
+}: {
+  parent: FlatNode | null;
+  value: { name: string; slug: string; description: string; icon: string; color: string };
+  onChange: (
+    fn: (p: {
+      name: string;
+      slug: string;
+      description: string;
+      icon: string;
+      color: string;
+    }) => {
+      name: string;
+      slug: string;
+      description: string;
+      icon: string;
+      color: string;
+    },
+  ) => void;
+  onCancel: () => void;
+  onSubmit: () => void;
+  pending: boolean;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      onClick={onCancel}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={parent ? `Nova subcategoria em ${parent.name}` : "Nova categoria"}
+        className="w-full max-w-md rounded-2xl bg-white p-7 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="mb-1 text-xl font-black text-[#0F2C6B]">
+          {parent ? "Nova subcategoria" : "Nova categoria"}
+        </h2>
+        {parent && (
+          <p className="mb-5 text-xs text-gray-500">
+            Dentro de <strong className="text-[#0F2C6B]">{parent.name}</strong> ·{" "}
+            {LEVEL_LABEL[Math.min(parent.depth + 1, MAX_DEPTH)]}
+          </p>
+        )}
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label
+                htmlFor="new-cat-name"
+                className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500"
+              >
+                Nome
+              </label>
+              <input
+                id="new-cat-name"
+                value={value.name}
+                onChange={(e) => onChange((p) => ({ ...p, name: e.target.value }))}
+                placeholder="Ex: Funchal"
+                className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:border-[#0F2C6B] focus:outline-none"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="new-cat-slug"
+                className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500"
+              >
+                Slug
+              </label>
+              <input
+                id="new-cat-slug"
+                value={value.slug}
+                onChange={(e) => onChange((p) => ({ ...p, slug: e.target.value }))}
+                placeholder="deixe vazio para gerar"
+                className="w-full rounded-lg border border-gray-200 px-3 py-2.5 font-mono text-sm focus:border-[#0F2C6B] focus:outline-none"
+              />
+            </div>
+          </div>
+          <div>
+            <label
+              htmlFor="new-cat-desc"
+              className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500"
+            >
+              Descrição
+            </label>
+            <textarea
+              id="new-cat-desc"
+              value={value.description}
+              onChange={(e) =>
+                onChange((p) => ({ ...p, description: e.target.value }))
+              }
+              rows={3}
+              className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:border-[#0F2C6B] focus:outline-none"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">
+                Ícone
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {iconOptions.map((ic) => (
+                  <button
+                    key={ic}
+                    type="button"
+                    onClick={() => onChange((p) => ({ ...p, icon: ic }))}
+                    aria-label={`Ícone ${ic}`}
+                    aria-pressed={value.icon === ic}
+                    className={`flex h-8 w-8 items-center justify-center rounded-lg text-base ${
+                      value.icon === ic
+                        ? "bg-[#0F2C6B] text-[#FFCC66]"
+                        : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                    }`}
+                  >
+                    {ic}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label
+                htmlFor="new-cat-color"
+                className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500"
+              >
+                Cor
+              </label>
+              <input
+                id="new-cat-color"
+                type="color"
+                value={value.color}
+                onChange={(e) => onChange((p) => ({ ...p, color: e.target.value }))}
+                className="h-10 w-full cursor-pointer rounded-lg border border-gray-200"
+              />
+            </div>
+          </div>
+        </div>
+        <div className="mt-6 flex gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 rounded-lg border border-gray-200 py-2.5 text-sm font-semibold text-gray-500 hover:bg-gray-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={onSubmit}
+            disabled={pending}
+            className="flex-1 rounded-lg bg-[#0F2C6B] py-2.5 text-sm font-bold text-white hover:bg-[#1A3A7A] disabled:opacity-50"
+          >
+            {pending ? "A criar…" : "Criar"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

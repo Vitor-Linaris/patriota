@@ -9,6 +9,7 @@ export interface CategoryTreeNode {
   id: string;
   slug: string;
   name: string;
+  description: string;
   icon: string;
   color: string;
   visible: boolean;
@@ -179,6 +180,7 @@ export class CategoryTreeService {
         id: row.id,
         slug: row.slug,
         name: row.name,
+        description: row.description,
         icon: row.icon,
         color: row.color,
         visible: row.visible,

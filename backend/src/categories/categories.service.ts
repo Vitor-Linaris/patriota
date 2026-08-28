@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreateSubtopicDto } from './dto/subtopic.dto';
+import { ReorderCategoryDto } from './dto/reorder-category.dto';
 import { CategoryTreeService } from './category-tree.service';
 import type { Prisma } from '../../generated/prisma/client';
 
@@ -316,6 +317,85 @@ export class CategoriesService {
         throw new ConflictException('Slug já existe.');
       }
       throw e;
+    }
+  }
+
+  /**
+   * Drag-and-drop: move `id` under `parentId` at position `index`.
+   *
+   * Reuses moveTo() for the reparenting, so the cycle and depth rules are
+   * enforced in exactly one place — the API is open to any editor with
+   * categorias.editar, and the UI's own guard rails can't be trusted to
+   * be the only caller.
+   */
+  async reorder(dto: ReorderCategoryDto) {
+    const node = await this.prisma.category.findUnique({
+      where: { id: dto.id },
+      select: { id: true, parentId: true, path: true, depth: true },
+    });
+    if (!node) throw new NotFoundException('Categoria não encontrada.');
+
+    const newParentId = dto.parentId ?? null;
+    const oldParentId = node.parentId;
+
+    await this.prisma.$transaction(async (tx) => {
+      if (newParentId !== oldParentId) {
+        await this.moveTo(tx, node, newParentId);
+      }
+
+      // Renumber the destination densely with the node spliced in. Dense
+      // 0..n-1 rather than gap-based ordering: the list is short, and a
+      // gap scheme eventually needs a rebalance pass that this avoids
+      // entirely.
+      await this.renumber(tx, newParentId, dto.id, dto.index ?? 0);
+
+      // The origin closes the hole it was left with. Only when the node
+      // actually changed parent — otherwise renumber() above already
+      // covered this exact list.
+      if (newParentId !== oldParentId) {
+        await this.renumber(tx, oldParentId);
+      }
+    });
+
+    await this.tree.invalidate();
+    return { ok: true };
+  }
+
+  /**
+   * Writes order 0..n-1 over `parentId`'s children. If `moveId`/`index`
+   * are given, that child is pulled out and reinserted at `index` first.
+   *
+   * Only rows whose order actually changes are written, so dropping a
+   * node back where it started costs zero UPDATEs.
+   */
+  private async renumber(
+    tx: Prisma.TransactionClient,
+    parentId: string | null,
+    moveId?: string,
+    index?: number,
+  ) {
+    const siblings = await tx.category.findMany({
+      where: { parentId },
+      orderBy: [{ order: 'asc' }, { name: 'asc' }],
+      select: { id: true, order: true },
+    });
+
+    let ids = siblings.map((s) => s.id);
+    if (moveId) {
+      ids = ids.filter((id) => id !== moveId);
+      // Clamped rather than rejected: an index past the end just means
+      // "last", which is what the drop visually was.
+      const at = Math.max(0, Math.min(index ?? ids.length, ids.length));
+      ids.splice(at, 0, moveId);
+    }
+
+    const currentOrder = new Map(siblings.map((s) => [s.id, s.order]));
+    for (const [position, id] of ids.entries()) {
+      if (currentOrder.get(id) === position) continue;
+      await tx.category.update({
+        where: { id },
+        data: { order: position },
+      });
     }
   }
 

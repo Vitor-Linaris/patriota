@@ -254,6 +254,136 @@ describe('Categories (e2e)', () => {
         .expect(400);
     });
 
+    describe('POST /admin/categories/reorder', () => {
+      const reorder = (admin: TestUser, body: Record<string, unknown>) =>
+        request(app.getHttpServer())
+          .post('/admin/categories/reorder')
+          .set(bearer(admin))
+          .send(body);
+
+      /** Three roots at order 0/1/2. Names are >= 2 chars, per the DTO. */
+      async function threeRoots(admin: TestUser) {
+        const a = await mk(admin, { name: 'Alfa' }).expect(201);
+        const b = await mk(admin, { name: 'Bravo' }).expect(201);
+        const c = await mk(admin, { name: 'Charlie' }).expect(201);
+        // create() defaults order to 0 for all three, so settle them.
+        for (const [i, r] of [a, b, c].entries()) {
+          await reorder(admin, { id: r.body.id, parentId: null, index: i }).expect(201);
+        }
+        return { a: a.body, b: b.body, c: c.body };
+      }
+
+      const orderOf = async (ids: string[]) => {
+        const prisma = app.get(PrismaService);
+        const rows = await prisma.category.findMany({
+          where: { id: { in: ids } },
+          select: { id: true, order: true },
+        });
+        return Object.fromEntries(rows.map((r) => [r.id, r.order]));
+      };
+
+      it('reorders siblings densely, from 0', async () => {
+        const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+        const { a, b, c } = await threeRoots(admin);
+
+        // Drag C to the front.
+        await reorder(admin, { id: c.id, parentId: null, index: 0 }).expect(201);
+
+        expect(await orderOf([a.id, b.id, c.id])).toEqual({
+          [c.id]: 0,
+          [a.id]: 1,
+          [b.id]: 2,
+        });
+      });
+
+      it('closes the gap in the origin when a node changes parent', async () => {
+        const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+        const { a, b, c } = await threeRoots(admin);
+
+        // Move B (order 1) under A. The remaining roots must become 0,1
+        // with no hole where B was.
+        await reorder(admin, { id: b.id, parentId: a.id, index: 0 }).expect(201);
+
+        expect(await orderOf([a.id, c.id])).toEqual({ [a.id]: 0, [c.id]: 1 });
+        expect(await orderOf([b.id])).toEqual({ [b.id]: 0 });
+      });
+
+      it('reparents and rewrites the subtree in one call', async () => {
+        const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+        const prisma = app.get(PrismaService);
+        const { ma, fu, se } = await makeChain(admin);
+
+        await reorder(admin, { id: ma.id, parentId: null, index: 0 }).expect(201);
+
+        const rows = await prisma.category.findMany({
+          where: { id: { in: [ma.id, fu.id, se.id] } },
+          select: { id: true, depth: true, path: true },
+        });
+        const byId = Object.fromEntries(rows.map((r) => [r.id, r]));
+        expect(byId[ma.id].depth).toBe(0);
+        expect(byId[se.id].depth).toBe(2);
+        expect(byId[se.id].path).toBe(`/${ma.id}/${fu.id}/${se.id}/`);
+      });
+
+      it('clamps an index past the end instead of failing', async () => {
+        const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+        const { a, b, c } = await threeRoots(admin);
+
+        await reorder(admin, { id: a.id, parentId: null, index: 99 }).expect(201);
+
+        expect(await orderOf([a.id, b.id, c.id])).toEqual({
+          [b.id]: 0,
+          [c.id]: 1,
+          [a.id]: 2,
+        });
+      });
+
+      it('refuses a drop inside the node’s own descendant, with 400', async () => {
+        const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+        const prisma = app.get(PrismaService);
+        const { fu, se } = await makeChain(admin);
+
+        await reorder(admin, { id: fu.id, parentId: se.id, index: 0 }).expect(400);
+
+        // Nothing half-applied: the transaction rolled the move back.
+        expect(
+          await prisma.category.findUnique({
+            where: { id: se.id },
+            select: { depth: true, parentId: true },
+          }),
+        ).toMatchObject({ depth: 3, parentId: fu.id });
+      });
+
+      it('refuses a drop that would exceed four levels', async () => {
+        const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+        const { ma, fu } = await makeChain(admin);
+
+        await reorder(admin, { id: ma.id, parentId: fu.id, index: 0 }).expect(400);
+      });
+
+      it('404s for an unknown node', async () => {
+        const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+        await reorder(admin, { id: 'nao-existe', parentId: null, index: 0 }).expect(404);
+      });
+
+      it('requires categorias.editar', async () => {
+        const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+        const jorn = await makeUser(app, { role: 'JORNALISTA' });
+        const { a } = await threeRoots(admin);
+
+        await reorder(jorn, { id: a.id, parentId: null, index: 0 }).expect(403);
+      });
+
+      it('rejects a payload with no parentId key at all', async () => {
+        // Absent must not be silently read as "move to root" — that would
+        // turn a malformed request into a destructive one.
+        const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+        const { a } = await threeRoots(admin);
+
+        await reorder(admin, { id: a.id, index: 0 }).expect(400);
+      });
+    });
+
     it('a plain field edit does not disturb the hierarchy', async () => {
       const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
       const prisma = app.get(PrismaService);

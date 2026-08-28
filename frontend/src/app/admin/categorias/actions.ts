@@ -10,6 +10,7 @@ export interface CategoryPayload {
   icon: string;
   color: string;
   visible?: boolean;
+  parentId?: string | null;
 }
 
 export interface SubtopicPayload {
@@ -62,6 +63,28 @@ export async function deleteCategoryAction(id: string) {
   const res = await apiFetch(`/admin/categories/${id}`, { method: "DELETE" });
   if (!res.ok) {
     return { ok: false as const, error: "Falha ao eliminar." };
+  }
+  await refresh();
+  return { ok: true as const };
+}
+
+/**
+ * One move per drop, not the whole tree — see ReorderCategoryDto on the
+ * backend for why. The client applies the move optimistically and rolls
+ * back on a non-ok result, so the error message matters here.
+ */
+export async function reorderCategoryAction(payload: {
+  id: string;
+  parentId: string | null;
+  index: number;
+}) {
+  const res = await apiFetch(`/admin/categories/reorder`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { message?: string };
+    return { ok: false as const, error: body.message ?? "Falha ao mover." };
   }
   await refresh();
   return { ok: true as const };
