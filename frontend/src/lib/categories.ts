@@ -2,84 +2,154 @@ import { cache } from "react";
 import { apiBaseUrl } from "./api-base";
 
 export interface CategoryDef {
+  id: string;
   slug: string;
   label: string;
   description: string;
-  subtopics: string[];
+  color: string;
+  icon: string;
+  depth: number;
+  parentId: string | null;
+  /** Articles filed directly in this category. */
   articleCount: number;
+  /** …plus everything in its subtree — what the reader actually gets. */
+  articleCountTotal: number;
+  children: CategoryDef[];
 }
 
-interface BackendCategory {
+interface BackendNode {
   id: string;
   slug: string;
   name: string;
   description: string;
   icon: string;
   color: string;
-  order: number;
-  visible: boolean;
-  articleCount?: number;
-  subtopics: { id: string; label: string; order: number }[];
+  depth: number;
+  parentId: string | null;
+  articleCount: number;
+  articleCountTotal: number;
+  children: BackendNode[];
+}
+
+function adapt(n: BackendNode): CategoryDef {
+  return {
+    id: n.id,
+    slug: n.slug,
+    label: n.name,
+    description: n.description,
+    color: n.color,
+    icon: n.icon,
+    depth: n.depth,
+    parentId: n.parentId,
+    articleCount: n.articleCount ?? 0,
+    articleCountTotal: n.articleCountTotal ?? n.articleCount ?? 0,
+    children: (n.children ?? []).map(adapt),
+  };
 }
 
 /**
- * Server-side cached fetch of the public category catalogue. Backed by
- * `GET /public/categories`. Falls back to an empty list if the backend
- * is unreachable so SSR doesn't crash on cold-start.
+ * The visible category tree, nested, from `GET /public/categories/tree`.
  *
- * Wrapped in React's `cache()` so a single request reuses the same
- * payload across components/layouts.
+ * Wrapped in React's `cache()` so one request reuses the same payload
+ * across the header, the hero, the sidebar and the breadcrumb rather
+ * than fetching four times.
  */
-export const getCategories = cache(async (): Promise<CategoryDef[]> => {
+export const getCategoryTree = cache(async (): Promise<CategoryDef[]> => {
   try {
-    const res = await fetch(`${apiBaseUrl()}/public/categories`, {
+    const res = await fetch(`${apiBaseUrl()}/public/categories/tree`, {
       cache: "no-store",
     });
-    if (!res.ok) return [];
-    const items = (await res.json()) as BackendCategory[];
-    return items.map((c) => ({
-      slug: c.slug,
-      label: c.name,
-      description: c.description,
-      articleCount: c.articleCount ?? 0,
-      subtopics: c.subtopics.map((s) => s.label),
-    }));
-  } catch {
+    if (!res.ok) {
+      // Loud on purpose. An empty tree renders the site with no
+      // navigation AND a generateStaticParams with zero routes — a
+      // silent catch here turns a backend blip into a site that looks
+      // deliberately empty.
+      console.error(
+        `[categories] /public/categories/tree respondeu ${res.status}`,
+      );
+      return [];
+    }
+    return ((await res.json()) as BackendNode[]).map(adapt);
+  } catch (err) {
+    console.error("[categories] árvore de categorias inacessível:", err);
     return [];
   }
 });
 
+/** Every node, depth-first — the order they read in a menu. */
+export const getAllCategories = cache(async (): Promise<CategoryDef[]> => {
+  const flatten = (nodes: CategoryDef[]): CategoryDef[] =>
+    nodes.flatMap((n) => [n, ...flatten(n.children)]);
+  return flatten(await getCategoryTree());
+});
+
+/** Top-level sections only. */
+export async function getRootCategories(): Promise<CategoryDef[]> {
+  return getCategoryTree();
+}
+
 export async function getCategoryBySlug(
   slug: string,
 ): Promise<CategoryDef | undefined> {
-  const all = await getCategories();
-  return all.find((c) => c.slug === slug);
+  return (await getAllCategories()).find((c) => c.slug === slug);
 }
 
 /**
- * Maximum number of categories shown in the primary <SiteHeader> nav.
- * Anything beyond this falls through to <SecondaryNav>. Pulled out
- * here so both components agree on the same boundary without one
- * having to import the other.
- *
- * Single source of truth: the backend returns categories sorted by
- * `order asc`, so the first N here is "the top N according to the
- * order the admin chose in /admin/categorias".
+ * Root → … → the category itself. Drives both the visible breadcrumb and
+ * its BreadcrumbList JSON-LD, which is how Google reads the hierarchy —
+ * the URLs stay flat, so this trail is the only place the structure is
+ * expressed to a crawler.
  */
-export const PRIMARY_NAV_LIMIT = 6;
+export async function getAncestors(slug: string): Promise<CategoryDef[]> {
+  const all = await getAllCategories();
+  const byId = new Map(all.map((c) => [c.id, c]));
+  let node = all.find((c) => c.slug === slug);
+  const trail: CategoryDef[] = [];
+  while (node) {
+    trail.unshift(node);
+    node = node.parentId ? byId.get(node.parentId) : undefined;
+  }
+  return trail;
+}
+
+/** The category's own children — the chips that let a reader descend. */
+export async function getChildren(slug: string): Promise<CategoryDef[]> {
+  return (await getCategoryBySlug(slug))?.children ?? [];
+}
 
 /**
- * Splits the live category catalogue into the two nav bars. Use
- * this in both SiteHeader and SecondaryNav — keeps the partition
- * logic in one place so they can't disagree.
+ * Everything alongside the current node, itself excluded.
+ *
+ * Siblings rather than a flat "other sections" list: a reader on the
+ * Funchal wants Câmara de Lobos, not Desporto. Roots fall back to the
+ * other roots, which is what the old list happened to be.
  */
+export async function getSiblings(slug: string): Promise<CategoryDef[]> {
+  const all = await getAllCategories();
+  const node = all.find((c) => c.slug === slug);
+  if (!node) return [];
+  return all.filter((c) => c.parentId === node.parentId && c.id !== node.id);
+}
+
+/**
+ * Maximum number of TOP-LEVEL categories in the primary <SiteHeader> nav.
+ * Anything beyond falls through to <SecondaryNav>.
+ *
+ * Raised from 6 to 8 with the hierarchy: 6 was a limit imposed by having
+ * nowhere to put depth. Now that a section with children opens a panel,
+ * the bar carries more without becoming a wall of links. Subcategories
+ * never enter either bar — letting them in makes the reader lose track
+ * of what level they are on.
+ */
+export const PRIMARY_NAV_LIMIT = 8;
+
 export async function getNavCategories(): Promise<{
   primary: CategoryDef[];
   secondary: CategoryDef[];
 }> {
-  const all = await getCategories();
+  const roots = await getRootCategories();
   return {
-    primary: all.slice(0, PRIMARY_NAV_LIMIT),
-    secondary: all.slice(PRIMARY_NAV_LIMIT),
+    primary: roots.slice(0, PRIMARY_NAV_LIMIT),
+    secondary: roots.slice(PRIMARY_NAV_LIMIT),
   };
 }

@@ -7,7 +7,7 @@ import { SiteHeader } from "@/components/home/SiteHeader";
 import { SecondaryNav } from "@/components/home/SecondaryNav";
 import { SiteFooter } from "@/components/home/SiteFooter";
 import { Pagination } from "@/components/category/Pagination";
-import { CATEGORY_COLOR } from "@/components/home/HeroGrid";
+import { CategoryBadge } from "@/components/CategoryBadge";
 import {
   listBreaking,
   listPublicArticles,
@@ -132,11 +132,10 @@ export default async function SearchPage({
                       )}
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-                          <span
-                            className={`rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white ${CATEGORY_COLOR[item.category.name] ?? "bg-slate-600"}`}
-                          >
-                            {item.category.name}
-                          </span>
+                          <CategoryBadge
+                            name={item.category.name}
+                            color={item.category.color}
+                          />
                           <span aria-hidden>·</span>
                           <span>{timeAgo(item.publishedAt)}</span>
                           <span aria-hidden>·</span>

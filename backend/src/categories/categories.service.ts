@@ -9,11 +9,19 @@ import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreateSubtopicDto } from './dto/subtopic.dto';
 import { ReorderCategoryDto } from './dto/reorder-category.dto';
-import { CategoryTreeService } from './category-tree.service';
+import {
+  CategoryTreeService,
+  type CategoryTreeNode,
+} from './category-tree.service';
 import type { Prisma } from '../../generated/prisma/client';
 
 /** Max depth is 4 levels: categoria(0) -> subcategoria -> topico -> subtopico(3). */
 const MAX_DEPTH = 3;
+
+/** The tree node minus `path`, which is an internal storage detail. */
+type PublicTreeNode = Omit<CategoryTreeNode, 'path' | 'children'> & {
+  children: PublicTreeNode[];
+};
 
 function baseSlug(input: string): string {
   return input
@@ -119,6 +127,25 @@ export class CategoriesService {
   /** Nested roots, hidden categories included — this is the CMS view. */
   listTree() {
     return this.tree.getForest();
+  }
+
+  /**
+   * The public forest: the same tree with every hidden branch pruned.
+   *
+   * Pruned at the branch, not per node — hiding "Portugal" has to take
+   * the Funchal off the menu with it, otherwise a child stays reachable
+   * through a parent the editor deliberately removed.
+   */
+  async listPublicTree() {
+    const forest = await this.tree.getForest();
+    const prune = (nodes: CategoryTreeNode[]): PublicTreeNode[] =>
+      nodes
+        .filter((n) => n.visible)
+        .map(({ path: _path, ...n }) => {
+          void _path;
+          return { ...n, children: prune(n.children) };
+        });
+    return prune(forest);
   }
 
   async listPublic() {

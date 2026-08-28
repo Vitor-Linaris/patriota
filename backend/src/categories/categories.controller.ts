@@ -80,6 +80,20 @@ export class CategoriesController {
     return this.service.listPublic();
   }
 
+  /**
+   * The whole visible tree, nested. Separate from /public/categories
+   * (which stays a flat list of roots) so existing consumers — the
+   * search filter among them — don't suddenly receive hundreds of
+   * deep nodes they have no way to render.
+   *
+   * Declared before ':slug' so "tree" isn't read as a category slug.
+   */
+  @Public()
+  @Get('public/categories/tree')
+  publicTree() {
+    return this.service.listPublicTree();
+  }
+
   @Public()
   @Get('public/categories/:slug')
   publicBySlug(@Param('slug') slug: string) {

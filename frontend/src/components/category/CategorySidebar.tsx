@@ -1,6 +1,11 @@
 import Link from "next/link";
 import { SectionMarker } from "./SectionMarker";
-import { getCategories } from "@/lib/categories";
+import {
+  getAllCategories,
+  getCategoryBySlug,
+  getRootCategories,
+  getSiblings,
+} from "@/lib/categories";
 import { listPublicArticles } from "@/lib/public-api";
 import { NewsletterForm } from "@/components/home/NewsletterForm";
 import { AdSlot } from "@/components/ads/AdSlot";
@@ -10,6 +15,14 @@ interface CategorySidebarProps {
   currentSlug: string;
   newsletterTitle: string;
   ad?: Ad | null;
+}
+
+/** The opinion section, if the newsroom still has one under any slug. */
+async function findOpinionSlug(): Promise<string | null> {
+  const all = await getAllCategories();
+  return (
+    all.find((c) => c.label.toLowerCase().startsWith("opini"))?.slug ?? null
+  );
 }
 
 function initialsOf(name: string | null): string {
@@ -27,11 +40,35 @@ export async function CategorySidebar({
   newsletterTitle,
   ad,
 }: CategorySidebarProps) {
-  const [cats, opinion] = await Promise.all([
-    getCategories(),
-    listPublicArticles({ category: "opiniao", pageSize: 2 }),
+  // Siblings, not "every other section". A reader on the Funchal wants
+  // Câmara de Lobos, not Desporto. At the root the siblings ARE the
+  // other top-level sections, so the old behaviour survives where it
+  // was right to begin with.
+  const [current, siblings, roots, opinion] = await Promise.all([
+    getCategoryBySlug(currentSlug),
+    getSiblings(currentSlug),
+    getRootCategories(),
+    // The opinion column used to hardcode category: "opiniao" — an
+    // invisible dependency on one slug that silently emptied the moment
+    // an editor renamed it. Resolved against the live catalogue now,
+    // and simply not rendered when no such section exists.
+    findOpinionSlug().then((slug) =>
+      slug ? listPublicArticles({ category: slug, pageSize: 2 }) : null,
+    ),
   ]);
-  const others = cats.filter((c) => c.slug !== currentSlug).slice(0, 6);
+
+  // Inside a section, name the parent — "Mais em Madeira" tells the
+  // reader where they are as well as where they can go. At the top, or
+  // for an only child with no peers, fall back to the other sections.
+  const insideASection = Boolean(current?.parentId) && siblings.length > 0;
+  const parent = insideASection
+    ? (await getAllCategories()).find((c) => c.id === current!.parentId)
+    : undefined;
+
+  const others = (insideASection ? siblings : roots)
+    .filter((c) => c.slug !== currentSlug)
+    .slice(0, 6);
+  const heading = parent ? `Mais em ${parent.label}` : "Outras Rubricas";
 
   return (
     <aside className="flex flex-col gap-8">
@@ -50,7 +87,7 @@ export async function CategorySidebar({
       </section>
 
       {/* Opinião */}
-      {opinion.items.length > 0 && (
+      {opinion && opinion.items.length > 0 && (
         <section>
           <SectionMarker title="Opinião" />
           <ul className="mt-4 flex flex-col gap-3">
@@ -84,34 +121,35 @@ export async function CategorySidebar({
       {/* Sidebar ad slot (category-sidebar, 300×250 IAB MPU). */}
       <AdSlot ad={ad} variant="none" />
 
-      {/* Outras Rubricas */}
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <header className="border-b border-slate-200 px-5 py-3">
-          <h3 className="text-[15px] font-bold text-slate-900">
-            Outras Rubricas
-          </h3>
-        </header>
-        <ul className="divide-y divide-slate-100">
-          {others.map((c) => (
-            <li key={c.slug}>
-              <Link
-                href={`/categoria/${c.slug}`}
-                className="flex items-center justify-between px-5 py-3 text-[14px] transition hover:bg-slate-50"
-              >
-                <span className="font-semibold text-slate-800">{c.label}</span>
-                <span className="flex items-center gap-3 text-[12px] text-slate-500">
-                  <span>
-                    {c.articleCount} {c.articleCount === 1 ? "artigo" : "artigos"}
+      {/* Siblings of the current section */}
+      {others.length > 0 && (
+        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <header className="border-b border-slate-200 px-5 py-3">
+            <h3 className="text-[15px] font-bold text-slate-900">{heading}</h3>
+          </header>
+          <ul className="divide-y divide-slate-100">
+            {others.map((c) => (
+              <li key={c.slug}>
+                <Link
+                  href={`/categoria/${c.slug}`}
+                  className="flex items-center justify-between px-5 py-3 text-[14px] transition hover:bg-slate-50"
+                >
+                  <span className="font-semibold text-slate-800">{c.label}</span>
+                  <span className="flex items-center gap-3 text-[12px] text-slate-500">
+                    <span>
+                      {c.articleCountTotal}{" "}
+                      {c.articleCountTotal === 1 ? "artigo" : "artigos"}
+                    </span>
+                    <span aria-hidden className="text-slate-400">
+                      →
+                    </span>
                   </span>
-                  <span aria-hidden className="text-slate-400">
-                    →
-                  </span>
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </section>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </aside>
   );
 }

@@ -5,19 +5,7 @@ import {
   type ArticleDetail,
 } from "@/lib/public-api";
 import { imageVariant } from "@/lib/images";
-
-const CATEGORY_COLOR: Record<string, string> = {
-  Política: "bg-red-600",
-  Economia: "bg-emerald-600",
-  Sociedade: "bg-blue-600",
-  Investigação: "bg-amber-600",
-  Mundo: "bg-purple-600",
-  Cultura: "bg-amber-700",
-  Tecnologia: "bg-cyan-600",
-  Saúde: "bg-green-600",
-  Desporto: "bg-red-700",
-  Investigaçao: "bg-amber-600",
-};
+import { CategoryBadge } from "../CategoryBadge";
 
 interface Props {
   featured: ArticleDetail | null;
@@ -81,11 +69,10 @@ export function HeroGrid({ featured, side }: Props) {
             on phones. */}
         <div className="relative flex flex-col gap-3 p-5 sm:p-6 lg:absolute lg:inset-x-0 lg:bottom-0 lg:p-8">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-white/80">
-            <span
-              className={`rounded px-2 py-1 text-[10px] font-bold uppercase tracking-wider ${CATEGORY_COLOR[featured?.category.name ?? ""] ?? "bg-slate-600"}`}
-            >
-              {featured?.category.name ?? "Geral"}
-            </span>
+            <CategoryBadge
+              name={featured?.category.name ?? "Geral"}
+              color={featured?.category.color}
+            />
             <span>{timeAgo(featured?.publishedAt ?? null)}</span>
             <span aria-hidden>·</span>
             <span>{featured?.readMinutes ?? 4} min leitura</span>
@@ -123,11 +110,11 @@ export function HeroGrid({ featured, side }: Props) {
           >
             <div className="min-w-0 flex-1">
               <div className="mb-2 flex items-center gap-2 text-[11px] text-slate-500">
-                <span
-                  className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white ${CATEGORY_COLOR[card.category.name] ?? "bg-slate-600"}`}
-                >
-                  {card.category.name}
-                </span>
+                <CategoryBadge
+                  name={card.category.name}
+                  color={card.category.color}
+                  size="sm"
+                />
                 <span aria-hidden>·</span>
                 <span>{timeAgo(card.publishedAt)}</span>
               </div>
@@ -161,5 +148,3 @@ export function HeroGrid({ featured, side }: Props) {
     </section>
   );
 }
-
-export { CATEGORY_COLOR };

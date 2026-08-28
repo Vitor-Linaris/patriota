@@ -444,7 +444,7 @@ export class ArticlesService {
         slug: true,
         rejectionReason: true,
         updatedAt: true,
-        category: { select: { slug: true, name: true } },
+        category: { select: { slug: true, name: true, color: true } },
       },
     });
   }
@@ -481,7 +481,7 @@ export class ArticlesService {
         take,
         orderBy,
         include: {
-          category: { select: { slug: true, name: true } },
+          category: { select: { slug: true, name: true, color: true } },
           author: { select: { name: true } },
         },
       }),
@@ -513,7 +513,7 @@ export class ArticlesService {
 
     const take = Math.min(Math.max(limit, 1), 10);
     const include = {
-      category: { select: { slug: true, name: true } },
+      category: { select: { slug: true, name: true, color: true } },
       author: { select: { name: true } },
     };
 
@@ -552,7 +552,7 @@ export class ArticlesService {
     const a = await this.prisma.article.findFirst({
       where: { slug, status: 'PUBLICADO' },
       include: {
-        category: { select: { slug: true, name: true } },
+        category: { select: { slug: true, name: true, color: true } },
         author: { select: { id: true, name: true } },
       },
     });
@@ -570,7 +570,7 @@ export class ArticlesService {
       orderBy: { publishedAt: 'desc' },
       take: 12,
       include: {
-        category: { select: { slug: true, name: true } },
+        category: { select: { slug: true, name: true, color: true } },
         author: { select: { name: true } },
       },
     });

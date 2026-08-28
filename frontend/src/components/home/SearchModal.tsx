@@ -91,19 +91,29 @@ export function SearchModal({ open, onClose }: SearchModalProps) {
     setRecent(loadRecent());
     inputRef.current?.focus();
     document.body.style.overflow = "hidden";
-    // Topics are categories with their published-article counts —
-    // the public /categories endpoint already returns the counts.
+    // Deliberately /public/categories (top-level only) and not the tree:
+    // a browse-by-topic shortcut with every subtópico in it would be a
+    // filter with hundreds of options.
     void fetch(`${apiBase()}/public/categories`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : []))
       .then((data: unknown) => {
         if (!Array.isArray(data)) return;
         setTopics(
-          (data as Array<{ slug?: string; name?: string; articleCount?: number }>)
+          (
+            data as Array<{
+              slug?: string;
+              name?: string;
+              articleCount?: number;
+              articleCountTotal?: number;
+            }>
+          )
             .filter((c) => c.slug && c.name)
             .map((c) => ({
               slug: c.slug as string,
               label: c.name as string,
-              articleCount: c.articleCount ?? 0,
+              // The rolled-up count: a section whose articles all live in
+              // its subsections is not an empty section to a reader.
+              articleCount: c.articleCountTotal ?? c.articleCount ?? 0,
             }))
             .sort((a, b) => b.articleCount - a.articleCount)
             .slice(0, 8),

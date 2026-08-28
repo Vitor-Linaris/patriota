@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Container } from "../Container";
 import { getNavCategories } from "@/lib/categories";
 import { MobileNav } from "./MobileNav";
+import { CategoryMegaMenu } from "./CategoryMegaMenu";
 
 /**
  * Primary top navigation. Lives 100% off the category catalogue
@@ -23,7 +24,9 @@ import { MobileNav } from "./MobileNav";
 export async function SiteHeader() {
   const { primary, secondary } = await getNavCategories();
   return (
-    <header className="border-b border-slate-200 bg-white">
+    // relative + z-40 so the megamenu panel paints over the strips that
+    // follow it in the document rather than being clipped behind them.
+    <header className="relative z-40 border-b border-slate-200 bg-white">
       <Container className="flex h-[82px] items-center justify-between">
         <Link href="/" aria-label="O Patriota" className="inline-flex">
           <Image
@@ -40,17 +43,12 @@ export async function SiteHeader() {
           />
         </Link>
 
-        {/* Desktop: inline links. Hidden below `lg`. */}
+        {/* Desktop: inline links, with a panel on sections that have
+            subsections. Hidden below `lg`. */}
         {primary.length > 0 && (
           <nav className="hidden items-center gap-7 text-[14px] lg:flex">
             {primary.map((c) => (
-              <Link
-                key={c.slug}
-                href={`/categoria/${c.slug}`}
-                className="text-slate-700 transition hover:text-patriota-medium"
-              >
-                {c.label}
-              </Link>
+              <CategoryMegaMenu key={c.slug} category={c} />
             ))}
           </nav>
         )}
