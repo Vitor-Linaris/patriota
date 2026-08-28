@@ -9,6 +9,7 @@ import {
   type ArticleContextBoxes,
 } from "@/components/admin/ArticleBoxesEditor";
 import { imageVariant } from "@/lib/images";
+import { FEATURES } from "@/lib/features";
 import { Pagination } from "@/components/category/Pagination";
 import {
   archiveArticleAction,
@@ -594,26 +595,32 @@ function ArticleEditor({
                   <option value="arquivado">Arquivado</option>
                 </select>
               </div>
-              <div className="flex items-center justify-between border-t border-gray-50 py-2">
-                <div>
-                  <p className="text-sm font-bold text-gray-700">
-                    Conteúdo Exclusivo
-                  </p>
-                  <p className="text-[10px] text-gray-400">
-                    Só para assinantes
-                  </p>
+              {/* Hidden until paid subscriptions exist. The field and
+                  the write path work; the paywall does not, so marking a
+                  piece "subscribers only" today would change nothing
+                  except mislead the newsroom. */}
+              {FEATURES.subscriberPublishing && (
+                <div className="flex items-center justify-between border-t border-gray-50 py-2">
+                  <div>
+                    <p className="text-sm font-bold text-gray-700">
+                      Conteúdo Exclusivo
+                    </p>
+                    <p className="text-[10px] text-gray-400">
+                      Só para assinantes
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => set({ exclusive: !form.exclusive })}
+                    aria-pressed={form.exclusive}
+                    className={`relative h-5 w-10 rounded-full transition-colors ${form.exclusive ? "bg-[#FFCC66]" : "bg-gray-200"}`}
+                  >
+                    <span
+                      className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${form.exclusive ? "translate-x-5" : "translate-x-0.5"}`}
+                    />
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => set({ exclusive: !form.exclusive })}
-                  aria-pressed={form.exclusive}
-                  className={`relative h-5 w-10 rounded-full transition-colors ${form.exclusive ? "bg-[#FFCC66]" : "bg-gray-200"}`}
-                >
-                  <span
-                    className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${form.exclusive ? "translate-x-5" : "translate-x-0.5"}`}
-                  />
-                </button>
-              </div>
+              )}
               <div>
                 <label className="mb-1.5 block text-xs font-bold text-gray-500">
                   Tempo de leitura (min)

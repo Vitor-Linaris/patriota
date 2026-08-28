@@ -41,6 +41,19 @@ export const FEATURES = {
    * typing the URL — readers and staff are separate account systems.
    */
   publicAuth: process.env.NEXT_PUBLIC_FEATURE_PUBLIC_AUTH === "true",
+
+  /**
+   * The "Conteúdo Exclusivo" switch in the article editor.
+   *
+   * The field, the DTO and the write path all work already — what does
+   * not exist is the paywall itself: listPublic() and findPublicBySlug()
+   * never look at Article.exclusive, so a flagged article is served in
+   * full to anyone. Hidden until paid subscriptions ship, so nobody
+   * marks a piece "subscribers only" months before a reader has any way
+   * to subscribe.
+   */
+  subscriberPublishing:
+    process.env.NEXT_PUBLIC_FEATURE_SUBSCRIBER_PUBLISHING === "true",
 } as const;
 
 export type FeatureFlag = keyof typeof FEATURES;
