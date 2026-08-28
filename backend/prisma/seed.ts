@@ -543,6 +543,37 @@ async function main() {
         });
       }
     }
+
+    // ── The funnel, demonstrated ────────────────────────────────────
+    // One published article at the very bottom of Portugal › Madeira ›
+    // Funchal › Sé. Without it the demo branch exists but demonstrates
+    // nothing: the point is that opening "Portugal" on the public site
+    // surfaces a piece filed four levels down.
+    const se = await prisma.category.findUnique({ where: { slug: 'se-funchal' } });
+    if (se) {
+      await prisma.article.upsert({
+        where: { slug: 'obras-de-requalificacao-na-rua-da-se' },
+        update: {},
+        create: {
+          slug: 'obras-de-requalificacao-na-rua-da-se',
+          title: 'Obras de requalificação arrancam na Rua da Sé',
+          summary:
+            'A empreitada na zona velha do Funchal deverá estar concluída antes do verão.',
+          content:
+            '<p>As obras de requalificação da Rua da Sé arrancaram esta semana.</p>' +
+            '<p>Este artigo está publicado no <strong>subtópico</strong> Sé — quatro ' +
+            'níveis abaixo de Portugal — e aparece na página de Portugal, da Madeira ' +
+            'e do Funchal por causa do afunilamento.</p>',
+          status: 'PUBLICADO',
+          categoryId: se.id,
+          authorId: authors[0]?.id ?? user.id,
+          readMinutes: 3,
+          views: 412,
+          publishedAt: new Date(),
+          essentials: [],
+        },
+      });
+    }
   }
 
   // ── Newsletter subscribers (sample) ───────────────────────────────

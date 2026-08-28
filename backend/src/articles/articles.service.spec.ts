@@ -4,6 +4,8 @@ import { ArticlesService } from './articles.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { RbacService } from '../rbac/rbac.service';
+import { CategoryTreeService } from '../categories/category-tree.service';
+import { ConfigService } from '@nestjs/config';
 
 function makePrismaMock() {
   return {
@@ -25,11 +27,24 @@ describe('ArticlesService', () => {
   let prisma: ReturnType<typeof makePrismaMock>;
   let activity: { record: jest.Mock };
   let rbac: { getPermissionsForRole: jest.Mock };
+  let tree: {
+    resolveSubtreeIds: jest.Mock;
+    resolveSubtreeIdsById: jest.Mock;
+    getById: jest.Mock;
+  };
+  /** Funnel ON by default here, matching the shipped default. */
+  let funnel: string | undefined;
 
   beforeEach(async () => {
     prisma = makePrismaMock();
     activity = { record: jest.fn() };
     rbac = { getPermissionsForRole: jest.fn().mockResolvedValue([]) };
+    funnel = undefined;
+    tree = {
+      resolveSubtreeIds: jest.fn().mockResolvedValue([]),
+      resolveSubtreeIdsById: jest.fn().mockResolvedValue([]),
+      getById: jest.fn().mockResolvedValue(null),
+    };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -37,6 +52,8 @@ describe('ArticlesService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: ActivityLogService, useValue: activity },
         { provide: RbacService, useValue: rbac },
+        { provide: CategoryTreeService, useValue: tree },
+        { provide: ConfigService, useValue: { get: () => funnel } },
       ],
     }).compile();
     service = moduleRef.get(ArticlesService);
@@ -328,6 +345,95 @@ describe('ArticlesService', () => {
       const args = prisma.article.findMany.mock.calls[0][0];
       expect(args.orderBy).toEqual({ views: 'desc' });
     });
+
+    it('funnels a category down to its whole subtree', async () => {
+      tree.resolveSubtreeIds.mockResolvedValueOnce(['pt', 'ma', 'fu', 'se']);
+      prisma.article.findMany.mockResolvedValueOnce([]);
+      prisma.article.count.mockResolvedValueOnce(0);
+
+      await service.listPublic({ category: 'portugal' } as never);
+
+      const where = prisma.article.findMany.mock.calls[0][0].where;
+      // categoryId IN, not a category relation filter — that switch is
+      // what lets @@index([categoryId, status, publishedAt]) be used.
+      expect(where).toMatchObject({ categoryId: { in: ['pt', 'ma', 'fu', 'se'] } });
+      expect(where).not.toHaveProperty('category');
+    });
+
+    it('falls back to the exact category when the tree yields nothing', async () => {
+      // An unknown slug, or a tree we failed to build. Returning the
+      // category's own articles beats turning a cache problem into an
+      // empty section page.
+      tree.resolveSubtreeIds.mockResolvedValueOnce([]);
+      prisma.article.findMany.mockResolvedValueOnce([]);
+      prisma.article.count.mockResolvedValueOnce(0);
+
+      await service.listPublic({ category: 'desconhecida' } as never);
+
+      expect(prisma.article.findMany.mock.calls[0][0].where).toMatchObject({
+        category: { slug: 'desconhecida' },
+      });
+    });
+
+    it('reverts to exact-category filtering when CATEGORY_FUNNEL=0', async () => {
+      funnel = '0';
+      prisma.article.findMany.mockResolvedValueOnce([]);
+      prisma.article.count.mockResolvedValueOnce(0);
+
+      await service.listPublic({ category: 'portugal' } as never);
+
+      expect(prisma.article.findMany.mock.calls[0][0].where).toMatchObject({
+        category: { slug: 'portugal' },
+      });
+      expect(tree.resolveSubtreeIds).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('list() — the CMS list', () => {
+    it('does NOT funnel by default', async () => {
+      // An editor filtering by "Portugal" to find one piece means
+      // literally Portugal. Mixing in four levels of children would make
+      // the list unusable for the job it exists to do.
+      prisma.article.findMany.mockResolvedValueOnce([]);
+      prisma.article.count.mockResolvedValueOnce(0);
+
+      await service.list({ category: 'portugal' } as never);
+
+      expect(prisma.article.findMany.mock.calls[0][0].where).toMatchObject({
+        category: { slug: 'portugal' },
+      });
+      expect(tree.resolveSubtreeIds).not.toHaveBeenCalled();
+    });
+
+    it('funnels only when includeDescendants is explicitly asked for', async () => {
+      tree.resolveSubtreeIds.mockResolvedValueOnce(['pt', 'ma']);
+      prisma.article.findMany.mockResolvedValueOnce([]);
+      prisma.article.count.mockResolvedValueOnce(0);
+
+      await service.list({
+        category: 'portugal',
+        includeDescendants: true,
+      } as never);
+
+      expect(prisma.article.findMany.mock.calls[0][0].where).toMatchObject({
+        categoryId: { in: ['pt', 'ma'] },
+      });
+    });
+
+    it('ignores includeDescendants while the kill switch is off', async () => {
+      funnel = 'false';
+      prisma.article.findMany.mockResolvedValueOnce([]);
+      prisma.article.count.mockResolvedValueOnce(0);
+
+      await service.list({
+        category: 'portugal',
+        includeDescendants: true,
+      } as never);
+
+      expect(prisma.article.findMany.mock.calls[0][0].where).toMatchObject({
+        category: { slug: 'portugal' },
+      });
+    });
   });
 
   describe('findRelated()', () => {
@@ -357,6 +463,60 @@ describe('ArticlesService', () => {
       expect(prisma.article.findMany.mock.calls[0][0].take).toBe(10);
       await service.findRelated('s', 0);
       expect(prisma.article.findMany.mock.calls[1][0].take).toBe(1);
+    });
+
+    it('does not widen when the exact category already fills the quota', async () => {
+      // A well-stocked category must never show a neighbour's article.
+      prisma.article.findUnique.mockResolvedValueOnce({ id: 'a1', categoryId: 'se' });
+      prisma.article.findMany.mockResolvedValueOnce([
+        { id: 'a2' },
+        { id: 'a3' },
+      ]);
+
+      const out = await service.findRelated('s', 2);
+
+      expect(out).toHaveLength(2);
+      expect(prisma.article.findMany).toHaveBeenCalledTimes(1);
+      expect(tree.getById).not.toHaveBeenCalled();
+    });
+
+    it('tops up from the PARENT subtree when the category is thin', async () => {
+      prisma.article.findUnique.mockResolvedValueOnce({ id: 'a1', categoryId: 'se' });
+      prisma.article.findMany
+        .mockResolvedValueOnce([{ id: 'a2' }]) // only one sibling
+        .mockResolvedValueOnce([{ id: 'a9' }]); // cousin from the Funchal
+      tree.getById.mockResolvedValueOnce({ id: 'se', parentId: 'fu' });
+      tree.resolveSubtreeIdsById.mockResolvedValueOnce(['fu', 'se']);
+
+      const out = await service.findRelated('s', 2);
+
+      expect(out.map((a: { id: string }) => a.id)).toEqual(['a2', 'a9']);
+      const second = prisma.article.findMany.mock.calls[1][0];
+      expect(second.where).toMatchObject({ categoryId: { in: ['fu', 'se'] } });
+      // Never re-suggests what it already returned, nor the article itself.
+      expect(second.where.NOT).toEqual({ id: { in: ['a1', 'a2'] } });
+      expect(second.take).toBe(1);
+    });
+
+    it('stays put when the thin category is already a root', async () => {
+      // No parent to widen into — the whole site is not "related".
+      prisma.article.findUnique.mockResolvedValueOnce({ id: 'a1', categoryId: 'pt' });
+      prisma.article.findMany.mockResolvedValueOnce([]);
+      tree.getById.mockResolvedValueOnce({ id: 'pt', parentId: null });
+
+      await expect(service.findRelated('s', 4)).resolves.toEqual([]);
+      expect(prisma.article.findMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not widen at all while CATEGORY_FUNNEL=0', async () => {
+      funnel = '0';
+      prisma.article.findUnique.mockResolvedValueOnce({ id: 'a1', categoryId: 'se' });
+      prisma.article.findMany.mockResolvedValueOnce([]);
+
+      await service.findRelated('s', 4);
+
+      expect(prisma.article.findMany).toHaveBeenCalledTimes(1);
+      expect(tree.getById).not.toHaveBeenCalled();
     });
   });
 });

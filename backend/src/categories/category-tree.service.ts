@@ -26,6 +26,18 @@ export interface CategoryTreeNode {
 }
 
 /**
+ * Every id under `node`, itself included — a prefix match on the
+ * materialised path, which is the whole reason that column exists.
+ */
+function descendantsOf(
+  tree: CategoryTreeNode[],
+  node: CategoryTreeNode | undefined,
+): string[] {
+  if (!node) return [];
+  return tree.filter((n) => n.path.startsWith(node.path)).map((n) => n.id);
+}
+
+/**
  * The whole category tree, read from Postgres at most once every 5
  * minutes and served from Redis the rest of the time.
  *
@@ -103,9 +115,13 @@ export class CategoryTreeService {
    */
   async resolveSubtreeIds(slug: string): Promise<string[]> {
     const tree = await this.getTree();
-    const node = tree.find((n) => n.slug === slug);
-    if (!node) return [];
-    return tree.filter((n) => n.path.startsWith(node.path)).map((n) => n.id);
+    return descendantsOf(tree, tree.find((n) => n.slug === slug));
+  }
+
+  /** Same, addressed by id — used when walking up from a known node. */
+  async resolveSubtreeIdsById(id: string): Promise<string[]> {
+    const tree = await this.getTree();
+    return descendantsOf(tree, tree.find((n) => n.id === id));
   }
 
   async getBySlug(slug: string): Promise<CategoryTreeNode | null> {

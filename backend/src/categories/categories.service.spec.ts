@@ -9,7 +9,12 @@ import {
 } from '@nestjs/common';
 
 function makeTreeMock() {
-  return { invalidate: jest.fn().mockResolvedValue(undefined) };
+  return {
+    invalidate: jest.fn().mockResolvedValue(undefined),
+    // listPublic() reads the rolled-up counts off the cached tree.
+    getTree: jest.fn().mockResolvedValue([]),
+    getForest: jest.fn().mockResolvedValue([]),
+  };
 }
 
 /**

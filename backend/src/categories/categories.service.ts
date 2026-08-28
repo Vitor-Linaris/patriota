@@ -134,10 +134,19 @@ export class CategoriesService {
         },
       },
     });
-    // Surface the count under a stable name so the public API stays small.
+    // Two numbers, deliberately: articleCount is what this category holds
+    // itself, articleCountTotal is what the reader actually gets when
+    // they open it. Exposing only the rolled-up one would make a section
+    // with no articles of its own look like it has dozens.
+    const tree = await this.tree.getTree();
+    const totals = new Map(tree.map((n) => [n.id, n.articleCountTotal]));
     return items.map((c) => {
       const { _count, ...rest } = c;
-      return { ...this.withSubtopicsAlias(rest), articleCount: _count.articles };
+      return {
+        ...this.withSubtopicsAlias(rest),
+        articleCount: _count.articles,
+        articleCountTotal: totals.get(c.id) ?? _count.articles,
+      };
     });
   }
 

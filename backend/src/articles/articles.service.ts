@@ -11,6 +11,8 @@ import { CreateArticleDto } from './dto/create-article.dto';
 import { UpdateArticleDto } from './dto/update-article.dto';
 import { ListArticlesQueryDto } from './dto/list-articles.query.dto';
 import { ArticleStatus } from '../../generated/prisma/enums';
+import { ConfigService } from '@nestjs/config';
+import { CategoryTreeService } from '../categories/category-tree.service';
 import {
   PageResult,
   toSkipTake,
@@ -44,9 +46,44 @@ export class ArticlesService {
     private readonly prisma: PrismaService,
     private readonly activity: ActivityLogService,
     private readonly rbac: RbacService,
+    private readonly tree: CategoryTreeService,
+    private readonly config: ConfigService,
   ) {}
 
   // ── helpers ────────────────────────────────────────────────────────
+
+  /**
+   * Kill switch for the whole subtree funnel. ON unless explicitly
+   * disabled, so production can revert to per-category filtering with an
+   * env var instead of a deploy.
+   */
+  private get funnelEnabled(): boolean {
+    const raw = this.config.get<string>('CATEGORY_FUNNEL');
+    return raw !== '0' && raw !== 'false';
+  }
+
+  /**
+   * The where-fragment for ?category=<slug>.
+   *
+   * Widened, this stops being a relation filter (which Prisma compiles to
+   * a join against Category, unable to use the leading column of
+   * @@index([categoryId, status, publishedAt])) and becomes a plain
+   * categoryId IN — so the funnel is a performance GAIN, not a cost.
+   */
+  private async categoryWhere(
+    slug: string,
+    widen: boolean,
+  ): Promise<Record<string, unknown>> {
+    if (!widen) return { category: { slug } };
+
+    const ids = await this.tree.resolveSubtreeIds(slug);
+    // Empty means either an unknown slug or a tree we failed to build.
+    // Falling back to the relation filter keeps a valid slug returning
+    // its own articles instead of turning a cache problem into an empty
+    // section page.
+    if (ids.length === 0) return { category: { slug } };
+    return { categoryId: { in: ids } };
+  }
   private async ensureCategory(categoryId: string) {
     const cat = await this.prisma.category.findUnique({
       where: { id: categoryId },
@@ -117,7 +154,16 @@ export class ArticlesService {
     const { skip, take } = toSkipTake(query);
     const where: Record<string, unknown> = {};
     if (query.status?.length) where.status = { in: query.status };
-    if (query.category) where.category = { slug: query.category };
+    if (query.category) {
+      // Opt-in in the CMS — see includeDescendants on the DTO.
+      Object.assign(
+        where,
+        await this.categoryWhere(
+          query.category,
+          this.funnelEnabled && query.includeDescendants === true,
+        ),
+      );
+    }
     if (query.q) {
       where.OR = [
         { title: { contains: query.q, mode: 'insensitive' } },
@@ -406,7 +452,15 @@ export class ArticlesService {
   async listPublic(query: ListArticlesQueryDto): Promise<PageResult<unknown>> {
     const { skip, take } = toSkipTake(query);
     const where: Record<string, unknown> = { status: 'PUBLICADO' };
-    if (query.category) where.category = { slug: query.category };
+    if (query.category) {
+      // The funnel, on the public side: opening "Portugal" shows
+      // everything underneath it, opening "Funchal" narrows to that
+      // branch. This is the feature.
+      Object.assign(
+        where,
+        await this.categoryWhere(query.category, this.funnelEnabled),
+      );
+    }
     // Public search across title + summary. Uses the same case-
     // insensitive contains pattern as the admin list — same index
     // story, same expectations.
@@ -441,25 +495,57 @@ export class ArticlesService {
     };
   }
 
+  /**
+   * Same category first; only if that comes up short does it widen to the
+   * PARENT's subtree — siblings and cousins, never the whole site.
+   *
+   * Widening on scarcity rather than always: a well-stocked category
+   * should never show a neighbour's article, but a thin one (a brand new
+   * "Sé" with two pieces in it) showing nothing is worse than showing
+   * something from the Funchal.
+   */
   async findRelated(slug: string, limit = 4) {
     const ref = await this.prisma.article.findUnique({
       where: { slug },
       select: { id: true, categoryId: true },
     });
     if (!ref) return [];
-    return this.prisma.article.findMany({
+
+    const take = Math.min(Math.max(limit, 1), 10);
+    const include = {
+      category: { select: { slug: true, name: true } },
+      author: { select: { name: true } },
+    };
+
+    const exact = await this.prisma.article.findMany({
       where: {
         status: 'PUBLICADO',
         categoryId: ref.categoryId,
         NOT: { id: ref.id },
       },
       orderBy: { publishedAt: 'desc' },
-      take: Math.min(Math.max(limit, 1), 10),
-      include: {
-        category: { select: { slug: true, name: true } },
-        author: { select: { name: true } },
-      },
+      take,
+      include,
     });
+    if (!this.funnelEnabled || exact.length >= take) return exact;
+
+    const node = await this.tree.getById(ref.categoryId);
+    if (!node?.parentId) return exact;
+    const ids = await this.tree.resolveSubtreeIdsById(node.parentId);
+    if (ids.length === 0) return exact;
+
+    const seen = [ref.id, ...exact.map((a) => a.id)];
+    const extra = await this.prisma.article.findMany({
+      where: {
+        status: 'PUBLICADO',
+        categoryId: { in: ids },
+        NOT: { id: { in: seen } },
+      },
+      orderBy: { publishedAt: 'desc' },
+      take: take - exact.length,
+      include,
+    });
+    return [...exact, ...extra];
   }
 
   async findPublicBySlug(slug: string) {
