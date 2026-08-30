@@ -16,6 +16,7 @@ import {
   autosaveArticleAction,
   createArticleAction,
   deleteArticleAction,
+  discardDraftAction,
   publishArticleAction,
   rejectArticleAction,
   submitArticleAction,
@@ -56,10 +57,13 @@ export interface AdminArticle {
   metaDescription: string;
   coverImage: string;
   /**
-   * There are edits parked on this article waiting for someone who can
-   * publish. The article itself is still live and unchanged — this is
-   * the only way an approver finds out the edits exist.
+   * Edits parked on a live article: written by autosave or by "Guardar
+   * alterações", not yet published. The fields above are what readers
+   * see; this is what the newsroom is working on.
    */
+  draft?: Record<string, unknown> | null;
+  draftUpdatedAt?: string | null;
+  /** The parked edits came from someone who cannot publish them. */
   draftAwaitingReview?: boolean;
   scheduledAt: string | null;
   createdAt: string;
@@ -209,24 +213,40 @@ function emptyEditor(categoryId: string): EditorState {
   };
 }
 
+/**
+ * The live row, with any parked edits laid over the top.
+ *
+ * Without the overlay the editor would reopen showing the PUBLISHED
+ * text while a newer draft sat in the database — the author's work
+ * would look lost, and their next keystroke would autosave the old
+ * version back over the new one. The draft is what the newsroom is
+ * working on; the columns underneath are what readers still see.
+ *
+ * `coverImageUrl` is the one name that differs between the API payload
+ * and this form's state (`coverImage`), so it is mapped by hand.
+ */
 function articleToEditor(a: AdminArticle): EditorState {
+  const d: Record<string, unknown> = a.draft ?? {};
+  const pick = <T,>(key: string, live: T): T =>
+    d[key] !== undefined ? (d[key] as T) : live;
+
   return {
     id: a.id,
-    title: a.title,
-    slug: a.slug,
-    summary: a.summary,
-    content: a.content,
+    title: pick("title", a.title),
+    slug: pick("slug", a.slug),
+    summary: pick("summary", a.summary),
+    content: pick("content", a.content),
     status: API_TO_UI[a.status],
-    exclusive: a.exclusive,
-    readMinutes: a.readMinutes,
-    tags: a.tags,
-    essentials: a.essentials ?? [],
-    context: a.context ?? null,
-    pullQuote: a.pullQuote ?? null,
-    metaTitle: a.metaTitle,
-    metaDescription: a.metaDescription,
-    coverImage: a.coverImage,
-    categoryId: a.categoryId,
+    exclusive: pick("exclusive", a.exclusive),
+    readMinutes: pick("readMinutes", a.readMinutes),
+    tags: pick("tags", a.tags),
+    essentials: pick("essentials", a.essentials ?? []),
+    context: pick("context", a.context ?? null),
+    pullQuote: pick("pullQuote", a.pullQuote ?? null),
+    metaTitle: pick("metaTitle", a.metaTitle),
+    metaDescription: pick("metaDescription", a.metaDescription),
+    coverImage: pick("coverImageUrl", a.coverImage),
+    categoryId: pick("categoryId", a.categoryId),
     rejectionReason: a.rejectionReason,
     scheduledAt: a.scheduledAt,
   };
@@ -240,6 +260,8 @@ function ArticleEditor({
   saving,
   error,
   canPublish,
+  pendingDraft,
+  onDiscardDraft,
 }: {
   initial: EditorState;
   categories: CategoryOption[];
@@ -248,6 +270,9 @@ function ArticleEditor({
   saving: boolean;
   error: string | null;
   canPublish: boolean;
+  /** Set when the article opened with edits already parked from before. */
+  pendingDraft: { updatedAt: string | null; awaitingReview: boolean } | null;
+  onDiscardDraft: () => void;
 }) {
   const [form, setForm] = useState<EditorState>(initial);
   const [tagInput, setTagInput] = useState("");
@@ -506,6 +531,58 @@ function ArticleEditor({
           )}
         </div>
       </div>
+
+      {/* Opening a live article that already has parked edits shows the
+          DRAFT text, not what readers see. Saying so out loud matters:
+          otherwise the editor looks like the published article and
+          someone could publish thinking nothing changed — or spend
+          twenty minutes wondering why the site does not match. */}
+      {pendingDraft && (
+        <div
+          className={`border-b px-6 py-3 ${
+            pendingDraft.awaitingReview
+              ? "border-amber-200 bg-amber-50"
+              : "border-blue-200 bg-blue-50"
+          }`}
+        >
+          <div className="mx-auto flex max-w-[1100px] flex-wrap items-center justify-between gap-3">
+            <p
+              className={`text-[13px] ${
+                pendingDraft.awaitingReview
+                  ? "text-amber-900"
+                  : "text-blue-900"
+              }`}
+            >
+              <strong className="font-bold">
+                {pendingDraft.awaitingReview
+                  ? "Alterações à espera de aprovação."
+                  : "Alterações por publicar."}
+              </strong>{" "}
+              Está a ver a versão em curso. O site continua a mostrar a
+              versão publicada
+              {pendingDraft.updatedAt
+                ? ` — alterações guardadas em ${new Date(
+                    pendingDraft.updatedAt,
+                  ).toLocaleString("pt-PT", {
+                    day: "2-digit",
+                    month: "short",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}`
+                : ""}
+              .
+            </p>
+            <button
+              type="button"
+              onClick={onDiscardDraft}
+              disabled={saving}
+              className="shrink-0 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-[11px] font-bold text-gray-600 transition-colors hover:border-red-300 hover:text-red-600 disabled:opacity-50"
+            >
+              Descartar alterações
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="mx-auto grid max-w-[1100px] grid-cols-12 gap-6 px-6 py-8">
         {/* MAIN */}
@@ -1024,6 +1101,40 @@ export default function AdminArticlesClient({
     });
   };
 
+  /**
+   * Parked edits on the article currently open, if any. Read from the
+   * row rather than tracked in editor state, so it reflects what the
+   * server actually holds.
+   */
+  const openArticleId = editorState?.id;
+  const editorPendingDraft = useMemo(() => {
+    if (!openArticleId) return null;
+    const row = initialArticles.find((a) => a.id === openArticleId);
+    if (!row?.draft) return null;
+    return {
+      updatedAt: row.draftUpdatedAt ?? null,
+      awaitingReview: Boolean(row.draftAwaitingReview),
+    };
+  }, [openArticleId, initialArticles]);
+
+  const discardDraft = () => {
+    const id = editorState?.id;
+    if (!id) return;
+    startTransition(async () => {
+      const res = await discardDraftAction(id);
+      if (!res.ok) {
+        setEditorError(res.error);
+        return;
+      }
+      // Reopen on the live version: the draft the form is showing no
+      // longer exists, and leaving it on screen would let the next
+      // keystroke autosave it straight back.
+      setEditorOpen(false);
+      setEditorState(null);
+      router.refresh();
+    });
+  };
+
   const openNew = () => {
     if (categories.length === 0) {
       alert("Crie uma rubrica antes de criar artigos.");
@@ -1179,6 +1290,8 @@ export default function AdminArticlesClient({
         saving={pending}
         error={editorError}
         canPublish={canPublish}
+        pendingDraft={editorPendingDraft}
+        onDiscardDraft={discardDraft}
       />
     );
   }
@@ -1431,16 +1544,27 @@ export default function AdminArticlesClient({
                               EXCLUSIVO
                             </span>
                           )}
-                          {/* The article itself is untouched and still
-                              live — without this the parked edits would
-                              be invisible to the person who has to
-                              approve them. */}
-                          {a.draftAwaitingReview && (
+                          {/* Shown for ANY parked edit, not just the
+                              ones needing approval: the article row is
+                              unchanged and still live, so without this
+                              the pending work is invisible — including
+                              to the person who wrote it. */}
+                          {a.draft && (
                             <span
-                              title="Há alterações guardadas à espera de aprovação. O que está no site não mudou."
-                              className="inline-block rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-black text-blue-700"
+                              title={
+                                a.draftAwaitingReview
+                                  ? "Alterações guardadas à espera de aprovação. O que está no site não mudou."
+                                  : "Alterações guardadas mas ainda não publicadas. O que está no site não mudou."
+                              }
+                              className={`inline-block rounded-full px-1.5 py-0.5 text-[9px] font-black ${
+                                a.draftAwaitingReview
+                                  ? "bg-amber-100 text-amber-800"
+                                  : "bg-blue-100 text-blue-700"
+                              }`}
                             >
-                              ALTERAÇÕES POR APROVAR
+                              {a.draftAwaitingReview
+                                ? "ALTERAÇÕES POR APROVAR"
+                                : "ALTERAÇÕES POR PUBLICAR"}
                             </span>
                           )}
                         </div>

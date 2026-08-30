@@ -123,6 +123,25 @@ export async function autosaveArticleAction(
   return { ok: true as const, id: id ?? saved.id };
 }
 
+/**
+ * Throws away the parked edits. The live article is untouched — this is
+ * "forget what I was writing", not "unpublish".
+ */
+export async function discardDraftAction(id: string) {
+  const res = await apiFetch(`/admin/articles/${id}/draft`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { message?: string };
+    return {
+      ok: false as const,
+      error: body.message ?? "Falha ao descartar as alterações.",
+    };
+  }
+  await refresh();
+  return { ok: true as const };
+}
+
 export async function publishArticleAction(id: string) {
   const res = await apiFetch(`/admin/articles/${id}/publish`, {
     method: "POST",

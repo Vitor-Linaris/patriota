@@ -32,6 +32,9 @@ interface ArticleApi {
   scheduledAt: string | null;
   publishedAt: string | null;
   rejectionReason: string | null;
+  /** Parked edits to a live article — see ArticlesService.saveDraft. */
+  draft: Record<string, unknown> | null;
+  draftUpdatedAt: string | null;
   draftAwaitingReview: boolean;
   createdAt: string;
   categoryId: string;
@@ -73,6 +76,8 @@ function toAdminArticle(a: ArticleApi): AdminArticle {
     metaDescription: a.metaDescription ?? "",
     coverImage: a.coverImageUrl ?? "",
     scheduledAt: a.scheduledAt,
+    draft: a.draft ?? null,
+    draftUpdatedAt: a.draftUpdatedAt ?? null,
     draftAwaitingReview: a.draftAwaitingReview ?? false,
     createdAt: a.createdAt,
     publishedAt: a.publishedAt,

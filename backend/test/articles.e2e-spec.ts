@@ -643,6 +643,44 @@ describe('Articles (e2e)', () => {
       expect(publicRes.body.content).toContain('texto original');
     });
 
+    it('hands the pending edit back, so the editor can reopen on it', async () => {
+      // The bug this pins: the draft was being written and never read
+      // back. Reopening the article showed the PUBLISHED text, the
+      // author's work looked lost, and the next keystroke would have
+      // autosaved the old version straight over the new one.
+      const editor = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const article = await livePiece(editor);
+
+      await request(app.getHttpServer())
+        .patch(`/admin/articles/${article.id}/draft`)
+        .set(bearer(editor))
+        .send({ title: 'Título reescrito', content: '<p>corpo reescrito</p>' })
+        .expect(200);
+
+      // Both the single-article read and the list must carry it — the
+      // editor opens from one and the badge is drawn from the other.
+      const one = await request(app.getHttpServer())
+        .get(`/admin/articles/${article.id}`)
+        .set(bearer(editor))
+        .expect(200);
+      expect(one.body.draft).toMatchObject({
+        title: 'Título reescrito',
+        content: '<p>corpo reescrito</p>',
+      });
+      expect(one.body.draftUpdatedAt).toBeTruthy();
+      // The live columns are untouched underneath.
+      expect(one.body.title).toBe('Peça no ar');
+
+      const list = await request(app.getHttpServer())
+        .get('/admin/articles')
+        .set(bearer(editor))
+        .expect(200);
+      const row = (list.body.items as { id: string; draft: unknown }[]).find(
+        (a) => a.id === article.id,
+      );
+      expect(row?.draft).toBeTruthy();
+    });
+
     it('discards a pending edit without touching what is live', async () => {
       const editor = await makeUser(app, { role: 'EDITOR_CHEFE' });
       const article = await livePiece(editor);
