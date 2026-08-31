@@ -8,7 +8,8 @@ export interface ArticleSummary {
   title: string;
   summary: string;
   status: "RASCUNHO" | "AGENDADO" | "PUBLICADO" | "ARQUIVADO";
-  premium: boolean;
+  /** Requires a paid subscription to read — "Conteúdo Exclusivo". */
+  exclusive: boolean;
   views: number;
   readMinutes: number;
   tags: string[];

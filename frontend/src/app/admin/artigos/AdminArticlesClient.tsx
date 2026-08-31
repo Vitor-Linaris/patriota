@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { RichTextEditor } from "@/components/admin/RichTextEditor";
 import { CoverImagePicker } from "@/components/admin/CoverImagePicker";
@@ -9,17 +9,22 @@ import {
   type ArticleContextBoxes,
 } from "@/components/admin/ArticleBoxesEditor";
 import { imageVariant } from "@/lib/images";
+import { FEATURES } from "@/lib/features";
 import { Pagination } from "@/components/category/Pagination";
 import {
   archiveArticleAction,
+  autosaveArticleAction,
   createArticleAction,
   deleteArticleAction,
+  discardDraftAction,
   publishArticleAction,
   rejectArticleAction,
   submitArticleAction,
   updateArticleAction,
   type ArticleFormPayload,
 } from "./actions";
+import { useAutosave } from "./useAutosave";
+import { AutosaveIndicator } from "./AutosaveIndicator";
 
 type ApiStatus =
   | "RASCUNHO"
@@ -41,7 +46,7 @@ export interface AdminArticle {
   summary: string;
   content: string;
   status: ApiStatus;
-  premium: boolean;
+  exclusive: boolean;
   views: number;
   readMinutes: number;
   tags: string[];
@@ -51,6 +56,15 @@ export interface AdminArticle {
   metaTitle: string;
   metaDescription: string;
   coverImage: string;
+  /**
+   * Edits parked on a live article: written by autosave or by "Guardar
+   * alterações", not yet published. The fields above are what readers
+   * see; this is what the newsroom is working on.
+   */
+  draft?: Record<string, unknown> | null;
+  draftUpdatedAt?: string | null;
+  /** The parked edits came from someone who cannot publish them. */
+  draftAwaitingReview?: boolean;
   scheduledAt: string | null;
   createdAt: string;
   publishedAt: string | null;
@@ -158,7 +172,7 @@ interface EditorState {
   summary: string;
   content: string;
   status: UiStatus;
-  premium: boolean;
+  exclusive: boolean;
   readMinutes: number;
   tags: string[];
   essentials: string[];
@@ -184,7 +198,7 @@ function emptyEditor(categoryId: string): EditorState {
     summary: "",
     content: "",
     status: "rascunho",
-    premium: false,
+    exclusive: false,
     readMinutes: 3,
     tags: [],
     essentials: [],
@@ -199,24 +213,40 @@ function emptyEditor(categoryId: string): EditorState {
   };
 }
 
+/**
+ * The live row, with any parked edits laid over the top.
+ *
+ * Without the overlay the editor would reopen showing the PUBLISHED
+ * text while a newer draft sat in the database — the author's work
+ * would look lost, and their next keystroke would autosave the old
+ * version back over the new one. The draft is what the newsroom is
+ * working on; the columns underneath are what readers still see.
+ *
+ * `coverImageUrl` is the one name that differs between the API payload
+ * and this form's state (`coverImage`), so it is mapped by hand.
+ */
 function articleToEditor(a: AdminArticle): EditorState {
+  const d: Record<string, unknown> = a.draft ?? {};
+  const pick = <T,>(key: string, live: T): T =>
+    d[key] !== undefined ? (d[key] as T) : live;
+
   return {
     id: a.id,
-    title: a.title,
-    slug: a.slug,
-    summary: a.summary,
-    content: a.content,
+    title: pick("title", a.title),
+    slug: pick("slug", a.slug),
+    summary: pick("summary", a.summary),
+    content: pick("content", a.content),
     status: API_TO_UI[a.status],
-    premium: a.premium,
-    readMinutes: a.readMinutes,
-    tags: a.tags,
-    essentials: a.essentials ?? [],
-    context: a.context ?? null,
-    pullQuote: a.pullQuote ?? null,
-    metaTitle: a.metaTitle,
-    metaDescription: a.metaDescription,
-    coverImage: a.coverImage,
-    categoryId: a.categoryId,
+    exclusive: pick("exclusive", a.exclusive),
+    readMinutes: pick("readMinutes", a.readMinutes),
+    tags: pick("tags", a.tags),
+    essentials: pick("essentials", a.essentials ?? []),
+    context: pick("context", a.context ?? null),
+    pullQuote: pick("pullQuote", a.pullQuote ?? null),
+    metaTitle: pick("metaTitle", a.metaTitle),
+    metaDescription: pick("metaDescription", a.metaDescription),
+    coverImage: pick("coverImageUrl", a.coverImage),
+    categoryId: pick("categoryId", a.categoryId),
     rejectionReason: a.rejectionReason,
     scheduledAt: a.scheduledAt,
   };
@@ -230,6 +260,8 @@ function ArticleEditor({
   saving,
   error,
   canPublish,
+  pendingDraft,
+  onDiscardDraft,
 }: {
   initial: EditorState;
   categories: CategoryOption[];
@@ -238,6 +270,9 @@ function ArticleEditor({
   saving: boolean;
   error: string | null;
   canPublish: boolean;
+  /** Set when the article opened with edits already parked from before. */
+  pendingDraft: { updatedAt: string | null; awaitingReview: boolean } | null;
+  onDiscardDraft: () => void;
 }) {
   const [form, setForm] = useState<EditorState>(initial);
   const [tagInput, setTagInput] = useState("");
@@ -259,6 +294,73 @@ function ArticleEditor({
 
   const set = (patch: Partial<EditorState>) =>
     setForm((p) => ({ ...p, ...patch }));
+
+  // ── Autosave ──────────────────────────────────────────────────────
+  // The backend needs a title of 2+ chars and a category before it will
+  // accept a create (CreateArticleDto), so there is nothing to save
+  // until then — and pretending otherwise would just show the author a
+  // string of validation failures they did not ask for.
+  const isSaveable = form.title.trim().length >= 2 && Boolean(form.categoryId);
+
+  // Opening an article and closing it again must change nothing. Without
+  // this, merely clicking "Editar" on a live piece would write a pending
+  // draft three seconds later and flag it for approval — a review task
+  // out of thin air for an edit nobody made.
+  const untouched = useMemo(
+    () => JSON.stringify(form) === JSON.stringify(initial),
+    [form, initial],
+  );
+
+  const isLive = form.status === "publicado";
+
+  /**
+   * What the autosave sends. Notably absent: `status` and `scheduledAt`.
+   *
+   * Omitting `status` is the whole reason autosave is safe on a
+   * published article — see the note on autosaveArticleAction. The
+   * manual buttons keep owning the lifecycle; this only ever preserves
+   * words.
+   */
+  const runAutosave = useCallback(async () => {
+    const result = await autosaveArticleAction(
+      form.id,
+      {
+        title: form.title.trim(),
+        slug: form.slug || undefined,
+        summary: form.summary,
+        content: form.content,
+        categoryId: form.categoryId,
+        exclusive: form.exclusive,
+        readMinutes: form.readMinutes,
+        tags: form.tags,
+        essentials: form.essentials,
+        context: form.context ?? undefined,
+        pullQuote: form.pullQuote ?? undefined,
+        metaTitle: form.metaTitle || undefined,
+        metaDescription: form.metaDescription || undefined,
+        coverImageUrl: form.coverImage || undefined,
+      },
+      isLive,
+    );
+
+    // First autosave of a new article created the row. Adopt its id, or
+    // every later tick would create another article instead of updating
+    // this one. (The manual flow never needed this: it closes the editor
+    // immediately after saving.)
+    if (result.ok && !form.id && result.id) set({ id: result.id });
+
+    return result;
+  }, [form, isLive]);
+
+  const { status: autosaveStatus, cancelPending } = useAutosave({
+    enabled: isSaveable && !untouched,
+    data: form,
+    onSave: runAutosave,
+    // While a manual save is in flight it owns the article — a
+    // concurrent autosave would race it and could re-send content the
+    // user has already superseded by clicking Publicar.
+    paused: saving,
+  });
 
   const handleTitleChange = (title: string) => {
     set({
@@ -333,16 +435,26 @@ function ArticleEditor({
                 })}`
               : "◷ Agendar…"}
           </button>
+          <AutosaveIndicator status={autosaveStatus} isLive={isLive} />
           <button
             disabled={saving}
-            onClick={() => onSave(form, false)}
+            onClick={() => {
+              cancelPending();
+              onSave(form, false);
+            }}
             className="rounded-lg border border-[#0F2C6B]/20 px-4 py-2 text-xs font-bold text-[#0F2C6B] transition-colors hover:bg-[#0F2C6B]/5 disabled:opacity-50"
           >
-            Guardar rascunho
+            {/* On a live article this no longer makes it a draft — it
+                parks the edits. Saying "rascunho" there would promise a
+                state change that does not happen. */}
+            {isLive ? "Guardar alterações" : "Guardar rascunho"}
           </button>
           <button
             disabled={saving}
-            onClick={() => onSave(form, true)}
+            onClick={() => {
+              cancelPending();
+              onSave(form, true);
+            }}
             className="rounded-lg bg-[#0F2C6B] px-5 py-2 text-xs font-bold text-white transition-colors hover:bg-[#1A3A7A] disabled:opacity-50"
           >
             {form.scheduledAt
@@ -419,6 +531,58 @@ function ArticleEditor({
           )}
         </div>
       </div>
+
+      {/* Opening a live article that already has parked edits shows the
+          DRAFT text, not what readers see. Saying so out loud matters:
+          otherwise the editor looks like the published article and
+          someone could publish thinking nothing changed — or spend
+          twenty minutes wondering why the site does not match. */}
+      {pendingDraft && (
+        <div
+          className={`border-b px-6 py-3 ${
+            pendingDraft.awaitingReview
+              ? "border-amber-200 bg-amber-50"
+              : "border-blue-200 bg-blue-50"
+          }`}
+        >
+          <div className="mx-auto flex max-w-[1100px] flex-wrap items-center justify-between gap-3">
+            <p
+              className={`text-[13px] ${
+                pendingDraft.awaitingReview
+                  ? "text-amber-900"
+                  : "text-blue-900"
+              }`}
+            >
+              <strong className="font-bold">
+                {pendingDraft.awaitingReview
+                  ? "Alterações à espera de aprovação."
+                  : "Alterações por publicar."}
+              </strong>{" "}
+              Está a ver a versão em curso. O site continua a mostrar a
+              versão publicada
+              {pendingDraft.updatedAt
+                ? ` — alterações guardadas em ${new Date(
+                    pendingDraft.updatedAt,
+                  ).toLocaleString("pt-PT", {
+                    day: "2-digit",
+                    month: "short",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}`
+                : ""}
+              .
+            </p>
+            <button
+              type="button"
+              onClick={onDiscardDraft}
+              disabled={saving}
+              className="shrink-0 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-[11px] font-bold text-gray-600 transition-colors hover:border-red-300 hover:text-red-600 disabled:opacity-50"
+            >
+              Descartar alterações
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="mx-auto grid max-w-[1100px] grid-cols-12 gap-6 px-6 py-8">
         {/* MAIN */}
@@ -594,26 +758,32 @@ function ArticleEditor({
                   <option value="arquivado">Arquivado</option>
                 </select>
               </div>
-              <div className="flex items-center justify-between border-t border-gray-50 py-2">
-                <div>
-                  <p className="text-sm font-bold text-gray-700">
-                    Conteúdo Premium
-                  </p>
-                  <p className="text-[10px] text-gray-400">
-                    Requer subscrição para aceder
-                  </p>
+              {/* Hidden until paid subscriptions exist. The field and
+                  the write path work; the paywall does not, so marking a
+                  piece "subscribers only" today would change nothing
+                  except mislead the newsroom. */}
+              {FEATURES.subscriberPublishing && (
+                <div className="flex items-center justify-between border-t border-gray-50 py-2">
+                  <div>
+                    <p className="text-sm font-bold text-gray-700">
+                      Conteúdo Exclusivo
+                    </p>
+                    <p className="text-[10px] text-gray-400">
+                      Só para assinantes
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => set({ exclusive: !form.exclusive })}
+                    aria-pressed={form.exclusive}
+                    className={`relative h-5 w-10 rounded-full transition-colors ${form.exclusive ? "bg-[#FFCC66]" : "bg-gray-200"}`}
+                  >
+                    <span
+                      className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${form.exclusive ? "translate-x-5" : "translate-x-0.5"}`}
+                    />
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => set({ premium: !form.premium })}
-                  aria-pressed={form.premium}
-                  className={`relative h-5 w-10 rounded-full transition-colors ${form.premium ? "bg-[#FFCC66]" : "bg-gray-200"}`}
-                >
-                  <span
-                    className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${form.premium ? "translate-x-5" : "translate-x-0.5"}`}
-                  />
-                </button>
-              </div>
+              )}
               <div>
                 <label className="mb-1.5 block text-xs font-bold text-gray-500">
                   Tempo de leitura (min)
@@ -711,7 +881,10 @@ function ArticleEditor({
             <button
               type="button"
               disabled={saving}
-              onClick={() => onSave(form, true)}
+              onClick={() => {
+                cancelPending();
+                onSave(form, true);
+              }}
               className="w-full rounded-xl bg-[#0F2C6B] py-3 text-sm font-black text-white transition-colors hover:bg-[#1A3A7A] disabled:opacity-50"
             >
               {saving
@@ -723,10 +896,13 @@ function ArticleEditor({
             <button
               type="button"
               disabled={saving}
-              onClick={() => onSave(form, false)}
+              onClick={() => {
+                cancelPending();
+                onSave(form, false);
+              }}
               className="w-full rounded-xl border border-[#0F2C6B]/20 py-2.5 text-sm font-bold text-[#0F2C6B] transition-colors hover:bg-[#0F2C6B]/5 disabled:opacity-50"
             >
-              Guardar como rascunho
+              {isLive ? "Guardar alterações" : "Guardar como rascunho"}
             </button>
             <button
               type="button"
@@ -925,6 +1101,40 @@ export default function AdminArticlesClient({
     });
   };
 
+  /**
+   * Parked edits on the article currently open, if any. Read from the
+   * row rather than tracked in editor state, so it reflects what the
+   * server actually holds.
+   */
+  const openArticleId = editorState?.id;
+  const editorPendingDraft = useMemo(() => {
+    if (!openArticleId) return null;
+    const row = initialArticles.find((a) => a.id === openArticleId);
+    if (!row?.draft) return null;
+    return {
+      updatedAt: row.draftUpdatedAt ?? null,
+      awaitingReview: Boolean(row.draftAwaitingReview),
+    };
+  }, [openArticleId, initialArticles]);
+
+  const discardDraft = () => {
+    const id = editorState?.id;
+    if (!id) return;
+    startTransition(async () => {
+      const res = await discardDraftAction(id);
+      if (!res.ok) {
+        setEditorError(res.error);
+        return;
+      }
+      // Reopen on the live version: the draft the form is showing no
+      // longer exists, and leaving it on screen would let the next
+      // keystroke autosave it straight back.
+      setEditorOpen(false);
+      setEditorState(null);
+      router.refresh();
+    });
+  };
+
   const openNew = () => {
     if (categories.length === 0) {
       alert("Crie uma rubrica antes de criar artigos.");
@@ -953,6 +1163,7 @@ export default function AdminArticlesClient({
     setEditorError(null);
 
     const isScheduled = Boolean(form.scheduledAt);
+    const isLive = form.status === "publicado";
 
     // Save-payload: we always save the row first as a "still pending"
     // state — never directly as PUBLICADO. The workflow transition is
@@ -975,7 +1186,7 @@ export default function AdminArticlesClient({
       content: form.content,
       categoryId: form.categoryId,
       status: saveStatus,
-      premium: form.premium,
+      exclusive: form.exclusive,
       readMinutes: form.readMinutes,
       tags: form.tags,
       essentials: form.essentials,
@@ -986,6 +1197,27 @@ export default function AdminArticlesClient({
       coverImageUrl: form.coverImage || undefined,
       scheduledAt: form.scheduledAt ?? undefined,
     };
+
+    // "Guardar" on an article that is ON THE SITE stores the edits aside
+    // instead of applying them — the same place autosave writes. It used
+    // to send status: RASCUNHO, which took the piece off the site: an
+    // editor fixing a comma and clicking Guardar would silently
+    // unpublish it. The live version now stays up until someone
+    // deliberately clicks Publicar, which promotes the pending edits.
+    if (isLive && !publish && form.id) {
+      const articleId = form.id;
+      startTransition(async () => {
+        const res = await autosaveArticleAction(articleId, payload, true);
+        if (!res.ok) {
+          setEditorError(res.error);
+          return;
+        }
+        setEditorOpen(false);
+        setEditorState(null);
+        router.refresh();
+      });
+      return;
+    }
 
     startTransition(async () => {
       let articleId = form.id;
@@ -1058,6 +1290,8 @@ export default function AdminArticlesClient({
         saving={pending}
         error={editorError}
         canPublish={canPublish}
+        pendingDraft={editorPendingDraft}
+        onDiscardDraft={discardDraft}
       />
     );
   }
@@ -1304,11 +1538,36 @@ export default function AdminArticlesClient({
                         <p className="line-clamp-2 text-sm font-semibold leading-snug text-gray-800">
                           {a.title}
                         </p>
-                        {a.premium && (
-                          <span className="mt-1 inline-block rounded-full bg-[#FFCC66]/20 px-1.5 py-0.5 text-[9px] font-black text-[#8B6900]">
-                            PREMIUM
-                          </span>
-                        )}
+                        <div className="mt-1 flex flex-wrap items-center gap-1">
+                          {a.exclusive && (
+                            <span className="inline-block rounded-full bg-[#FFCC66]/20 px-1.5 py-0.5 text-[9px] font-black text-[#8B6900]">
+                              EXCLUSIVO
+                            </span>
+                          )}
+                          {/* Shown for ANY parked edit, not just the
+                              ones needing approval: the article row is
+                              unchanged and still live, so without this
+                              the pending work is invisible — including
+                              to the person who wrote it. */}
+                          {a.draft && (
+                            <span
+                              title={
+                                a.draftAwaitingReview
+                                  ? "Alterações guardadas à espera de aprovação. O que está no site não mudou."
+                                  : "Alterações guardadas mas ainda não publicadas. O que está no site não mudou."
+                              }
+                              className={`inline-block rounded-full px-1.5 py-0.5 text-[9px] font-black ${
+                                a.draftAwaitingReview
+                                  ? "bg-amber-100 text-amber-800"
+                                  : "bg-blue-100 text-blue-700"
+                              }`}
+                            >
+                              {a.draftAwaitingReview
+                                ? "ALTERAÇÕES POR APROVAR"
+                                : "ALTERAÇÕES POR PUBLICAR"}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </td>

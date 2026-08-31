@@ -24,7 +24,7 @@ const ARTICLE_CARD = {
   coverImageUrl: true,
   readMinutes: true,
   publishedAt: true,
-  premium: true,
+  exclusive: true,
   commentCount: true,
   category: { select: { slug: true, name: true, color: true } },
 } as const;

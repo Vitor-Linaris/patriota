@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { createTestApp } from './helpers/app';
-import { makeUser, bearer } from './helpers/auth';
+import { makeUser, bearer, type TestUser } from './helpers/auth';
 import { truncate } from './helpers/db';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { ArticlesScheduler } from '../src/articles/articles.scheduler';
@@ -526,6 +526,260 @@ describe('Articles (e2e)', () => {
       // Portugal holds nothing itself, but the reader gets one article.
       expect(portugal!.articleCount).toBe(0);
       expect(portugal!.articleCountTotal).toBe(1);
+    });
+  });
+
+  /**
+   * Editing a live article must never take it off the site.
+   *
+   * This is the whole point of the pending-draft column. A journalist
+   * fixing a typo on a published piece, who then gets distracted and
+   * never clicks anything, must leave the site exactly as it was — while
+   * their work is still safe. These tests are what stop a future change
+   * from quietly reintroducing "edit = unpublish".
+   */
+  describe('pending edits on a live article', () => {
+    async function livePiece(editor: TestUser) {
+      const created = await request(app.getHttpServer())
+        .post('/admin/articles')
+        .set(bearer(editor))
+        .send({
+          title: 'Peça no ar',
+          summary: 'resumo original',
+          content: '<p>texto original</p>',
+          categoryId,
+        })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/admin/articles/${created.body.id}/publish`)
+        .set(bearer(editor))
+        .expect(201);
+      return created.body as { id: string; slug: string };
+    }
+
+    it('keeps the published version on the site while it is edited', async () => {
+      const editor = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const article = await livePiece(editor);
+
+      await request(app.getHttpServer())
+        .patch(`/admin/articles/${article.id}/draft`)
+        .set(bearer(editor))
+        .send({ content: '<p>texto a meio de ser reescrito</p>' })
+        .expect(200);
+
+      // Still published…
+      const admin = await request(app.getHttpServer())
+        .get(`/admin/articles/${article.id}`)
+        .set(bearer(editor))
+        .expect(200);
+      expect(admin.body.status).toBe('PUBLICADO');
+
+      // …and the reader still gets the ORIGINAL text, not the draft.
+      const publicRes = await request(app.getHttpServer())
+        .get(`/public/articles/by-slug/${article.slug}`)
+        .expect(200);
+      expect(publicRes.body.content).toContain('texto original');
+      expect(publicRes.body.content).not.toContain('a meio de ser reescrito');
+    });
+
+    it('promotes the draft when someone publishes', async () => {
+      const editor = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const article = await livePiece(editor);
+
+      await request(app.getHttpServer())
+        .patch(`/admin/articles/${article.id}/draft`)
+        .set(bearer(editor))
+        .send({ content: '<p>versão final</p>' })
+        .expect(200);
+      await request(app.getHttpServer())
+        .post(`/admin/articles/${article.id}/publish`)
+        .set(bearer(editor))
+        .expect(201);
+
+      const publicRes = await request(app.getHttpServer())
+        .get(`/public/articles/by-slug/${article.slug}`)
+        .expect(200);
+      expect(publicRes.body.content).toContain('versão final');
+
+      // And the draft is gone, so publishing twice is not a rollback.
+      const admin = await request(app.getHttpServer())
+        .get(`/admin/articles/${article.id}`)
+        .set(bearer(editor))
+        .expect(200);
+      expect(admin.body.draft).toBeNull();
+      expect(admin.body.draftAwaitingReview).toBe(false);
+    });
+
+    it('flags a journalist’s edit for approval, and refuses to let them promote it', async () => {
+      const chief = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const article = await livePiece(chief);
+      // The journalist must be able to edit it at all — editar_todos is
+      // not theirs, so make them the author.
+      const prisma = app.get(PrismaService);
+      const journalist = await makeUser(app, { role: 'JORNALISTA' });
+      await prisma.article.update({
+        where: { id: article.id },
+        data: { authorId: journalist.id },
+      });
+
+      await request(app.getHttpServer())
+        .patch(`/admin/articles/${article.id}/draft`)
+        .set(bearer(journalist))
+        .send({ content: '<p>correcção do jornalista</p>' })
+        .expect(200);
+
+      const admin = await request(app.getHttpServer())
+        .get(`/admin/articles/${article.id}`)
+        .set(bearer(chief))
+        .expect(200);
+      expect(admin.body.draftAwaitingReview).toBe(true);
+      expect(admin.body.status).toBe('PUBLICADO');
+
+      // They cannot push their own edit live: /publish falls back to
+      // submitForReview for anyone without artigos.publicar.
+      const publicRes = await request(app.getHttpServer())
+        .get(`/public/articles/by-slug/${article.slug}`)
+        .expect(200);
+      expect(publicRes.body.content).toContain('texto original');
+    });
+
+    it('hands the pending edit back, so the editor can reopen on it', async () => {
+      // The bug this pins: the draft was being written and never read
+      // back. Reopening the article showed the PUBLISHED text, the
+      // author's work looked lost, and the next keystroke would have
+      // autosaved the old version straight over the new one.
+      const editor = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const article = await livePiece(editor);
+
+      await request(app.getHttpServer())
+        .patch(`/admin/articles/${article.id}/draft`)
+        .set(bearer(editor))
+        .send({ title: 'Título reescrito', content: '<p>corpo reescrito</p>' })
+        .expect(200);
+
+      // Both the single-article read and the list must carry it — the
+      // editor opens from one and the badge is drawn from the other.
+      const one = await request(app.getHttpServer())
+        .get(`/admin/articles/${article.id}`)
+        .set(bearer(editor))
+        .expect(200);
+      expect(one.body.draft).toMatchObject({
+        title: 'Título reescrito',
+        content: '<p>corpo reescrito</p>',
+      });
+      expect(one.body.draftUpdatedAt).toBeTruthy();
+      // The live columns are untouched underneath.
+      expect(one.body.title).toBe('Peça no ar');
+
+      const list = await request(app.getHttpServer())
+        .get('/admin/articles')
+        .set(bearer(editor))
+        .expect(200);
+      const row = (list.body.items as { id: string; draft: unknown }[]).find(
+        (a) => a.id === article.id,
+      );
+      expect(row?.draft).toBeTruthy();
+    });
+
+    it('discards a pending edit without touching what is live', async () => {
+      const editor = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const article = await livePiece(editor);
+
+      await request(app.getHttpServer())
+        .patch(`/admin/articles/${article.id}/draft`)
+        .set(bearer(editor))
+        .send({ content: '<p>enganei-me</p>' })
+        .expect(200);
+      await request(app.getHttpServer())
+        .delete(`/admin/articles/${article.id}/draft`)
+        .set(bearer(editor))
+        .expect(200);
+
+      const publicRes = await request(app.getHttpServer())
+        .get(`/public/articles/by-slug/${article.slug}`)
+        .expect(200);
+      expect(publicRes.body.content).toContain('texto original');
+    });
+  });
+
+  /**
+   * The guarantee the editor's autosave is built on for everything that
+   * is NOT live — drafts, articles in review, scheduled ones. There the
+   * editor writes straight through, so update() must still leave a field
+   * it was not sent alone.
+   */
+  describe('a PATCH without status leaves the lifecycle alone', () => {
+    async function publishedArticle(editor: TestUser) {
+      const created = await request(app.getHttpServer())
+        .post('/admin/articles')
+        .set(bearer(editor))
+        .send({ title: 'Artigo ao vivo', summary: 's', content: '<p>a</p>', categoryId })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/admin/articles/${created.body.id}/publish`)
+        .set(bearer(editor))
+        .expect(201);
+      return created.body.id as string;
+    }
+
+    it('keeps a PUBLICADO article published', async () => {
+      const editor = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const id = await publishedArticle(editor);
+
+      // Exactly what autosave sends: content, no status.
+      await request(app.getHttpServer())
+        .patch(`/admin/articles/${id}`)
+        .set(bearer(editor))
+        .send({ content: '<p>corrigido a meio da escrita</p>' })
+        .expect(200);
+
+      const after = await request(app.getHttpServer())
+        .get(`/admin/articles/${id}`)
+        .set(bearer(editor))
+        .expect(200);
+
+      expect(after.body.status).toBe('PUBLICADO');
+      expect(after.body.content).toContain('corrigido');
+      // And it is still on the public site.
+      const publicRes = await request(app.getHttpServer())
+        .get(`/public/articles/by-slug/${after.body.slug}`)
+        .expect(200);
+      expect(publicRes.body.content).toContain('corrigido');
+    });
+
+    it('still lets an explicit status change through', async () => {
+      // The manual buttons DO send status — this proves the test above
+      // is about omission, not about update() ignoring status entirely.
+      const editor = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const id = await publishedArticle(editor);
+
+      await request(app.getHttpServer())
+        .patch(`/admin/articles/${id}`)
+        .set(bearer(editor))
+        .send({ status: 'RASCUNHO' })
+        .expect(200);
+
+      const after = await request(app.getHttpServer())
+        .get(`/admin/articles/${id}`)
+        .set(bearer(editor))
+        .expect(200);
+      expect(after.body.status).toBe('RASCUNHO');
+    });
+
+    it('creates a draft from the minimum the editor can offer', async () => {
+      // Autosave fires as soon as there is a 2-char title and a
+      // category — nothing else is typed yet. If CreateArticleDto ever
+      // demanded more, autosave would 400 on every keystroke.
+      const editor = await makeUser(app, { role: 'EDITOR_CHEFE' });
+
+      const created = await request(app.getHttpServer())
+        .post('/admin/articles')
+        .set(bearer(editor))
+        .send({ title: 'Ab', categoryId })
+        .expect(201);
+
+      expect(created.body.status).toBe('RASCUNHO');
+      expect(created.body.id).toBeTruthy();
     });
   });
 });

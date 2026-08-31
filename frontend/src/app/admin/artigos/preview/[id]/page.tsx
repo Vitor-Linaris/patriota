@@ -31,7 +31,7 @@ interface ArticlePreview {
   summary: string;
   content: string;
   status: "RASCUNHO" | "EM_REVISAO" | "AGENDADO" | "PUBLICADO" | "ARQUIVADO";
-  premium: boolean;
+  exclusive: boolean;
   views: number;
   readMinutes: number;
   essentials: string[];
@@ -182,9 +182,9 @@ export default async function ArticlePreviewPage({
               >
                 {article.category?.name ?? "—"}
               </span>
-              {article.premium && (
+              {article.exclusive && (
                 <span className="rounded-full bg-[#FFCC66]/20 px-2 py-0.5 text-[10px] font-black text-[#8B6900]">
-                  PREMIUM
+                  EXCLUSIVO
                 </span>
               )}
             </div>

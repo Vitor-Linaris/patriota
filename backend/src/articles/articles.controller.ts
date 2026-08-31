@@ -87,6 +87,28 @@ export class ArticlesController {
     return this.service.update(id, dto, { id: user.id, role: user.role });
   }
 
+  /**
+   * Autosave target for an article that is ALREADY LIVE.
+   *
+   * Stores the edits aside instead of applying them, so a half-finished
+   * correction never reaches readers and never takes the piece off the
+   * site. Same permission as a normal edit — assertCanEdit inside the
+   * service — because writing a draft is editing, not publishing.
+   */
+  @Patch('admin/articles/:id/draft')
+  saveDraft(
+    @Param('id') id: string,
+    @Body() dto: UpdateArticleDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.service.saveDraft(id, dto, { id: user.id, role: user.role });
+  }
+
+  @Delete('admin/articles/:id/draft')
+  discardDraft(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.service.discardDraft(id, { id: user.id, role: user.role });
+  }
+
   @Post('admin/articles/:id/publish')
   publish(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.service.publish(id, { id: user.id, role: user.role });

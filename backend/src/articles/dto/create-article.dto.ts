@@ -70,9 +70,10 @@ export class CreateArticleDto {
   @IsEnum(ArticleStatus)
   status?: ArticleStatus;
 
+  /** Requires a paid subscription to read. Shown as "Conteúdo Exclusivo". */
   @IsOptional()
   @IsBoolean()
-  premium?: boolean;
+  exclusive?: boolean;
 
   @IsOptional()
   @IsInt()

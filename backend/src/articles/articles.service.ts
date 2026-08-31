@@ -12,6 +12,7 @@ import { UpdateArticleDto } from './dto/update-article.dto';
 import { ListArticlesQueryDto } from './dto/list-articles.query.dto';
 import { ArticleStatus } from '../../generated/prisma/enums';
 import { ConfigService } from '@nestjs/config';
+import { Prisma } from '../../generated/prisma/client';
 import { CategoryTreeService } from '../categories/category-tree.service';
 import {
   PageResult,
@@ -206,7 +207,7 @@ export class ArticlesService {
           summary: dto.summary ?? '',
           content: dto.content ?? '',
           status: (dto.status as ArticleStatus) ?? 'RASCUNHO',
-          premium: dto.premium ?? false,
+          exclusive: dto.exclusive ?? false,
           readMinutes: dto.readMinutes ?? 3,
           tags: dto.tags ?? [],
           essentials: dto.essentials ?? [],
@@ -261,6 +262,126 @@ export class ArticlesService {
       }
       throw e;
     }
+  }
+
+  /** The fields a pending draft carries. Mirrors what the editor edits. */
+  private static readonly DRAFT_FIELDS = [
+    'title',
+    'slug',
+    'summary',
+    'content',
+    'exclusive',
+    'readMinutes',
+    'tags',
+    'essentials',
+    'context',
+    'pullQuote',
+    'metaTitle',
+    'metaDescription',
+    'coverImageUrl',
+    'categoryId',
+  ] as const;
+
+  private async canPublish(user: ActingUser): Promise<boolean> {
+    if (user.role === 'SUPER_ADMIN') return true;
+    const perms = await this.rbac.getPermissionsForRole(user.role);
+    return perms.includes('artigos.publicar');
+  }
+
+  /**
+   * Stores edits to an article WITHOUT touching what readers see.
+   *
+   * This is the autosave target for a live article. The alternative —
+   * writing straight to the real columns, or flipping status to
+   * RASCUNHO the way the manual "Guardar rascunho" button does — would
+   * mean that fixing a comma on a published piece takes it off the site
+   * the moment the author gets distracted. Here the live version stays
+   * exactly as it was until somebody deliberately publishes the draft.
+   *
+   * `draftAwaitingReview` records whether the person who wrote it can
+   * publish. A journalist's pending edit therefore lands in the approval
+   * queue instead of being promotable by themselves.
+   */
+  async saveDraft(id: string, dto: UpdateArticleDto, user: ActingUser) {
+    const existing = await this.loadOrThrow(id);
+    await this.assertCanEdit(existing, user);
+
+    const draft: Record<string, unknown> = {};
+    for (const field of ArticlesService.DRAFT_FIELDS) {
+      const value = (dto as Record<string, unknown>)[field];
+      if (value !== undefined) draft[field] = value;
+    }
+
+    return this.prisma.article.update({
+      where: { id },
+      data: {
+        draft: draft as never,
+        draftUpdatedAt: new Date(),
+        draftAwaitingReview: !(await this.canPublish(user)),
+      },
+    });
+  }
+
+  /**
+   * Moves a pending draft into the live columns.
+   *
+   * Only meaningful for an article that is already published — for
+   * anything else the editor writes straight through and there is no
+   * draft to promote. Returns the article unchanged when there is
+   * nothing pending, so callers can invoke it unconditionally.
+   */
+  async promoteDraft(id: string, user: ActingUser) {
+    const existing = await this.loadOrThrow(id);
+    if (!existing.draft) return existing;
+
+    if (!(await this.canPublish(user))) {
+      throw new ForbiddenException(
+        'Sem permissão para publicar estas alterações.',
+      );
+    }
+
+    const draft = existing.draft as Record<string, unknown>;
+    const promoted = await this.prisma.article.update({
+      where: { id },
+      data: {
+        ...draft,
+        draft: Prisma.DbNull,
+        draftUpdatedAt: null,
+        draftAwaitingReview: false,
+      },
+    });
+    void this.activity.record({
+      userId: user.id,
+      action: 'draft_promoted',
+      targetType: 'article',
+      targetId: existing.id,
+      targetLabel: existing.title,
+    });
+    return promoted;
+  }
+
+  /** Throws away a pending draft; the live version is untouched. */
+  async discardDraft(id: string, user: ActingUser) {
+    const existing = await this.loadOrThrow(id);
+    await this.assertCanEdit(existing, user);
+    if (!existing.draft) return existing;
+
+    const cleared = await this.prisma.article.update({
+      where: { id },
+      data: {
+        draft: Prisma.DbNull,
+        draftUpdatedAt: null,
+        draftAwaitingReview: false,
+      },
+    });
+    void this.activity.record({
+      userId: user.id,
+      action: 'draft_discarded',
+      targetType: 'article',
+      targetId: existing.id,
+      targetLabel: existing.title,
+    });
+    return cleared;
   }
 
   /**
@@ -362,13 +483,21 @@ export class ArticlesService {
       }
       throw new ForbiddenException('Sem permissão para publicar.');
     }
+    // A live article being re-published is the approver accepting the
+    // pending edits — promote them in the same breath, or "Publicar"
+    // would appear to do nothing on an article that is already live.
+    const draft = (a.draft ?? {}) as Record<string, unknown>;
     const updated = await this.prisma.article.update({
       where: { id },
       data: {
+        ...draft,
         status: 'PUBLICADO',
         publishedAt: new Date(),
         scheduledAt: null,
         rejectionReason: null,
+        draft: Prisma.DbNull,
+        draftUpdatedAt: null,
+        draftAwaitingReview: false,
       },
     });
     void this.activity.record({
