@@ -17,32 +17,19 @@ import type { CommentStatus } from '../../generated/prisma/enums';
 /** How long an author may edit their own comment. */
 const EDIT_WINDOW_MS = 15 * 60 * 1000;
 
-/** Hard cap; the DTO enforces it too, this is defence in depth. */
-const MAX_BODY = 2000;
-
 /**
- * Word cap on a comment.
+ * Length cap on a comment, in characters.
  *
- * The 2000-character bound above stays: the two catch different things.
- * 200 words is roughly 1200 characters, so in normal prose this is the
- * limit that bites — enough for a complete argument, short of a
- * manifesto. The character cap still catches what a word count cannot
- * see: a pasted 1900-character URL, or one absurdly long unbroken
- * string, both of which count as a single word.
- */
-export const MAX_WORDS = 200;
-
-/**
- * Counts words the way a reader would.
+ * 280 is the one number in this range that has been tested at scale and
+ * shown to hold a complete thought — long enough to state a position AND
+ * the fact behind it, short of an essay. Portuguese runs about a fifth
+ * longer than English for the same content, so 280 here is roughly 230
+ * in English: still comfortably one clear point, around 50 words.
  *
- * Split on whitespace rather than on `\b`: a regex word boundary counts
- * "não" as two words and "bem-vindo" as two, which would punish
- * Portuguese for being Portuguese.
+ * Measured on the STRIPPED text (see the guard in create/update), not on
+ * what arrives: markup a reader never typed must not eat the allowance.
  */
-export function countWords(text: string): number {
-  const trimmed = text.trim();
-  return trimmed === '' ? 0 : trimmed.split(/\s+/).length;
-}
+export const MAX_BODY = 280;
 
 export interface ActingStaff {
   id: string;
@@ -58,14 +45,18 @@ export interface ActingStaff {
  * comment would be stored XSS on every article page. Sanitising on write
  * AND rendering as {body} on read means both layers have to fail before
  * anything executes.
+ *
+ * It no longer truncates. It used to slice at the old 2000-character
+ * bound, which was harmless at that length; at 280 a silent cut would
+ * publish half an argument under somebody's name. Too long is now a
+ * refusal with a count, made by the caller.
  */
 export function stripTags(input: string): string {
   return input
     .replace(/<[^>]*>/g, '')
     .replace(/\r\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
-    .trim()
-    .slice(0, MAX_BODY);
+    .trim();
 }
 
 @Injectable()
@@ -216,13 +207,13 @@ export class CommentsService {
     if (body.length < 2) {
       throw new BadRequestException('O comentário é demasiado curto.');
     }
-    // Counted AFTER stripTags, not in the DTO: the DTO sees the raw
-    // input, so markup a reader never typed — pasted from a word
-    // processor, say — would count against their limit.
-    const words = countWords(body);
-    if (words > MAX_WORDS) {
+    // Measured AFTER stripTags, not in the DTO: the DTO sees the raw
+    // input, so markup a reader never typed — pasted out of a word
+    // processor, say — would eat their allowance. At 280 that is the
+    // difference between a comment going through and being refused.
+    if (body.length > MAX_BODY) {
       throw new BadRequestException(
-        `O comentário tem ${words} palavras. O limite é ${MAX_WORDS}.`,
+        `O comentário tem ${body.length} caracteres. O limite é ${MAX_BODY}.`,
       );
     }
 
@@ -277,13 +268,13 @@ export class CommentsService {
     if (body.length < 2) {
       throw new BadRequestException('O comentário é demasiado curto.');
     }
-    // Counted AFTER stripTags, not in the DTO: the DTO sees the raw
-    // input, so markup a reader never typed — pasted from a word
-    // processor, say — would count against their limit.
-    const words = countWords(body);
-    if (words > MAX_WORDS) {
+    // Measured AFTER stripTags, not in the DTO: the DTO sees the raw
+    // input, so markup a reader never typed — pasted out of a word
+    // processor, say — would eat their allowance. At 280 that is the
+    // difference between a comment going through and being refused.
+    if (body.length > MAX_BODY) {
       throw new BadRequestException(
-        `O comentário tem ${words} palavras. O limite é ${MAX_WORDS}.`,
+        `O comentário tem ${body.length} caracteres. O limite é ${MAX_BODY}.`,
       );
     }
 

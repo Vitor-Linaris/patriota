@@ -175,45 +175,47 @@ describe('Comments (e2e)', () => {
     expect(res.body.body).toContain('mundo');
   });
 
-  describe('word limit', () => {
-    const words = (n: number) => Array(n).fill('palavra').join(' ');
-
+  describe('length limit', () => {
     it('accepts a comment right on the limit', async () => {
       const reader = await makeReader(app);
-      await post(reader, words(200)).expect(201);
+      await post(reader, 'a'.repeat(280)).expect(201);
     });
 
-    it('refuses one word over, and says how many', async () => {
+    it('refuses one character over, and says by how much', async () => {
       const reader = await makeReader(app);
-      const res = await post(reader, words(201)).expect(400);
-      expect(res.body.message).toMatch(/201 palavras/);
-      expect(res.body.message).toMatch(/200/);
+      const res = await post(reader, 'a'.repeat(281)).expect(400);
+      expect(res.body.message).toMatch(/281 caracteres/);
+      expect(res.body.message).toMatch(/280/);
     });
 
-    it('counts words after the tags are stripped, not before', async () => {
+    it('measures after the tags come off, not before', async () => {
       // Markup the reader never typed — pasted out of a word processor —
-      // must not eat into their allowance.
-      //
-      // 70 real words, each trailed by a tag containing a space. Split
-      // naively on the RAW text that is 210 tokens, over the limit;
-      // stripped it is 70 words, well under. Kept deliberately short so
-      // the 2000-CHARACTER cap does not fire first and mask the result:
-      // that cap is why heavily marked-up paste is refused regardless,
-      // which is existing behaviour and not what this test is about.
+      // must not eat their allowance. 270 characters of text wrapped in
+      // spans is well over 280 raw and well under it once stripped.
       const reader = await makeReader(app);
-      const wrapped = Array(70).fill('palavra <i q>').join(' ');
-      expect(wrapped.length).toBeLessThan(2000);
-      expect(wrapped.trim().split(/\s+/).length).toBeGreaterThan(200);
+      const wrapped = `<span class="x">${'a'.repeat(270)}</span>`;
+      expect(wrapped.length).toBeGreaterThan(280);
 
-      await post(reader, wrapped).expect(201);
+      const res = await post(reader, wrapped).expect(201);
+      expect(res.body.body).toBe('a'.repeat(270));
     });
 
-    it('still refuses a single absurd string under the word limit', async () => {
-      // One "word" of 2500 characters: the word count sees 1, so the
-      // character cap is what has to catch this. Both bounds earn their
-      // keep.
+    it('refuses rather than silently truncating', async () => {
+      // The old code sliced at the cap. At 280 that would publish half
+      // an argument under the reader's name, with no sign anything was
+      // lost.
       const reader = await makeReader(app);
-      await post(reader, 'a'.repeat(2500)).expect(400);
+      await post(reader, 'a'.repeat(400)).expect(400);
+      const count = await app
+        .get(PrismaService)
+        .comment.count({ where: { articleId } });
+      expect(count).toBe(0);
+    });
+
+    it('stops an absurd paste at the door', async () => {
+      // Past the DTO's raw ceiling, so it never reaches the sanitiser.
+      const reader = await makeReader(app);
+      await post(reader, 'a'.repeat(50_000)).expect(400);
     });
 
     it('applies the same limit to an edit', async () => {
@@ -223,7 +225,7 @@ describe('Comments (e2e)', () => {
       await request(app.getHttpServer())
         .patch(`/public/comments/${created.body.id}`)
         .set(readerBearer(reader))
-        .send({ body: words(201) })
+        .send({ body: 'a'.repeat(281) })
         .expect(400);
     });
   });
