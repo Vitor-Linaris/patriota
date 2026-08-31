@@ -530,6 +530,149 @@ describe('Articles (e2e)', () => {
   });
 
   /**
+   * Nothing internal may reach a public response.
+   *
+   * These assertions are NEGATIVE on purpose. Prisma's `include` returns
+   * every scalar column on the model, so before this was pinned down,
+   * each new column on Article was published the day it was added —
+   * which is exactly how `draft`, the unpublished text of an article
+   * being rewritten, ended up readable by anyone calling the API, and
+   * how `rejectionReason`, an editor's private note refusing a piece,
+   * had been public since it existed.
+   *
+   * A test that only checks the fields that SHOULD be there would have
+   * passed throughout. This one fails the moment someone reaches for
+   * `include` again.
+   */
+  describe('public responses carry nothing internal', () => {
+    const FORBIDDEN = [
+      'draft',
+      'draftUpdatedAt',
+      'draftAwaitingReview',
+      'rejectionReason',
+      'notificationsQueuedAt',
+      'authorId',
+      'createdAt',
+      'updatedAt',
+      'scheduledAt',
+    ];
+
+    const leaked = (obj: unknown): string[] =>
+      obj && typeof obj === 'object'
+        ? FORBIDDEN.filter((f) => f in (obj as Record<string, unknown>))
+        : [];
+
+    async function aLiveArticleWithSecrets(editor: TestUser) {
+      const created = await request(app.getHttpServer())
+        .post('/admin/articles')
+        .set(bearer(editor))
+        .send({
+          title: 'Artigo com segredos',
+          summary: 's',
+          content: '<p>público</p>',
+          categoryId,
+        })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/admin/articles/${created.body.id}/publish`)
+        .set(bearer(editor))
+        .expect(201);
+      // Give it both a parked draft and a rejection note, so the test
+      // would actually catch a leak rather than pass on empty fields.
+      await request(app.getHttpServer())
+        .patch(`/admin/articles/${created.body.id}/draft`)
+        .set(bearer(editor))
+        .send({ content: '<p>TEXTO SECRETO POR PUBLICAR</p>' })
+        .expect(200);
+      const prisma = app.get(PrismaService);
+      await prisma.article.update({
+        where: { id: created.body.id },
+        data: { rejectionReason: 'NOTA INTERNA DO EDITOR' },
+      });
+      return created.body as { id: string; slug: string };
+    }
+
+    it('by-slug exposes no internal field', async () => {
+      const editor = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const article = await aLiveArticleWithSecrets(editor);
+
+      const res = await request(app.getHttpServer())
+        .get(`/public/articles/by-slug/${article.slug}`)
+        .expect(200);
+
+      expect(leaked(res.body)).toEqual([]);
+      // And belt-and-braces: the secret text is nowhere in the payload,
+      // however it might have been nested.
+      expect(JSON.stringify(res.body)).not.toContain('TEXTO SECRETO');
+      expect(JSON.stringify(res.body)).not.toContain('NOTA INTERNA');
+    });
+
+    it('the list exposes no internal field', async () => {
+      const editor = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      await aLiveArticleWithSecrets(editor);
+
+      const res = await request(app.getHttpServer())
+        .get('/public/articles')
+        .expect(200);
+
+      for (const item of res.body.items as unknown[]) {
+        expect(leaked(item)).toEqual([]);
+      }
+      expect(JSON.stringify(res.body)).not.toContain('TEXTO SECRETO');
+    });
+
+    it('the homepage bundle exposes no internal field', async () => {
+      const editor = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      await aLiveArticleWithSecrets(editor);
+
+      const res = await request(app.getHttpServer())
+        .get('/public/homepage')
+        .expect(200);
+
+      expect(leaked(res.body.featured)).toEqual([]);
+      for (const bucket of ['side', 'latest', 'investigation'] as const) {
+        for (const item of res.body[bucket] as unknown[]) {
+          expect(leaked(item)).toEqual([]);
+        }
+      }
+      expect(JSON.stringify(res.body)).not.toContain('TEXTO SECRETO');
+    });
+
+    it('related articles expose no internal field', async () => {
+      const editor = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const article = await aLiveArticleWithSecrets(editor);
+      // A sibling so the related query has something to return.
+      await aLiveArticleWithSecrets(editor).catch(() => undefined);
+
+      const res = await request(app.getHttpServer())
+        .get(`/public/articles/related/${article.slug}`)
+        .expect(200);
+
+      for (const item of res.body as unknown[]) {
+        expect(leaked(item)).toEqual([]);
+      }
+      expect(JSON.stringify(res.body)).not.toContain('TEXTO SECRETO');
+    });
+
+    it('the ADMIN list still carries the draft — it is what the editor needs', async () => {
+      // Guards the opposite mistake: locking down the admin payload too,
+      // which would break the editor reopening on its pending edits.
+      const editor = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const article = await aLiveArticleWithSecrets(editor);
+
+      const res = await request(app.getHttpServer())
+        .get('/admin/articles')
+        .set(bearer(editor))
+        .expect(200);
+
+      const row = (res.body.items as { id: string; draft: unknown }[]).find(
+        (a) => a.id === article.id,
+      );
+      expect(row?.draft).toBeTruthy();
+    });
+  });
+
+  /**
    * Editing a live article must never take it off the site.
    *
    * This is the whole point of the pending-draft column. A journalist

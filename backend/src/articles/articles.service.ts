@@ -41,6 +41,54 @@ function isPrismaCode(e: unknown, code: string): boolean {
   );
 }
 
+/**
+ * Everything a public reader is allowed to see of an article — and, by
+ * omission, everything they are not.
+ *
+ * An explicit `select`, NOT an `include`. This is the difference that
+ * matters: Prisma's `include` returns every scalar column on the model,
+ * so each new column added to Article was silently published the day it
+ * was created. That is how `draft` — the unpublished text of an article
+ * being rewritten — ended up being served to anyone who called the API,
+ * and how `rejectionReason` — an editor's private note explaining why
+ * they refused a piece — has been public all along.
+ *
+ * Deliberately absent, and they must stay absent: draft, draftUpdatedAt,
+ * draftAwaitingReview, rejectionReason, notificationsQueuedAt, authorId,
+ * createdAt, updatedAt, scheduledAt.
+ *
+ * Adding a column to Article does not add it here. That is the point.
+ */
+const PUBLIC_ARTICLE_SELECT = {
+  id: true,
+  slug: true,
+  title: true,
+  summary: true,
+  content: true,
+  status: true,
+  exclusive: true,
+  views: true,
+  readMinutes: true,
+  tags: true,
+  essentials: true,
+  context: true,
+  pullQuote: true,
+  metaTitle: true,
+  metaDescription: true,
+  coverImageUrl: true,
+  publishedAt: true,
+  commentCount: true,
+  categoryId: true,
+  category: { select: { slug: true, name: true, color: true } },
+  author: { select: { name: true } },
+} as const;
+
+/** The article page shows the author's id, for the byline link. */
+const PUBLIC_ARTICLE_DETAIL_SELECT = {
+  ...PUBLIC_ARTICLE_SELECT,
+  author: { select: { id: true, name: true } },
+} as const;
+
 @Injectable()
 export class ArticlesService {
   constructor(
@@ -609,10 +657,7 @@ export class ArticlesService {
         skip,
         take,
         orderBy,
-        include: {
-          category: { select: { slug: true, name: true, color: true } },
-          author: { select: { name: true } },
-        },
+        select: PUBLIC_ARTICLE_SELECT,
       }),
       this.prisma.article.count({ where }),
     ]);
@@ -641,10 +686,6 @@ export class ArticlesService {
     if (!ref) return [];
 
     const take = Math.min(Math.max(limit, 1), 10);
-    const include = {
-      category: { select: { slug: true, name: true, color: true } },
-      author: { select: { name: true } },
-    };
 
     const exact = await this.prisma.article.findMany({
       where: {
@@ -654,7 +695,7 @@ export class ArticlesService {
       },
       orderBy: { publishedAt: 'desc' },
       take,
-      include,
+      select: PUBLIC_ARTICLE_SELECT,
     });
     if (!this.funnelEnabled || exact.length >= take) return exact;
 
@@ -672,7 +713,7 @@ export class ArticlesService {
       },
       orderBy: { publishedAt: 'desc' },
       take: take - exact.length,
-      include,
+      select: PUBLIC_ARTICLE_SELECT,
     });
     return [...exact, ...extra];
   }
@@ -680,10 +721,7 @@ export class ArticlesService {
   async findPublicBySlug(slug: string) {
     const a = await this.prisma.article.findFirst({
       where: { slug, status: 'PUBLICADO' },
-      include: {
-        category: { select: { slug: true, name: true, color: true } },
-        author: { select: { id: true, name: true } },
-      },
+      select: PUBLIC_ARTICLE_DETAIL_SELECT,
     });
     if (!a) throw new NotFoundException('Artigo não encontrado.');
     // Fire-and-forget view increment
@@ -698,10 +736,7 @@ export class ArticlesService {
       where: { status: 'PUBLICADO' },
       orderBy: { publishedAt: 'desc' },
       take: 12,
-      include: {
-        category: { select: { slug: true, name: true, color: true } },
-        author: { select: { name: true } },
-      },
+      select: PUBLIC_ARTICLE_SELECT,
     });
     const [featured, ...rest] = articles;
     return {
