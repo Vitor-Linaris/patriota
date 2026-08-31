@@ -11,6 +11,7 @@ const SECTIONS = [
   { href: "/conta/guardados", label: "Guardados", glyph: "♥" },
   { href: "/conta/comentarios", label: "Comentários", glyph: "❝" },
   { href: "/conta/historico", label: "Histórico", glyph: "◷" },
+  { href: "/conta/assinatura", label: "Assinatura", glyph: "★" },
 ] as const;
 
 /**

@@ -17,7 +17,7 @@ import {
   suspensionLapsed,
   suspensionMessage,
 } from './reader-suspension';
-import { effectivePlan } from './reader-entitlement';
+import { effectivePlan, planActive } from './reader-entitlement';
 
 /** Same cost as staff passwords (users.service.ts). */
 const BCRYPT_ROUNDS = 12;
@@ -444,8 +444,14 @@ export class ReaderAuthService {
         emailVerifiedAt: true,
         status: true,
         plan: true,
-
+        planStatus: true,
         planRenewsAt: true,
+        planSource: true,
+        planStartedAt: true,
+        // Never returned as-is — only as the `hasBilling` boolean below.
+        // The reader has no use for the id, and it is the handle to a
+        // Stripe customer.
+        stripeCustomerId: true,
         displayNamePublic: true,
         notifyNewArticles: true,
         digestFrequency: true,
@@ -464,11 +470,27 @@ export class ReaderAuthService {
     });
     if (!reader) throw new UnauthorizedException('Sessão inválida.');
 
-    const { password, _count, ...rest } = reader;
+    const { password, _count, stripeCustomerId, ...rest } = reader;
     return {
       ...rest,
       /** Lets the UI hide "alterar palavra-passe" on social-only accounts. */
       hasPassword: password !== null,
+      /**
+       * Whether the plan is live right now, by date.
+       *
+       * `plan` on its own would say PREMIUM to somebody whose
+       * subscription ended last week and who has not been back since —
+       * and this is the page where they would come to find out why they
+       * cannot read. Same rule the paywall applies, from the same
+       * module.
+       */
+      planActive: planActive(reader),
+      /**
+       * Whether there is a Stripe customer behind this account, and so
+       * whether the billing portal has anything to show. The id itself
+       * is destructured out above: the reader has no use for it.
+       */
+      hasBilling: stripeCustomerId !== null,
       counts: {
         categorias: _count.categoryFavorites,
         artigos: _count.articleFavorites,

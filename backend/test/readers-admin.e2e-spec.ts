@@ -582,6 +582,75 @@ describe('Readers admin (e2e)', () => {
     });
   });
 
+  describe('what the reader sees of their own subscription', () => {
+    const me = (r: Awaited<ReturnType<typeof makeReader>>) =>
+      request(app.getHttpServer()).get('/reader/me').set(readerBearer(r));
+
+    it('never hands the reader their Stripe customer id', async () => {
+      // They have no use for it, and it is the handle to a customer
+      // record. `hasBilling` is all the page needs to know.
+      const reader = await makeReader(app);
+      await prisma.reader.update({
+        where: { id: reader.id },
+        data: { stripeCustomerId: `cus_${reader.id}` },
+      });
+
+      const res = await me(reader).expect(200);
+      expect('stripeCustomerId' in res.body).toBe(false);
+      expect(res.body.hasBilling).toBe(true);
+    });
+
+    it('reports the plan by date, not by column', async () => {
+      // The page a reader opens when an article is closed to them. A
+      // badge saying "Assinante" over a subscription that ended last
+      // week would be the site arguing with them.
+      const reader = await makeReader(app);
+      await prisma.reader.update({
+        where: { id: reader.id },
+        data: {
+          plan: 'PREMIUM',
+          planSource: 'STRIPE',
+          planRenewsAt: new Date(Date.now() - DAY),
+        },
+      });
+
+      const res = await me(reader).expect(200);
+      expect(res.body.plan).toBe('PREMIUM');
+      expect(res.body.planActive).toBe(false);
+    });
+
+    it('carries the end date, the source and the status', async () => {
+      const reader = await makeReader(app);
+      const until = new Date(Date.now() + 30 * DAY);
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+      await request(app.getHttpServer())
+        .post(`/admin/readers/${reader.id}/subscription`)
+        .set(bearer(admin))
+        .send({ until: until.toISOString(), note: 'Colunista.' })
+        .expect(200);
+
+      const res = await me(reader).expect(200);
+      expect(res.body.planActive).toBe(true);
+      expect(res.body.planSource).toBe('MANUAL');
+      expect(res.body.planStatus).toBe('oferecida');
+      expect(new Date(res.body.planRenewsAt).getTime()).toBe(until.getTime());
+      // A gift has no card behind it, so there is no portal to open.
+      expect(res.body.hasBilling).toBe(false);
+      // And the private note stays private: it is written by the
+      // newsroom, for the newsroom.
+      expect('planNote' in res.body).toBe(false);
+    });
+
+    it('a free reader gets the honest answer', async () => {
+      const reader = await makeReader(app);
+      const res = await me(reader).expect(200);
+      expect(res.body.plan).toBe('GRATIS');
+      expect(res.body.planActive).toBe(false);
+      expect(res.body.hasBilling).toBe(false);
+      expect(res.body.planRenewsAt).toBeNull();
+    });
+  });
+
   describe('plan permissions', () => {
     it('ships GRATIS and PREMIUM alongside the roles', async () => {
       const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
