@@ -147,6 +147,143 @@ describe('Readers admin (e2e)', () => {
     });
   });
 
+  describe('subscription figures', () => {
+    it('counts live subscribers by date, not by plan', async () => {
+      // The number somebody puts in a report. Counting plan = PREMIUM
+      // overstates it by however many subscriptions ended without the
+      // reader signing in since, which is not a rounding error — it is
+      // every gift that quietly ran out.
+      const live = await makeReader(app);
+      const ended = await makeReader(app);
+      await makeReader(app); // free
+      await prisma.reader.update({
+        where: { id: live.id },
+        data: {
+          plan: 'PREMIUM',
+          planSource: 'MANUAL',
+          planRenewsAt: new Date(Date.now() + 10 * DAY),
+          planStartedAt: new Date(),
+        },
+      });
+      await prisma.reader.update({
+        where: { id: ended.id },
+        data: {
+          plan: 'PREMIUM',
+          planSource: 'MANUAL',
+          planRenewsAt: new Date(Date.now() - DAY),
+          planStartedAt: new Date(Date.now() - 40 * DAY),
+        },
+      });
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+
+      const res = await request(app.getHttpServer())
+        .get('/admin/readers/stats')
+        .set(bearer(admin))
+        .expect(200);
+
+      expect(res.body.plan.PREMIUM).toBe(2); // the raw column
+      expect(res.body.subscriptions.active).toBe(1); // the truth
+      expect(res.body.subscriptions.lapsed).toBe(1);
+      expect(res.body.subscriptions.free).toBe(1);
+    });
+
+    it('splits paid from gifted', async () => {
+      const paid = await makeReader(app);
+      const gift = await makeReader(app);
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+      await prisma.reader.update({
+        where: { id: paid.id },
+        data: { plan: 'PREMIUM', planSource: 'STRIPE', planStartedAt: new Date() },
+      });
+      await prisma.reader.update({
+        where: { id: gift.id },
+        data: { plan: 'PREMIUM', planSource: 'MANUAL', planStartedAt: new Date() },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get('/admin/readers/stats')
+        .set(bearer(admin))
+        .expect(200);
+      expect(res.body.subscriptions.paid).toBe(1);
+      expect(res.body.subscriptions.gifted).toBe(1);
+      expect(res.body.subscriptions.active).toBe(2);
+    });
+
+    it('counts new subscriptions by when they started, not when the account was opened', async () => {
+      // The reason planStartedAt had to exist: createdAt is when they
+      // registered, which for most subscribers is months earlier.
+      const oldAccount = await makeReader(app);
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+      await prisma.reader.update({
+        where: { id: oldAccount.id },
+        data: {
+          createdAt: new Date(Date.now() - 400 * DAY),
+          plan: 'PREMIUM',
+          planSource: 'MANUAL',
+          planStartedAt: new Date(Date.now() - 2 * DAY),
+        },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get('/admin/readers/stats')
+        .set(bearer(admin))
+        .expect(200);
+      expect(res.body.subscriptions.newRecently).toBe(1);
+    });
+
+    it('flags gifts about to run out, with names, and ignores paid renewals', async () => {
+      // A Stripe renewal five days out is routine and needs nobody. A
+      // GIVEN subscription running out is a decision somebody has to
+      // make, which is why only one of them is on the dashboard.
+      const soon = await makeReader(app, { name: 'Prestes a expirar' });
+      const renewing = await makeReader(app);
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+      await prisma.reader.update({
+        where: { id: soon.id },
+        data: {
+          plan: 'PREMIUM',
+          planSource: 'MANUAL',
+          planRenewsAt: new Date(Date.now() + 5 * DAY),
+          planNote: 'Colunista.',
+        },
+      });
+      await prisma.reader.update({
+        where: { id: renewing.id },
+        data: {
+          plan: 'PREMIUM',
+          planSource: 'STRIPE',
+          planRenewsAt: new Date(Date.now() + 5 * DAY),
+        },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get('/admin/readers/stats')
+        .set(bearer(admin))
+        .expect(200);
+      expect(res.body.subscriptions.expiringSoon).toBe(1);
+      expect(res.body.subscriptions.expiring).toHaveLength(1);
+      expect(res.body.subscriptions.expiring[0].name).toBe('Prestes a expirar');
+      expect(res.body.subscriptions.expiring[0].planNote).toBe('Colunista.');
+    });
+
+    it('a subscription with no end date is active and never "expiring"', async () => {
+      const forever = await makeReader(app);
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+      await prisma.reader.update({
+        where: { id: forever.id },
+        data: { plan: 'PREMIUM', planSource: 'MANUAL', planRenewsAt: null },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get('/admin/readers/stats')
+        .set(bearer(admin))
+        .expect(200);
+      expect(res.body.subscriptions.active).toBe(1);
+      expect(res.body.subscriptions.expiringSoon).toBe(0);
+      expect(res.body.subscriptions.lapsed).toBe(0);
+    });
+  });
+
   describe('subscriptions given by hand', () => {
     const grant = (
       readerId: string,

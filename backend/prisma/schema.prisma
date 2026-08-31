@@ -421,6 +421,13 @@ model Reader {
   /// Read by date, like a suspension: a lapsed plan reads as GRATIS at
   /// the next request, with no job to run. See reader-entitlement.ts.
   planRenewsAt     DateTime?
+  /// When the current subscription BEGAN.
+  ///
+  /// Needed to answer "how many new subscribers this month", which no
+  /// other column can: planRenewsAt moves forward on every renewal, and
+  /// createdAt is when the account was opened, not when they started
+  /// paying.
+  planStartedAt    DateTime?
   /// Where the subscription came from. NULL on a free reader.
   planSource       PlanSource?
   /// Who gave it, on a manual grant. Kept so a gift has a name attached.
@@ -444,6 +451,16 @@ model Reader {
 
   @@index([status])
   @@index([createdAt])
+  /// Counting live subscribers is "plan = PREMIUM AND the end date has
+  /// not passed" — the shape of every subscription figure on the
+  /// dashboard. Without this it is a full table scan on every load.
+  @@index([plan, planRenewsAt])
+  /// Both of these exist in the database already, created by hand in the
+  /// migrations that added the foreign keys. Declared here so the schema
+  /// and the database agree — undeclared, the next `migrate dev` would
+  /// generate a migration to drop them.
+  @@index([suspendedById])
+  @@index([planGrantedById])
 }
 
 /// A linked social account. One Reader may hold several.

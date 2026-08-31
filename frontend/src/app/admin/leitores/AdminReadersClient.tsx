@@ -39,11 +39,33 @@ export interface AdminReader {
   _count: { comments: number };
 }
 
+export interface SubscriptionStats {
+  /** Live right now, counted by date. NOT the same as plan.PREMIUM. */
+  active: number;
+  paid: number;
+  gifted: number;
+  /** On PREMIUM with an end date already passed, awaiting tidy-up. */
+  lapsed: number;
+  free: number;
+  newRecently: number;
+  newWindowDays: number;
+  expiringSoon: number;
+  expiryHorizonDays: number;
+  expiring: {
+    id: string;
+    name: string | null;
+    email: string;
+    planRenewsAt: string | null;
+    planNote: string | null;
+  }[];
+}
+
 export interface ReaderStats {
   total: number;
   plan: Record<string, number>;
   status: Record<string, number>;
   bannedNow: number;
+  subscriptions: SubscriptionStats;
 }
 
 const WHEN = new Intl.DateTimeFormat("pt-PT", {
@@ -122,13 +144,15 @@ export default function AdminReadersClient({
   const CARDS = [
     { label: "Total", value: stats.total, tone: "text-white" },
     {
+      // The live count, not plan.PREMIUM: a row keeps saying PREMIUM
+      // after its end date until somebody's next request tidies it.
       label: "Assinantes",
-      value: stats.plan.PREMIUM ?? 0,
+      value: stats.subscriptions.active,
       tone: "text-amber-300",
     },
     {
       label: "Gratuitos",
-      value: stats.plan.GRATIS ?? 0,
+      value: stats.subscriptions.free,
       tone: "text-white/80",
     },
     {

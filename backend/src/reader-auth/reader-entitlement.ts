@@ -84,6 +84,7 @@ export function lapsedPlanData() {
     plan: 'GRATIS' as const,
     planStatus: null,
     planRenewsAt: null,
+    planStartedAt: null,
     planSource: null,
     planGrantedById: null,
     planNote: null,

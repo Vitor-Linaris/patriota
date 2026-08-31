@@ -119,19 +119,85 @@ export class ReadersService {
     };
   }
 
+  /** How far ahead "a expirar em breve" looks. */
+  private static readonly EXPIRY_HORIZON_DAYS = 30;
+  /** The window for "novas assinaturas". */
+  private static readonly NEW_WINDOW_DAYS = 30;
+
   /**
    * Counts across the whole table, not just the visible page — otherwise
    * the cards would change every time somebody turns a page.
+   *
+   * Every subscriber figure here is counted BY DATE, never by
+   * `plan = PREMIUM` alone. A row keeps saying PREMIUM after its end
+   * date until a checkpoint happens to tidy it, so the plain count
+   * overstates — and the number it overstates is the one somebody would
+   * put in a report about how the paid product is doing.
    */
   async getStats() {
-    const [total, byPlan, byStatus, bannedNow] = await Promise.all([
+    const now = new Date();
+    const activeWhere: Prisma.ReaderWhereInput = {
+      plan: 'PREMIUM',
+      OR: [{ planRenewsAt: null }, { planRenewsAt: { gt: now } }],
+    };
+    const horizon = new Date(
+      now.getTime() + ReadersService.EXPIRY_HORIZON_DAYS * 24 * 60 * 60 * 1000,
+    );
+    const since = new Date(
+      now.getTime() - ReadersService.NEW_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+    );
+
+    const [
+      total,
+      byPlan,
+      byStatus,
+      bannedNow,
+      activeBySource,
+      newRecently,
+      expiringSoon,
+      expiring,
+    ] = await Promise.all([
       this.prisma.reader.count(),
       this.prisma.reader.groupBy({ by: ['plan'], _count: { _all: true } }),
       this.prisma.reader.groupBy({ by: ['status'], _count: { _all: true } }),
       this.prisma.reader.count({
         where: {
           status: 'SUSPENSO',
-          OR: [{ suspendedUntil: null }, { suspendedUntil: { gt: new Date() } }],
+          OR: [{ suspendedUntil: null }, { suspendedUntil: { gt: now } }],
+        },
+      }),
+      this.prisma.reader.groupBy({
+        by: ['planSource'],
+        where: activeWhere,
+        _count: { _all: true },
+      }),
+      this.prisma.reader.count({
+        where: { ...activeWhere, planStartedAt: { gte: since } },
+      }),
+      // Only the gifts. Once Stripe is live a renewal five days out is
+      // routine and needs nobody; a GIVEN subscription running out is
+      // the one somebody has to decide about.
+      this.prisma.reader.count({
+        where: {
+          plan: 'PREMIUM',
+          planSource: 'MANUAL',
+          planRenewsAt: { gt: now, lte: horizon },
+        },
+      }),
+      this.prisma.reader.findMany({
+        where: {
+          plan: 'PREMIUM',
+          planSource: 'MANUAL',
+          planRenewsAt: { gt: now, lte: horizon },
+        },
+        orderBy: { planRenewsAt: 'asc' },
+        take: 5,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          planRenewsAt: true,
+          planNote: true,
         },
       }),
     ]);
@@ -147,7 +213,39 @@ export class ReadersService {
     };
     for (const row of byStatus) status[row.status] = row._count._all;
 
-    return { total, plan, status, bannedNow };
+    let paid = 0;
+    let gifted = 0;
+    for (const row of activeBySource) {
+      if (row.planSource === 'STRIPE') paid = row._count._all;
+      else if (row.planSource === 'MANUAL') gifted = row._count._all;
+    }
+    const active = paid + gifted;
+
+    return {
+      total,
+      plan,
+      status,
+      bannedNow,
+      subscriptions: {
+        /** Live right now, by date. NOT the same as plan.PREMIUM. */
+        active,
+        paid,
+        gifted,
+        /**
+         * Readers on PREMIUM whose end date has already passed. The gap
+         * between this and plan.PREMIUM is exactly the rows waiting to
+         * be tidied, and showing it stops the two numbers looking like a
+         * bug when they disagree.
+         */
+        lapsed: Math.max(0, (plan.PREMIUM ?? 0) - active),
+        free: plan.GRATIS ?? 0,
+        newRecently,
+        newWindowDays: ReadersService.NEW_WINDOW_DAYS,
+        expiringSoon,
+        expiryHorizonDays: ReadersService.EXPIRY_HORIZON_DAYS,
+        expiring,
+      },
+    };
   }
 
   /**
@@ -305,6 +403,7 @@ export class ReadersService {
         plan: 'PREMIUM',
         planStatus: 'oferecida',
         planRenewsAt: until,
+        planStartedAt: new Date(),
         planSource: 'MANUAL',
         planGrantedById: staff.id,
         planNote: opts.note?.trim() || null,
