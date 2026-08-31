@@ -62,6 +62,17 @@ export async function readerLoginAction(
 
   if (!out.res.ok) {
     if (out.res.status === 401) return { error: "Credenciais inválidas." };
+    // A suspended account. The password was already accepted, so this is
+    // the one refusal where the server has something specific to say —
+    // the reason and the end date. "Tente novamente" would be advice the
+    // reader cannot act on, and the usual answer to a site that looks
+    // broken is a second account.
+    if (out.res.status === 403) {
+      const body = (await out.res.json().catch(() => ({}))) as {
+        message?: string;
+      };
+      return { error: body.message ?? "Esta conta está suspensa." };
+    }
     if (out.res.status === 404) {
       return { error: "A área de leitores não está disponível de momento." };
     }

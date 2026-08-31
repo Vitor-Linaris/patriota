@@ -50,6 +50,40 @@ export async function deleteCommentAction(id: string): Promise<ActionResult> {
   return { ok: true as const };
 }
 
+export type SuspensionDuration = "DIAS_15" | "DIAS_30" | "PERMANENTE";
+
+/**
+ * Bans the reader behind a comment.
+ *
+ * Revalidates the article layout like every other action here, because a
+ * ban that purges comments changes the public page too.
+ */
+export async function suspendReaderAction(
+  readerId: string,
+  duration: SuspensionDuration,
+  opts: { reason?: string; purgeComments?: boolean } = {},
+) {
+  return post(`/admin/readers/${readerId}/suspend`, {
+    duration,
+    ...(opts.reason ? { reason: opts.reason } : {}),
+    ...(opts.purgeComments ? { purgeComments: true } : {}),
+  });
+}
+
+export async function unsuspendReaderAction(
+  readerId: string,
+): Promise<ActionResult> {
+  const res = await apiFetch(`/admin/readers/${readerId}/suspend`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { message?: string };
+    return { ok: false as const, error: data.message ?? "Falha ao levantar." };
+  }
+  await refresh();
+  return { ok: true as const };
+}
+
 export async function bulkModerateAction(
   ids: string[],
   status: "APROVADO" | "REJEITADO" | "SPAM" | "ELIMINADO",

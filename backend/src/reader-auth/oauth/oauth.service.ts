@@ -1,8 +1,14 @@
-import { ConflictException, Injectable, Logger } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ReaderTokenService } from '../reader-token.service';
 import type { ReaderAuthProvider } from '../../../generated/prisma/enums';
+import {
+  isSuspended,
+  lapseData,
+  suspensionLapsed,
+  suspensionMessage,
+} from '../reader-suspension';
 
 /** What a strategy hands over, normalised across providers. */
 export interface OAuthProfile {
@@ -57,7 +63,14 @@ export class OAuthService {
       },
       select: {
         reader: {
-          select: { id: true, tokenVersion: true, status: true },
+          select: {
+            id: true,
+            tokenVersion: true,
+            status: true,
+            suspendedUntil: true,
+            suspensionReason: true,
+            emailVerifiedAt: true,
+          },
         },
       },
     });
@@ -65,12 +78,21 @@ export class OAuthService {
     // ── 1. Already linked ────────────────────────────────────────────
     if (existingIdentity) {
       const reader = existingIdentity.reader;
-      if (reader.status === 'SUSPENSO' || reader.status === 'ANONIMIZADO') {
+      if (reader.status === 'ANONIMIZADO') {
         throw new ConflictException('Conta indisponível.');
+      }
+      // Signing in through Google proves the account is theirs just as a
+      // password does, so they get the real reason and the end date
+      // rather than a shrug.
+      if (isSuspended(reader)) {
+        throw new ForbiddenException(suspensionMessage(reader));
       }
       await this.prisma.reader.update({
         where: { id: reader.id },
-        data: { lastLoginAt: new Date() },
+        data: {
+          lastLoginAt: new Date(),
+          ...(suspensionLapsed(reader) ? lapseData(reader) : {}),
+        },
       });
       return { accessToken: await this.tokens.sign(reader) };
     }
@@ -90,6 +112,8 @@ export class OAuthService {
         id: true,
         tokenVersion: true,
         status: true,
+        suspendedUntil: true,
+        suspensionReason: true,
         password: true,
         emailVerifiedAt: true,
       },
@@ -97,11 +121,11 @@ export class OAuthService {
 
     // ── 2. Link to an existing account, if the rules allow ────────────
     if (existingReader) {
-      if (
-        existingReader.status === 'SUSPENSO' ||
-        existingReader.status === 'ANONIMIZADO'
-      ) {
+      if (existingReader.status === 'ANONIMIZADO') {
         throw new ConflictException('Conta indisponível.');
+      }
+      if (isSuspended(existingReader)) {
+        throw new ForbiddenException(suspensionMessage(existingReader));
       }
 
       if (!this.mayAutoLink(profile, existingReader)) {

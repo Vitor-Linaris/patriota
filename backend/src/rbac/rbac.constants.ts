@@ -89,6 +89,13 @@ export const MODULES: ModuleDef[] = [
     ],
   },
   {
+    key: 'leitores',
+    label: 'Leitores',
+    permissions: [
+      { key: 'leitores.suspender', label: 'Suspender/Banir', description: 'Banir um leitor por 15 dias, 30 dias ou definitivamente' },
+    ],
+  },
+  {
     key: 'media',
     label: 'Média',
     permissions: [
@@ -232,6 +239,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, string[]> = {
     'comentarios.ver',
     'comentarios.aprovar',
     'comentarios.eliminar',
+    'leitores.suspender',
     'utilizadores.ver',
     'utilizadores.suspender',
   ],

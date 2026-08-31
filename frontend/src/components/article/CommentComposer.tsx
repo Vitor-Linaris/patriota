@@ -57,7 +57,15 @@ export function CommentComposer({
         return;
       }
       if (res.status === 403) {
-        setError("Confirme o seu e-mail antes de comentar.");
+        // Two different refusals arrive as 403 here: an unconfirmed
+        // address and a suspended account. Telling a banned reader to
+        // confirm an e-mail they confirmed months ago sends them to
+        // support over something they cannot fix, so prefer whatever the
+        // server said and keep the old line only as a fallback.
+        const body = (await res.json().catch(() => ({}))) as {
+          message?: string;
+        };
+        setError(body.message ?? "Confirme o seu e-mail antes de comentar.");
         return;
       }
       if (res.status === 429) {

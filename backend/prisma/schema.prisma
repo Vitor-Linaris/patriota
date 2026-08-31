@@ -190,6 +190,7 @@ model User {
   activities        ActivityLog[]
   articles          Article[]
   moderatedComments Comment[]     @relation("CommentModerator")
+  suspendedReaders  Reader[]      @relation("ReaderSuspender")
 }
 
 /// Up to 4 levels: categoria (depth 0) -> subcategoria -> topico ->
@@ -362,6 +363,18 @@ model Reader {
   /// Tokens carry it as tv; a mismatch fails the guard, which is how a
   /// 30-day cookie gets revoked without server-side session storage.
   tokenVersion    Int          @default(0)
+
+  /// Suspension detail. `status = SUSPENSO` is the flag; this is the rest
+  /// of the story. A NULL `suspendedUntil` alongside SUSPENSO means
+  /// permanent; a date in the future is a ban that LAPSES ON ITS OWN,
+  /// because every checkpoint compares the date instead of trusting a
+  /// scheduled job to come along and flip the status back. If the process
+  /// is down on the day a ban ends, nobody stays banned by accident.
+  /// reader-suspension.ts is the single place that decides.
+  suspendedUntil   DateTime?
+  suspensionReason String?
+  suspendedById    String?
+  suspendedBy      User?     @relation("ReaderSuspender", fields: [suspendedById], references: [id], onDelete: SetNull)
 
   // Notification preferences (global; per-category lives on CategoryFavorite)
   notifyNewArticles Boolean         @default(true)

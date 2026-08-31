@@ -9,7 +9,10 @@ import {
   deleteCommentAction,
   rejectCommentAction,
   spamCommentAction,
+  suspendReaderAction,
+  unsuspendReaderAction,
 } from "./actions";
+import { BanReaderDialog } from "./BanReaderDialog";
 
 export interface ModerationComment {
   id: string;
@@ -21,7 +24,14 @@ export interface ModerationComment {
   editedAt: string | null;
   moderatedAt: string | null;
   moderationNote: string | null;
-  reader: { id: string; name: string | null; email: string; status: string };
+  reader: {
+    id: string;
+    name: string | null;
+    email: string;
+    status: string;
+    /** NULL alongside status SUSPENSO means the ban is permanent. */
+    suspendedUntil: string | null;
+  };
   moderatedBy: { id: string; name: string | null } | null;
   article: { slug: string; title: string };
 }
@@ -50,6 +60,26 @@ const WHEN = new Intl.DateTimeFormat("pt-PT", {
   minute: "2-digit",
 });
 
+const DAY_MONTH = new Intl.DateTimeFormat("pt-PT", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+});
+
+/**
+ * Whether the reader is banned RIGHT NOW.
+ *
+ * `status` alone cannot answer this: it still reads SUSPENSO after the
+ * end date has passed, because nothing sweeps the column — the ban lapses
+ * by comparison, at the checkpoint that next sees the row. Mirrors
+ * isSuspended() in the backend's reader-suspension.ts.
+ */
+function bannedNow(reader: { status: string; suspendedUntil: string | null }) {
+  if (reader.status !== "SUSPENSO") return false;
+  if (reader.suspendedUntil === null) return true;
+  return new Date(reader.suspendedUntil).getTime() > Date.now();
+}
+
 export default function AdminCommentsClient({
   items,
   total,
@@ -57,6 +87,7 @@ export default function AdminCommentsClient({
   activeStatus,
   currentPage,
   query,
+  canBan,
 }: {
   items: ModerationComment[];
   total: number;
@@ -64,12 +95,17 @@ export default function AdminCommentsClient({
   activeStatus: string;
   currentPage: number;
   query: string;
+  /** leitores.suspender. Hides the control; the API enforces it anyway. */
+  canBan: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState(query);
+  const [banning, setBanning] = useState<ModerationComment["reader"] | null>(
+    null,
+  );
 
   const totalPages = Math.max(1, Math.ceil(total / 20));
 
@@ -256,6 +292,13 @@ export default function AdminCommentsClient({
                         {c.reportCount} denúncia{c.reportCount > 1 ? "s" : ""}
                       </span>
                     )}
+                    {bannedNow(c.reader) && (
+                      <span className="rounded-full bg-red-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-300">
+                        {c.reader.suspendedUntil
+                          ? `suspenso até ${DAY_MONTH.format(new Date(c.reader.suspendedUntil))}`
+                          : "suspenso definitivamente"}
+                      </span>
+                    )}
                   </div>
 
                   {/* Plain text. Never dangerouslySetInnerHTML — the body
@@ -319,11 +362,50 @@ export default function AdminCommentsClient({
                   >
                     Eliminar
                   </button>
+
+                  {/* Separated from the comment actions above by a rule:
+                      those three are about this comment, this one is
+                      about the person who wrote it. */}
+                  {canBan &&
+                    (bannedNow(c.reader) ? (
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() =>
+                          run(() => unsuspendReaderAction(c.reader.id))
+                        }
+                        className="mt-1 rounded-[8px] border-t border-white/10 px-3 pt-2.5 text-[12px] text-white/50 transition hover:text-white/80 disabled:opacity-50"
+                      >
+                        Levantar suspensão
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => setBanning(c.reader)}
+                        className="mt-1 rounded-[8px] border-t border-white/10 px-3 pt-2.5 text-[12px] font-bold text-red-400 transition hover:text-red-300 disabled:opacity-50"
+                      >
+                        Suspender leitor
+                      </button>
+                    ))}
                 </div>
               </div>
             </li>
           ))}
         </ul>
+      )}
+
+      {banning && (
+        <BanReaderDialog
+          readerLabel={banning.name ?? banning.email}
+          busy={isPending}
+          onCancel={() => setBanning(null)}
+          onConfirm={(duration, opts) => {
+            const id = banning.id;
+            setBanning(null);
+            run(() => suspendReaderAction(id, duration, opts));
+          }}
+        />
       )}
 
       {totalPages > 1 && (

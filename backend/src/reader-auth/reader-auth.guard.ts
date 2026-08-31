@@ -1,12 +1,19 @@
 import {
   CanActivate,
   ExecutionContext,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReaderTokenService } from './reader-token.service';
+import {
+  isSuspended,
+  lapseData,
+  suspensionLapsed,
+  suspensionMessage,
+} from './reader-suspension';
 
 /**
  * The authenticated principal for a public reader. Intentionally NOT
@@ -23,8 +30,20 @@ export interface ReaderPrincipal {
   displayNamePublic: boolean;
 }
 
-/** Request augmented with the reader principal. Never `user` — see below. */
-export type ReaderRequest = Request & { reader?: ReaderPrincipal };
+/**
+ * Request augmented with the reader principal. Never `user` — see below.
+ *
+ * `readerSuspension` is how resolve() tells canActivate() WHY it refused.
+ * Both outcomes are `null` from resolve()'s point of view, but a banned
+ * reader deserves to be told they are banned and until when, while a
+ * stale token deserves nothing more than "sessão inválida". The marker
+ * keeps that distinction without making resolve() throw, which would
+ * break OptionalReaderAuthGuard's contract that anonymous is fine.
+ */
+export type ReaderRequest = Request & {
+  reader?: ReaderPrincipal;
+  readerSuspension?: { suspendedUntil: Date | null; suspensionReason: string | null };
+};
 
 /**
  * Resolves a reader bearer token.
@@ -50,7 +69,12 @@ export class ReaderAuthGuard implements CanActivate {
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req = ctx.switchToHttp().getRequest<ReaderRequest>();
     const principal = await this.resolve(req);
-    if (!principal) throw new UnauthorizedException('Sessão inválida.');
+    if (!principal) {
+      if (req.readerSuspension) {
+        throw new ForbiddenException(suspensionMessage(req.readerSuspension));
+      }
+      throw new UnauthorizedException('Sessão inválida.');
+    }
     req.reader = principal;
     return true;
   }
@@ -72,6 +96,8 @@ export class ReaderAuthGuard implements CanActivate {
         avatarUrl: true,
         emailVerifiedAt: true,
         status: true,
+        suspendedUntil: true,
+        suspensionReason: true,
         plan: true,
         tokenVersion: true,
         displayNamePublic: true,
@@ -88,8 +114,21 @@ export class ReaderAuthGuard implements CanActivate {
     // PENDENTE_VERIFICACAO deliberately DOES authenticate — they need to be
     // able to reach /reader/me and re-request the verification email. Write
     // endpoints check emailVerified separately.
-    if (reader.status === 'SUSPENSO' || reader.status === 'ANONIMIZADO') {
+    if (reader.status === 'ANONIMIZADO') return null;
+
+    if (isSuspended(reader)) {
+      req.readerSuspension = reader;
       return null;
+    }
+
+    // The ban ended. isSuspended() has already let them through on the
+    // date alone — this only tidies the row so the admin list stops
+    // showing a SUSPENSO next to an end date from last month. Fire and
+    // forget: if it fails, the next request lets them in just the same.
+    if (suspensionLapsed(reader)) {
+      void this.prisma.reader
+        .update({ where: { id: reader.id }, data: lapseData(reader) })
+        .catch(() => undefined);
     }
 
     return {

@@ -418,7 +418,19 @@ export class CommentsService {
           editedAt: true,
           moderatedAt: true,
           moderationNote: true,
-          reader: { select: { id: true, name: true, email: true, status: true } },
+          // suspendedUntil rides along so the queue can show "já banido
+          // até 14 de Setembro" instead of offering to ban them again.
+          // `status` on its own cannot answer that: it still says
+          // SUSPENSO after the end date has passed.
+          reader: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              status: true,
+              suspendedUntil: true,
+            },
+          },
           moderatedBy: { select: { id: true, name: true } },
           article: { select: { slug: true, title: true } },
         },
@@ -525,6 +537,40 @@ export class CommentsService {
     });
 
     return { updated: rows.length };
+  }
+
+  /**
+   * Wipes every comment a reader has written. Used when a ban is handed
+   * out and the moderator asks for the trail to go with it.
+   *
+   * ELIMINADO rather than a hard delete, exactly like the moderator's own
+   * "eliminar" button: replies stay attached to their parent and the
+   * thread keeps its shape instead of collapsing around the hole.
+   */
+  async purgeByReader(readerId: string, staff: ActingStaff): Promise<number> {
+    const rows = await this.prisma.comment.findMany({
+      where: { readerId, status: { not: 'ELIMINADO' } },
+      select: { id: true, articleId: true },
+    });
+    if (rows.length === 0) return 0;
+
+    await this.prisma.comment.updateMany({
+      where: { id: { in: rows.map((r) => r.id) } },
+      data: {
+        status: 'ELIMINADO',
+        moderatedById: staff.id,
+        moderatedAt: new Date(),
+      },
+    });
+
+    for (const articleId of new Set(rows.map((r) => r.articleId))) {
+      await this.recount(articleId);
+    }
+
+    // No activity entry of its own — the suspension that ordered this
+    // logs the count, and two rows for one action makes the log read as
+    // if a moderator did something twice.
+    return rows.length;
   }
 
   // ─────────────────────────── denormalised count ───────────────────────────

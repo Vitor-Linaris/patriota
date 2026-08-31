@@ -10,6 +10,8 @@ export type ActivityTargetType =
   | 'article'
   | 'comment'
   | 'user'
+  /** A public reader, as distinct from 'user', which is newsroom staff. */
+  | 'reader'
   | 'category'
   | 'media'
   | 'campaign'

@@ -174,16 +174,68 @@ describe('ReaderAuthService', () => {
       expect(compareMock).toHaveBeenCalled();
     });
 
-    it('refuses a suspended reader who supplies the correct password', async () => {
+    it('tells a suspended reader they are suspended, and until when', async () => {
+      // 403 rather than the 401 every other failure gets, and with the
+      // real reason. The password has already been proved correct by the
+      // time this fires, so the only person who can read the message is
+      // the account holder.
       prisma.reader.findUnique.mockResolvedValueOnce({
         ...ACTIVE_READER,
         status: 'SUSPENSO',
+        suspendedUntil: new Date('2099-01-15T00:00:00Z'),
+        suspensionReason: 'Insultos repetidos.',
         password: await bcrypt.hash('password123', 4),
       });
 
       await expect(
         service.login('leitor@test.local', 'password123'),
-      ).rejects.toThrow(UnauthorizedException);
+      ).rejects.toMatchObject({
+        status: 403,
+        response: expect.objectContaining({
+          message: expect.stringContaining('Insultos repetidos.'),
+        }),
+      });
+    });
+
+    it('lets a reader back in once the ban date has passed', async () => {
+      // The whole point of dating the ban: nothing ran, nothing was
+      // scheduled, the date simply arrived.
+      prisma.reader.findUnique.mockResolvedValueOnce({
+        ...ACTIVE_READER,
+        status: 'SUSPENSO',
+        suspendedUntil: new Date('2020-01-01T00:00:00Z'),
+        suspensionReason: 'Já cumprido.',
+        password: await bcrypt.hash('password123', 4),
+      });
+      prisma.reader.update.mockResolvedValueOnce({});
+
+      const out = await service.login('leitor@test.local', 'password123');
+      expect(out.accessToken).toBeTruthy();
+
+      // And the row is tidied on the way through, so the admin list stops
+      // showing a suspension that has expired.
+      expect(prisma.reader.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: 'ATIVO',
+            suspendedUntil: null,
+          }),
+        }),
+      );
+    });
+
+    it('refuses a permanently suspended reader — no end date, no way out', async () => {
+      prisma.reader.findUnique.mockResolvedValueOnce({
+        ...ACTIVE_READER,
+        status: 'SUSPENSO',
+        suspendedUntil: null,
+        suspensionReason: null,
+        password: await bcrypt.hash('password123', 4),
+      });
+
+      await expect(
+        service.login('leitor@test.local', 'password123'),
+      ).rejects.toMatchObject({ status: 403 });
     });
 
     it('issues a token on valid credentials', async () => {

@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   Logger,
   UnauthorizedException,
@@ -10,6 +11,12 @@ import { createHash, randomBytes } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReaderTokenService } from './reader-token.service';
 import type { ReaderPrincipal } from './reader-auth.guard';
+import {
+  isSuspended,
+  lapseData,
+  suspensionLapsed,
+  suspensionMessage,
+} from './reader-suspension';
 
 /** Same cost as staff passwords (users.service.ts). */
 const BCRYPT_ROUNDS = 12;
@@ -182,6 +189,29 @@ export class ReaderAuthService {
       throw new BadRequestException('Ligação inválida ou expirada.');
     }
 
+    // Check BEFORE writing, not after.
+    //
+    // This used to set status: 'ATIVO' unconditionally and then test the
+    // status it had just written, which of course always passed. The
+    // comment claimed it would "never resurrect one that was suspended";
+    // the code did exactly that, so an old verification link sitting in
+    // an inbox was a way out of a ban.
+    const before = await this.prisma.reader.findUnique({
+      where: { id: row.readerId },
+      select: {
+        status: true,
+        suspendedUntil: true,
+        suspensionReason: true,
+        emailVerifiedAt: true,
+      },
+    });
+    if (!before || before.status === 'ANONIMIZADO') {
+      throw new UnauthorizedException('Conta indisponível.');
+    }
+    if (isSuspended(before)) {
+      throw new ForbiddenException(suspensionMessage(before));
+    }
+
     const reader = await this.prisma.$transaction(async (tx) => {
       await tx.emailToken.update({
         where: { id: row.id },
@@ -191,10 +221,19 @@ export class ReaderAuthService {
         where: { id: row.readerId },
         data: {
           emailVerifiedAt: new Date(),
-          // Only promote a still-pending account; never resurrect one that
-          // was suspended or anonymised in the meantime.
           status: { set: 'ATIVO' },
           lastLoginAt: new Date(),
+          // A lapsed ban is cleared here rather than left behind: the
+          // account is being confirmed active in the same breath, and
+          // leaving the old end date on the row would show up in the
+          // admin list as a suspension that is not one.
+          ...(suspensionLapsed(before)
+            ? {
+                suspendedUntil: null,
+                suspensionReason: null,
+                suspendedById: null,
+              }
+            : {}),
         },
         select: {
           id: true,
@@ -209,10 +248,6 @@ export class ReaderAuthService {
         },
       });
     });
-
-    if (reader.status === 'SUSPENSO' || reader.status === 'ANONIMIZADO') {
-      throw new UnauthorizedException('Conta indisponível.');
-    }
 
     return {
       accessToken: await this.tokens.sign(reader),
@@ -234,6 +269,8 @@ export class ReaderAuthService {
         password: true,
         emailVerifiedAt: true,
         status: true,
+        suspendedUntil: true,
+        suspensionReason: true,
         plan: true,
         tokenVersion: true,
         displayNamePublic: true,
@@ -250,15 +287,27 @@ export class ReaderAuthService {
       !reader ||
       !reader.password ||
       !valid ||
-      reader.status === 'SUSPENSO' ||
       reader.status === 'ANONIMIZADO'
     ) {
       throw new UnauthorizedException('Credenciais inválidas.');
     }
 
+    // Told apart from a wrong password on purpose, and only here: by this
+    // line the password has already been proved correct, so the only
+    // person who can see this message is the account holder. Hiding the
+    // ban behind "credenciais inválidas" taught banned readers that the
+    // site was broken, and the reliable answer to a broken site is a
+    // second account.
+    if (isSuspended(reader)) {
+      throw new ForbiddenException(suspensionMessage(reader));
+    }
+
     await this.prisma.reader.update({
       where: { id: reader.id },
-      data: { lastLoginAt: new Date() },
+      data: {
+        lastLoginAt: new Date(),
+        ...(suspensionLapsed(reader) ? lapseData(reader) : {}),
+      },
     });
 
     return {
@@ -276,12 +325,18 @@ export class ReaderAuthService {
     const email = this.normaliseEmail(rawEmail);
     const reader = await this.prisma.reader.findUnique({
       where: { email },
-      select: { id: true, password: true, status: true, name: true },
+      select: {
+        id: true,
+        password: true,
+        status: true,
+        suspendedUntil: true,
+        name: true,
+      },
     });
     if (
       !reader ||
       !reader.password ||
-      reader.status === 'SUSPENSO' ||
+      isSuspended(reader) ||
       reader.status === 'ANONIMIZADO'
     ) {
       return null;
@@ -471,6 +526,19 @@ export class ReaderAuthService {
           unsubscribeToken: randomBytes(32).toString('base64url'),
           tokenVersion: { increment: 1 },
           stripeCustomerId: null,
+          // Dropping the Stripe id without dropping the plan left an
+          // orphan: a deleted account still counted as a subscriber in
+          // every "quantos assinantes temos" query, with no customer left
+          // to bill or cancel. The two have to go together.
+          plan: 'GRATIS',
+          planStatus: null,
+          planRenewsAt: null,
+          // The suspension goes too. ANONIMIZADO already bars the account
+          // on its own, and leaving a live end date behind would let a
+          // lapse write ATIVO back over the anonymisation.
+          suspendedUntil: null,
+          suspensionReason: null,
+          suspendedById: null,
         },
       }),
     ]);
