@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { mapApiAdToUi, type Ad, type AdApi } from "./ads";
 import { apiBaseUrl } from "./api-base";
+import { getReaderToken } from "./reader-api";
 
 export interface ArticleSummary {
   id: string;
@@ -36,23 +37,32 @@ export interface ArticlePullQuote {
 }
 
 export interface ArticleDetail extends ArticleSummary {
-  content: string;
+  /**
+   * ABSENT — not empty — on an exclusive served to someone without a
+   * subscription. The backend destructures it out rather than blanking
+   * it, so `article.content ?? article.contentPreview` is the right way
+   * to read this pair and an empty-string check is not.
+   */
+  content?: string;
   metaTitle: string | null;
   metaDescription: string | null;
   essentials: string[];
   context: { columns: ArticleContextColumn[] } | null;
   pullQuote: ArticlePullQuote | null;
   categoryId?: string;
-  // PHASE 2 (paywall): the backend will return a truncated contentPreview
-  // and omit content entirely for non-subscribers. Declared now so the
-  // switch is a backend change only — a CSS blur or a client-side slice
-  // is defeated by View Source.
+  /** True when the body below was cut short server-side. */
   paywalled?: boolean;
+  /** The opening, when `content` was withheld. Whole blocks, valid HTML. */
   contentPreview?: string;
 }
 
 export interface HomepageBundle {
-  featured: ArticleDetail | null;
+  /**
+   * A card, like everything else here. It was typed as a detail while the
+   * card payload happened to carry `content` — but the homepage never
+   * rendered a body, and the API no longer sends one.
+   */
+  featured: ArticleSummary | null;
   side: ArticleSummary[];
   latest: ArticleSummary[];
   investigation: ArticleSummary[];
@@ -74,13 +84,29 @@ export const getHomepage = cache(
   },
 );
 
+/**
+ * The one public fetch that carries the reader's token.
+ *
+ * Everything else on a public page is the same for everybody and is
+ * fetched anonymously. This one is not: an exclusive comes back whole
+ * for a subscriber and cut short for anyone else, and that decision is
+ * made on the server from this bearer.
+ *
+ * Already `no-store`, which is what makes a per-reader response safe
+ * here — a shared cache keyed only on the slug would serve one reader's
+ * entitlement to the next.
+ */
 export async function getArticleBySlug(
   slug: string,
 ): Promise<ArticleDetail | null> {
   try {
+    const token = await getReaderToken();
     const res = await fetch(
       `${apiBaseUrl()}/public/articles/by-slug/${encodeURIComponent(slug)}`,
-      { cache: "no-store" },
+      {
+        cache: "no-store",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      },
     );
     if (!res.ok) return null;
     return (await res.json()) as ArticleDetail;

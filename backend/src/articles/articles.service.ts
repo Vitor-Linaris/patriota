@@ -10,7 +10,7 @@ import { RbacService } from '../rbac/rbac.service';
 import { CreateArticleDto } from './dto/create-article.dto';
 import { UpdateArticleDto } from './dto/update-article.dto';
 import { ListArticlesQueryDto } from './dto/list-articles.query.dto';
-import { ArticleStatus } from '../../generated/prisma/enums';
+import { ArticleStatus, type ReaderPlan } from '../../generated/prisma/enums';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '../../generated/prisma/client';
 import { CategoryTreeService } from '../categories/category-tree.service';
@@ -19,6 +19,7 @@ import {
   toSkipTake,
 } from '../common/dto/pagination.dto';
 import type { Role } from '../rbac/rbac.constants';
+import { previewOf } from './paywall';
 
 interface ActingUser {
   id: string;
@@ -64,7 +65,6 @@ const PUBLIC_ARTICLE_SELECT = {
   slug: true,
   title: true,
   summary: true,
-  content: true,
   status: true,
   exclusive: true,
   views: true,
@@ -83,9 +83,22 @@ const PUBLIC_ARTICLE_SELECT = {
   author: { select: { name: true } },
 } as const;
 
-/** The article page shows the author's id, for the byline link. */
+/**
+ * The article page, and the ONLY public shape that carries `content`.
+ *
+ * That exclusivity is load-bearing. The card select above used to include
+ * the body too, which meant the homepage shipped twelve complete articles
+ * to render twelve headlines — and, once exclusives had to be withheld,
+ * meant a paywall on the article page that anyone could walk around by
+ * calling /public/articles instead. Keeping the body to the one endpoint
+ * that displays it makes the paywall a single decision rather than four,
+ * and drops the homepage payload to a fraction of what it was.
+ *
+ * The byline's author id lives here too, for the link.
+ */
 const PUBLIC_ARTICLE_DETAIL_SELECT = {
   ...PUBLIC_ARTICLE_SELECT,
+  content: true,
   author: { select: { id: true, name: true } },
 } as const;
 
@@ -109,6 +122,19 @@ export class ArticlesService {
   private get funnelEnabled(): boolean {
     const raw = this.config.get<string>('CATEGORY_FUNNEL');
     return raw !== '0' && raw !== 'false';
+  }
+
+  /**
+   * The paywall, off unless explicitly turned on.
+   *
+   * Opposite default to CATEGORY_FUNNEL above, and deliberately so: a
+   * funnel that fails open shows a reader more articles, while a paywall
+   * that fails open gives away the product. Withholding text people have
+   * already been reading for free is a decision somebody has to make on
+   * purpose, on the day they mean to make it.
+   */
+  private get paywallEnabled(): boolean {
+    return this.config.get<string>('FEATURE_PAYWALL') === 'true';
   }
 
   /**
@@ -718,7 +744,27 @@ export class ArticlesService {
     return [...exact, ...extra];
   }
 
-  async findPublicBySlug(slug: string) {
+  /**
+   * Whether this reader may read an exclusive in full.
+   *
+   * Asks the plan permission table rather than testing `plan ===
+   * 'PREMIUM'` directly. The difference matters: what a subscription
+   * buys is a question the newsroom answers on the permissions screen,
+   * and hard-coding the plan name here would quietly make that screen
+   * decorative.
+   *
+   * Anonymous is never entitled, and a reader with no matching plan row
+   * falls back to that plan's defaults.
+   */
+  private async mayReadExclusive(reader?: { plan: string }): Promise<boolean> {
+    if (!reader) return false;
+    const perms = await this.rbac.getPermissionsForPlan(
+      reader.plan as ReaderPlan,
+    );
+    return perms.includes('assinantes.ler_exclusivos');
+  }
+
+  async findPublicBySlug(slug: string, reader?: { plan: string }) {
     const a = await this.prisma.article.findFirst({
       where: { slug, status: 'PUBLICADO' },
       select: PUBLIC_ARTICLE_DETAIL_SELECT,
@@ -728,7 +774,21 @@ export class ArticlesService {
     void this.prisma.article
       .update({ where: { id: a.id }, data: { views: { increment: 1 } } })
       .catch(() => undefined);
-    return a;
+
+    if (!this.paywallEnabled || !a.exclusive) return a;
+    if (await this.mayReadExclusive(reader)) return a;
+
+    // `content` is DESTRUCTURED OUT, not blanked. An empty string would
+    // still be a key in the JSON, and the next person to write
+    // `article.content ?? article.contentPreview` would find the empty
+    // string truthy-adjacent and ship a blank article. It simply is not
+    // there.
+    const { content, ...rest } = a;
+    return {
+      ...rest,
+      paywalled: true,
+      contentPreview: previewOf(content),
+    };
   }
 
   async getHomepageBundle() {
