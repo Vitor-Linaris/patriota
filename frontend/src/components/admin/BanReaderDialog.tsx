@@ -53,7 +53,7 @@ export function BanReaderDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
       onClick={onCancel}
     >
       <div
@@ -61,10 +61,10 @@ export function BanReaderDialog({
         aria-modal="true"
         aria-label={`Suspender ${readerLabel}`}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-[440px] rounded-[14px] border border-white/10 bg-patriota-dark p-5 text-white shadow-2xl"
+        className="w-full max-w-[440px] rounded-2xl bg-white p-6 shadow-2xl"
       >
-        <h2 className="text-[16px] font-black">Suspender leitor</h2>
-        <p className="mt-1 text-[13px] text-white/50">
+        <h2 className="text-lg font-black text-[#0F2C6B]">Suspender leitor</h2>
+        <p className="mt-1 text-sm text-gray-500">
           {readerLabel} deixa de poder comentar. A sessão actual é terminada
           de imediato.
         </p>
@@ -77,19 +77,21 @@ export function BanReaderDialog({
               type="button"
               onClick={() => setDuration(o.key)}
               aria-pressed={duration === o.key}
-              className={`flex items-center justify-between rounded-[10px] border px-3 py-2.5 text-left transition ${
+              className={`flex items-center justify-between rounded-lg border-2 px-3 py-2.5 text-left transition-all ${
                 duration === o.key
-                  ? "border-patriota-accent bg-patriota-accent/15"
-                  : "border-white/10 hover:border-white/30"
+                  ? "border-[#0F2C6B] bg-[#F0F2F7]"
+                  : "border-gray-100 hover:border-gray-200"
               }`}
             >
-              <span className="text-[14px] font-bold">{o.label}</span>
-              <span className="text-[12px] text-white/40">{o.hint}</span>
+              <span className="text-sm font-bold text-gray-800">
+                {o.label}
+              </span>
+              <span className="text-xs text-gray-400">{o.hint}</span>
             </button>
           ))}
         </div>
 
-        <label className="mt-4 block text-[12px] font-bold uppercase tracking-wide text-white/40">
+        <label className="mt-4 block text-[10px] font-bold uppercase tracking-wider text-gray-500">
           Motivo
         </label>
         <textarea
@@ -97,25 +99,25 @@ export function BanReaderDialog({
           onChange={(e) => setReason(e.target.value.slice(0, 280))}
           rows={2}
           placeholder="Ex.: insultos repetidos a outros leitores."
-          className="mt-1 w-full resize-none rounded-[10px] border border-white/10 bg-white/[0.04] p-2.5 text-[13px] text-white placeholder:text-white/25 outline-none transition focus:border-patriota-accent"
+          className="mt-1 w-full resize-none rounded-lg border border-gray-200 p-2.5 text-sm text-gray-800 placeholder:text-gray-400 outline-none transition focus:border-[#0F2C6B] focus:ring-2 focus:ring-[#0F2C6B]/10"
         />
         {/* Said plainly, because moderators write these assuming nobody
             reads them. The reader is shown this text when they next try
             to sign in. */}
-        <p className="mt-1 text-[11px] text-white/35">
+        <p className="mt-1 text-xs text-gray-400">
           O leitor vê este texto ao tentar entrar. {reason.length}/280
         </p>
 
-        <label className="mt-3 flex items-start gap-2 text-[13px] text-white/70">
+        <label className="mt-3 flex items-start gap-2 text-sm text-gray-600">
           <input
             type="checkbox"
             checked={purge}
             onChange={(e) => setPurge(e.target.checked)}
-            className="mt-0.5 h-4 w-4 shrink-0 accent-patriota-accent"
+            className="mt-0.5 h-4 w-4 shrink-0 accent-[#0F2C6B]"
           />
           <span>
             Eliminar também todos os comentários deste leitor
-            <span className="block text-[11px] text-white/35">
+            <span className="block text-xs text-gray-400">
               As respostas de outros mantêm-se, sem perder o fio.
             </span>
           </span>
@@ -126,7 +128,7 @@ export function BanReaderDialog({
             type="button"
             onClick={onCancel}
             disabled={busy}
-            className="rounded-[8px] border border-white/20 px-4 py-2 text-[13px] text-white/80 transition hover:border-white/40 disabled:opacity-50"
+            className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50"
           >
             Cancelar
           </button>
@@ -139,7 +141,7 @@ export function BanReaderDialog({
                 purgeComments: purge,
               })
             }
-            className="rounded-[8px] bg-red-500 px-4 py-2 text-[13px] font-bold text-white transition hover:brightness-110 disabled:opacity-50"
+            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-red-700 disabled:opacity-50"
           >
             {busy ? "A suspender…" : "Suspender"}
           </button>

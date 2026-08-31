@@ -142,33 +142,33 @@ export default function AdminReadersClient({
   }
 
   const CARDS = [
-    { label: "Total", value: stats.total, tone: "text-white" },
+    { label: "Total", value: stats.total, tone: "text-[#0F2C6B]" },
     {
       // The live count, not plan.PREMIUM: a row keeps saying PREMIUM
       // after its end date until somebody's next request tidies it.
       label: "Assinantes",
       value: stats.subscriptions.active,
-      tone: "text-amber-300",
+      tone: "text-amber-600",
     },
     {
       label: "Gratuitos",
       value: stats.subscriptions.free,
-      tone: "text-white/80",
+      tone: "text-gray-700",
     },
     {
       label: "Por confirmar",
       value: stats.status.PENDENTE_VERIFICACAO ?? 0,
-      tone: "text-white/60",
+      tone: "text-gray-500",
     },
-    { label: "Suspensos", value: stats.bannedNow, tone: "text-red-300" },
+    { label: "Suspensos", value: stats.bannedNow, tone: "text-red-600" },
   ];
 
   return (
-    <div className="flex flex-col gap-5">
-      <header className="flex flex-wrap items-center justify-between gap-3">
+    <main className="bg-[#f6f7fb] p-8">
+      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-[22px] font-black text-white">Leitores</h1>
-          <p className="mt-1 text-[13px] text-white/50">
+          <h1 className="text-2xl font-black text-[#0F2C6B]">Leitores</h1>
+          <p className="mt-1 text-sm text-gray-500">
             As contas do público. A equipa da redacção está em Utilizadores.
           </p>
         </div>
@@ -184,11 +184,11 @@ export default function AdminReadersClient({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Nome ou e-mail…"
-            className="h-9 w-56 rounded-[8px] border border-white/10 bg-white/5 px-3 text-[13px] text-white placeholder:text-white/30 outline-none focus:border-patriota-accent/50"
+            className="h-9 w-56 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 placeholder:text-gray-400 outline-none focus:border-[#0F2C6B] focus:ring-2 focus:ring-[#0F2C6B]/10"
           />
           <button
             type="submit"
-            className="h-9 rounded-[8px] border border-white/10 px-3 text-[13px] text-white/70 transition hover:border-white/30 hover:text-white"
+            className="h-9 rounded-lg border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-50"
           >
             Procurar
           </button>
@@ -197,21 +197,21 @@ export default function AdminReadersClient({
 
       {/* Counts across the whole table, not this page — otherwise they
           would change every time somebody clicks Seguinte. */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-5">
         {CARDS.map((c) => (
           <div
             key={c.label}
-            className="rounded-[10px] border border-white/10 bg-white/[0.02] p-3.5"
+            className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
           >
-            <p className="text-[11px] font-bold uppercase tracking-wide text-white/40">
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
               {c.label}
             </p>
-            <p className={`mt-1 text-[22px] font-black ${c.tone}`}>{c.value}</p>
+            <p className={`text-2xl font-black ${c.tone}`}>{c.value}</p>
           </div>
         ))}
       </div>
 
-      <nav className="flex flex-wrap gap-2 border-b border-white/10 pb-3">
+      <nav className="mb-4 flex flex-wrap gap-2 border-b border-gray-200 pb-3">
         <Chip
           on={!filters.plan && !filters.status && !filters.suspended}
           onClick={() => goto({ plan: "", status: "", suspended: "", page: "1" })}
@@ -260,7 +260,7 @@ export default function AdminReadersClient({
       </nav>
 
       {filters.suspended && (
-        <p className="text-[12px] text-white/40">
+        <p className="mb-3 text-xs text-gray-400">
           A pesquisa por texto está desligada enquanto este filtro estiver
           activo.
         </p>
@@ -269,14 +269,14 @@ export default function AdminReadersClient({
       {error && (
         <p
           role="alert"
-          className="rounded-[8px] border border-red-400/30 bg-red-500/10 px-4 py-2 text-[13px] text-red-200"
+          className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700"
         >
           {error}
         </p>
       )}
 
       {items.length === 0 ? (
-        <p className="rounded-[10px] border border-white/10 bg-white/[0.02] px-4 py-8 text-center text-[14px] text-white/40">
+        <p className="rounded-xl border border-gray-200 bg-white px-4 py-8 text-center text-sm text-gray-400 shadow-sm">
           Nenhum leitor corresponde a estes filtros.
         </p>
       ) : (
@@ -284,15 +284,15 @@ export default function AdminReadersClient({
           {items.map((r) => (
             <li
               key={r.id}
-              className="flex flex-wrap items-center gap-3 rounded-[10px] border border-white/10 bg-white/[0.02] p-3.5"
+              className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm"
             >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-[12px] font-bold text-white/70">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0F2C6B] text-xs font-black text-[#FFCC66]">
                 {initials(r.name, r.email)}
               </span>
 
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[14px] font-bold text-white">
+                  <span className="text-sm font-bold text-gray-800">
                     {r.name ?? "Sem nome"}
                   </span>
                   {/* `planActive`, not `plan`. A row can still say
@@ -301,7 +301,7 @@ export default function AdminReadersClient({
                       Showing it as an active subscription would be the
                       admin list disagreeing with the paywall. */}
                   {r.planActive && (
-                    <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-300">
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700">
                       {r.planSource === "MANUAL" ? "oferecida" : "assinante"}
                       {r.planRenewsAt
                         ? ` · até ${WHEN.format(new Date(r.planRenewsAt))}`
@@ -309,39 +309,39 @@ export default function AdminReadersClient({
                     </span>
                   )}
                   {r.plan === "PREMIUM" && !r.planActive && (
-                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-white/40">
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-gray-500">
                       assinatura expirada
                     </span>
                   )}
                   {r.suspended && (
-                    <span className="rounded-full bg-red-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-300">
+                    <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-700">
                       {r.suspendedUntil
                         ? `até ${WHEN.format(new Date(r.suspendedUntil))}`
                         : "definitivo"}
                     </span>
                   )}
                   {!r.suspended && r.status !== "ATIVO" && (
-                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-white/50">
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-gray-500">
                       {STATUS_LABEL[r.status]}
                     </span>
                   )}
                 </div>
-                <p className="truncate text-[12px] text-white/40">{r.email}</p>
+                <p className="truncate text-xs text-gray-400">{r.email}</p>
                 {r.suspended && r.suspensionReason && (
-                  <p className="mt-1 text-[12px] text-red-300/70">
+                  <p className="mt-1 text-xs text-red-500">
                     {r.suspensionReason}
                     {r.suspendedBy?.name ? ` — ${r.suspendedBy.name}` : ""}
                   </p>
                 )}
                 {r.planActive && r.planSource === "MANUAL" && r.planNote && (
-                  <p className="mt-1 text-[12px] text-amber-300/60">
+                  <p className="mt-1 text-xs text-amber-600">
                     {r.planNote}
                     {r.planGrantedBy?.name ? ` — ${r.planGrantedBy.name}` : ""}
                   </p>
                 )}
               </div>
 
-              <div className="flex shrink-0 flex-col items-end text-[12px] text-white/40">
+              <div className="flex shrink-0 flex-col items-end text-xs text-gray-400">
                 <span>{r._count.comments} comentários</span>
                 <span>desde {WHEN.format(new Date(r.createdAt))}</span>
               </div>
@@ -357,19 +357,19 @@ export default function AdminReadersClient({
                         type="button"
                         disabled={isPending}
                         onClick={() => run(() => revokeSubscriptionAction(r.id))}
-                        className="rounded-[8px] border border-white/20 px-3 py-1.5 text-[12px] text-white/70 transition hover:border-white/40 disabled:opacity-50"
+                        className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50"
                       >
                         Retirar
                       </button>
                     ) : (
-                      <span className="text-[12px] text-white/30">paga</span>
+                      <span className="text-xs text-gray-400">paga</span>
                     )
                   ) : (
                     <button
                       type="button"
                       disabled={isPending}
                       onClick={() => setGranting(r)}
-                      className="rounded-[8px] border border-amber-400/30 px-3 py-1.5 text-[12px] text-amber-300 transition hover:border-amber-400/60 disabled:opacity-50"
+                      className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50"
                     >
                       Oferecer
                     </button>
@@ -384,7 +384,7 @@ export default function AdminReadersClient({
                       type="button"
                       disabled={isPending}
                       onClick={() => run(() => unsuspendReaderAction(r.id))}
-                      className="rounded-[8px] border border-white/20 px-3 py-1.5 text-[12px] text-white/70 transition hover:border-white/40 disabled:opacity-50"
+                      className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50"
                     >
                       Levantar
                     </button>
@@ -393,7 +393,7 @@ export default function AdminReadersClient({
                       type="button"
                       disabled={isPending}
                       onClick={() => setBanning(r)}
-                      className="rounded-[8px] border border-red-400/30 px-3 py-1.5 text-[12px] text-red-300 transition hover:border-red-400/60 disabled:opacity-50"
+                      className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
                     >
                       Suspender
                     </button>
@@ -432,29 +432,29 @@ export default function AdminReadersClient({
       )}
 
       {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2">
+        <div className="mt-5 flex items-center justify-center gap-2">
           <button
             type="button"
             disabled={currentPage <= 1}
             onClick={() => goto({ page: String(currentPage - 1) })}
-            className="rounded-[8px] border border-white/10 px-3 py-1.5 text-[13px] text-white/70 transition hover:border-white/30 disabled:opacity-30"
+            className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-30"
           >
             ← Anterior
           </button>
-          <span className="text-[13px] text-white/50">
+          <span className="text-sm text-gray-500">
             {currentPage} / {totalPages}
           </span>
           <button
             type="button"
             disabled={currentPage >= totalPages}
             onClick={() => goto({ page: String(currentPage + 1) })}
-            className="rounded-[8px] border border-white/10 px-3 py-1.5 text-[13px] text-white/70 transition hover:border-white/30 disabled:opacity-30"
+            className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-30"
           >
             Seguinte →
           </button>
         </div>
       )}
-    </div>
+    </main>
   );
 }
 
@@ -472,10 +472,10 @@ function Chip({
       type="button"
       onClick={onClick}
       aria-pressed={on}
-      className={`rounded-full px-3.5 py-1.5 text-[13px] font-medium transition ${
+      className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
         on
-          ? "bg-patriota-accent text-patriota-ink"
-          : "border border-white/10 text-white/60 hover:border-white/30 hover:text-white"
+          ? "bg-[#0F2C6B] text-white"
+          : "border border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50"
       }`}
     >
       {children}
