@@ -17,6 +17,18 @@ export const FEATURES = {
   readerArea: process.env.NEXT_PUBLIC_FEATURE_READER_AREA === "true",
 
   /**
+   * Whether this deployment can take a payment today.
+   *
+   * Mirrors the presence of STRIPE_SECRET_KEY on the API, which is the
+   * real switch — this one only decides whether the reader is offered a
+   * "Assinar agora" button or the page that explains what is coming. A
+   * button that can only ever produce an error is worse than no button,
+   * which is the whole reason this flag exists rather than always
+   * showing the checkout.
+   */
+  billing: process.env.NEXT_PUBLIC_FEATURE_BILLING === "true",
+
+  /**
    * Comments engine (posting, moderation, "Mais comentadas" tab). The
    * backend has no Comment model yet, so the UI is hidden until the
    * module ships.

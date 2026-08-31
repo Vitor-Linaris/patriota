@@ -256,7 +256,13 @@ export default async function ArticlePage({
                 </p>
               )}
 
-              {article.paywalled && <Paywall signedIn={signedIn} />}
+              {article.paywalled && (
+                <Paywall
+                  signedIn={signedIn}
+                  billingLive={FEATURES.billing}
+                  returnTo={`/artigo/${article.slug}`}
+                />
+              )}
 
               {/* Context */}
               {article.context &&

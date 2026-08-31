@@ -20,13 +20,19 @@ function resolveCorsOrigin(): string[] | false {
 }
 
 async function bootstrap() {
-  // PHASE 2 (billing): Stripe webhooks need the untouched request body to
-  // verify the signature, so this will have to become
-  //   NestFactory.create(AppModule, { rawBody: true })
-  // and the webhook route must carry @SkipThrottle() plus its own body
-  // parser — the global ValidationPipe below (forbidNonWhitelisted) and
-  // the JSON parsing both destroy the signature otherwise.
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // rawBody keeps the untouched bytes of every request on req.rawBody,
+  // alongside the parsed body. The Stripe webhook needs them: Stripe
+  // signs what it sent, and parsing then reserialising JSON changes the
+  // bytes enough to break the signature (key order, whitespace, number
+  // formatting). See billing.controller.ts — it reads req.rawBody and
+  // deliberately takes no @Body().
+  //
+  // The cost is one extra copy of each request body in memory. Bounded
+  // by the body-size limit, and worth it against the alternative of a
+  // second Express instance or a route-specific parser.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true,
+  });
 
   // Behind Docker/Nginx every request arrives from the proxy, so req.ip is
   // the proxy IP and ThrottlerGuard buckets the whole internet together —

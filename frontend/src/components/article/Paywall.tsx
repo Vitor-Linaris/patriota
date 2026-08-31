@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SubscribeButton } from "./SubscribeButton";
 
 /**
  * What a reader sees where the rest of an exclusive would have been.
@@ -12,7 +13,17 @@ import Link from "next/link";
  * mask. It reads as "this continues" rather than as a wall dropped on top
  * of text the reader can nearly make out.
  */
-export function Paywall({ signedIn }: { signedIn: boolean }) {
+export function Paywall({
+  signedIn,
+  billingLive,
+  returnTo,
+}: {
+  signedIn: boolean;
+  /** Whether this deployment can actually take a payment today. */
+  billingLive: boolean;
+  /** This article, to come back to after signing in. */
+  returnTo: string;
+}) {
   return (
     <section
       // Named for the JSON-LD on the article page, which points Google at
@@ -40,18 +51,30 @@ export function Paywall({ signedIn }: { signedIn: boolean }) {
         </p>
 
         <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
-          <Link
-            href="/p/assinatura"
-            className="rounded-[10px] bg-patriota-pure px-5 py-2.5 text-[14px] font-bold text-white transition hover:brightness-110"
-          >
-            Ver as assinaturas
-          </Link>
+          {/* Straight to Stripe when billing is live. When it is not,
+              the button would only ever produce an error, so the page
+              falls back to the one that explains what is coming. */}
+          {billingLive ? (
+            <SubscribeButton
+              returnTo={returnTo}
+              className="rounded-[10px] bg-patriota-pure px-5 py-2.5 text-[14px] font-bold text-white transition hover:brightness-110 disabled:opacity-60"
+            >
+              Assinar agora
+            </SubscribeButton>
+          ) : (
+            <Link
+              href="/p/assinatura"
+              className="rounded-[10px] bg-patriota-pure px-5 py-2.5 text-[14px] font-bold text-white transition hover:brightness-110"
+            >
+              Ver as assinaturas
+            </Link>
+          )}
           {/* Only offered to someone who is not signed in. Telling a
               logged-in reader to "iniciar sessão" when their session is
               working fine reads as a broken site. */}
           {!signedIn && (
             <Link
-              href="/conta/entrar"
+              href={`/conta/entrar?next=${encodeURIComponent(returnTo)}`}
               className="text-[14px] font-semibold text-slate-600 underline-offset-4 transition hover:text-slate-900 hover:underline"
             >
               Já sou assinante

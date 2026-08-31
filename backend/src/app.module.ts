@@ -23,6 +23,7 @@ import { ReaderAuthModule } from './reader-auth/reader-auth.module';
 import { ReaderLibraryModule } from './reader-library/reader-library.module';
 import { CommentsModule } from './comments/comments.module';
 import { ReadersModule } from './readers/readers.module';
+import { BillingModule } from './billing/billing.module';
 import { ReaderNotificationsModule } from './reader-notifications/reader-notifications.module';
 
 @Module({
@@ -74,6 +75,7 @@ import { ReaderNotificationsModule } from './reader-notifications/reader-notific
     ReaderLibraryModule,
     CommentsModule,
     ReadersModule,
+    BillingModule,
     ReaderNotificationsModule,
   ],
   controllers: [AppController],

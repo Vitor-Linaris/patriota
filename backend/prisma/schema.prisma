@@ -351,6 +351,28 @@ model RolePermissions {
 /// separate table on purpose: a reader's plan is not a Role, and folding
 /// the two lists together would let a staff role be granted a reader
 /// permission by accident. See the note in rbac.constants.ts.
+/// Every Stripe event we have already acted on.
+///
+/// Stripe retries a webhook until it gets a 2xx, and it sends the same
+/// event more than once by design — "at least once" delivery. Handling
+/// one twice must not extend a subscription twice, so the id goes in
+/// here first, inside the same transaction as the change it authorises.
+/// The primary key is Stripe's own event id, which makes the second
+/// delivery a unique-constraint violation rather than a judgement call.
+///
+/// Rows are never updated. Old ones can be pruned by date if this ever
+/// grows enough to matter.
+model StripeEvent {
+  /// Stripe's `evt_…` id.
+  id         String   @id
+  type       String
+  /// Which reader it touched, when we could tell. For support, not logic.
+  readerId   String?
+  receivedAt DateTime @default(now())
+
+  @@index([receivedAt])
+}
+
 model PlanPermissions {
   plan        ReaderPlan @id
   permissions String[]
@@ -435,7 +457,12 @@ model Reader {
   planGrantedBy    User?       @relation("PlanGranter", fields: [planGrantedById], references: [id], onDelete: SetNull)
   /// Why it was given. Internal; the reader never sees it.
   planNote         String?
+  /// The Stripe customer. Kept even after a subscription ends — they are
+  /// still the same customer, and losing it would orphan their invoice
+  /// history and mint a second customer if they ever come back.
   stripeCustomerId String?     @unique
+  /// The Stripe subscription currently backing this plan, if any.
+  stripeSubscriptionId String? @unique
 
   lastLoginAt DateTime?
   createdAt   DateTime  @default(now())

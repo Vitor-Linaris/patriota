@@ -11,7 +11,11 @@ export async function createTestApp(): Promise<INestApplication> {
     imports: [AppModule],
   }).compile();
 
-  const app = moduleRef.createNestApplication();
+  // rawBody must match main.ts. Without it req.rawBody is undefined and
+  // the Stripe webhook rejects EVERY request for a missing body — which
+  // makes the tests that assert a rejection pass for the wrong reason,
+  // and hides the ones that assert success.
+  const app = moduleRef.createNestApplication({ rawBody: true });
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
