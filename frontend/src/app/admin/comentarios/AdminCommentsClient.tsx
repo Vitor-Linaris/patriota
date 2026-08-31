@@ -12,7 +12,7 @@ import {
   suspendReaderAction,
   unsuspendReaderAction,
 } from "./actions";
-import { BanReaderDialog } from "./BanReaderDialog";
+import { BanReaderDialog } from "@/components/admin/BanReaderDialog";
 
 export interface ModerationComment {
   id: string;

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { apiFetch } from "@/lib/api";
+import type { SuspensionDuration } from "@/components/admin/BanReaderDialog";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -49,8 +50,6 @@ export async function deleteCommentAction(id: string): Promise<ActionResult> {
   await refresh();
   return { ok: true as const };
 }
-
-export type SuspensionDuration = "DIAS_15" | "DIAS_30" | "PERMANENTE";
 
 /**
  * Bans the reader behind a comment.

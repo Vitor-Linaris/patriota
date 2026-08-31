@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { SuspensionDuration } from "./actions";
+/**
+ * Kept here rather than imported from a page's actions file: two admin
+ * screens hand out bans, and the vocabulary belongs to the dialog that
+ * defines it. Mirrors SUSPENSION_DURATIONS in reader-suspension.ts.
+ */
+export type SuspensionDuration = "DIAS_15" | "DIAS_30" | "PERMANENTE";
 
 const OPTIONS: { key: SuspensionDuration; label: string; hint: string }[] = [
   { key: "DIAS_15", label: "15 dias", hint: "Primeira infracção" },

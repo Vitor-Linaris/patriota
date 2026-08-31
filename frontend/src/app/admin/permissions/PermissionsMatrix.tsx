@@ -21,6 +21,13 @@ export interface MatrixData {
   totals: { totalPermissions: number; totalModules: number };
   current: Record<string, string[]>;
   counts: Record<string, { granted: number; percent: number }>;
+  /** The second axis: what a reader gets for each plan. */
+  plans: {
+    keys: { key: string; label: string }[];
+    modules: ModuleDef[];
+    total: number;
+    current: Record<string, string[]>;
+  };
 }
 
 const ROLE_COLOR: Record<string, string> = {
@@ -43,6 +50,27 @@ const ROLE_TEXT: Record<string, string> = {
   ANALISTA: "text-slate-600",
 };
 
+/**
+ * Whether any row of one axis has been touched.
+ *
+ * At module scope rather than inside the useMemo: declaring a function
+ * in there defeats the React Compiler's memoisation, which then warns
+ * that it cannot preserve it. Same shape serves roles and plans.
+ */
+function differs(
+  keys: { key: string }[],
+  before: Record<string, string[]>,
+  after: Record<string, Set<string>>,
+): boolean {
+  return keys.some(({ key }) => {
+    const b = new Set(before[key] ?? []);
+    const a = after[key] ?? new Set<string>();
+    if (b.size !== a.size) return true;
+    for (const p of b) if (!a.has(p)) return true;
+    return false;
+  });
+}
+
 export function PermissionsMatrix({ initial }: { initial: MatrixData }) {
   const [matrix, setMatrix] = useState<Record<string, Set<string>>>(() =>
     Object.fromEntries(
@@ -51,6 +79,15 @@ export function PermissionsMatrix({ initial }: { initial: MatrixData }) {
         new Set(perms),
       ]),
     ),
+  );
+  const [planMatrix, setPlanMatrix] = useState<Record<string, Set<string>>>(
+    () =>
+      Object.fromEntries(
+        Object.entries(initial.plans.current).map(([plan, perms]) => [
+          plan,
+          new Set(perms),
+        ]),
+      ),
   );
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -70,15 +107,21 @@ export function PermissionsMatrix({ initial }: { initial: MatrixData }) {
     ) as Record<string, { granted: number; percent: number }>;
   }, [matrix, initial.roles, totals.totalPermissions]);
 
-  const isDirty = useMemo(() => {
-    return initial.roles.some(({ key }) => {
-      const before = new Set(initial.current[key] ?? []);
-      const after = matrix[key] ?? new Set<string>();
-      if (before.size !== after.size) return true;
-      for (const p of before) if (!after.has(p)) return true;
-      return false;
-    });
-  }, [matrix, initial.roles, initial.current]);
+  // Renamed out of `initial.current` / `initial.plans.current` on
+  // purpose: the React Compiler reads a `.current` property access as a
+  // ref and then refuses to memoise the hook below. The baselines are
+  // the same objects, just under names that do not look like refs.
+  const roleBaseline = initial.current;
+  const planBaseline = initial.plans.current;
+  const roleKeys = initial.roles;
+  const planKeys = initial.plans.keys;
+
+  const isDirty = useMemo(
+    () =>
+      differs(roleKeys, roleBaseline, matrix) ||
+      differs(planKeys, planBaseline, planMatrix),
+    [matrix, planMatrix, roleKeys, roleBaseline, planKeys, planBaseline],
+  );
 
   function toggle(role: string, perm: string) {
     if (role === "SUPER_ADMIN") return; // immutable
@@ -94,10 +137,26 @@ export function PermissionsMatrix({ initial }: { initial: MatrixData }) {
     });
   }
 
+  function togglePlan(plan: string, perm: string) {
+    setSaved(false);
+    setError(null);
+    setPlanMatrix((prev) => {
+      const next = { ...prev };
+      const set = new Set(next[plan]);
+      if (set.has(perm)) set.delete(perm);
+      else set.add(perm);
+      next[plan] = set;
+      return next;
+    });
+  }
+
   function onSave() {
     const payload = {
       permissions: Object.fromEntries(
         Object.entries(matrix).map(([role, set]) => [role, Array.from(set)]),
+      ),
+      planPermissions: Object.fromEntries(
+        Object.entries(planMatrix).map(([plan, set]) => [plan, Array.from(set)]),
       ),
     };
     startTransition(async () => {
@@ -224,6 +283,57 @@ export function PermissionsMatrix({ initial }: { initial: MatrixData }) {
           <span className="font-semibold text-orange-600">Super Admin</span>{" "}
           tem permissão total e está bloqueado.
         </p>
+
+        {/* ── Second axis: the reader's plan ───────────────────────── */}
+        <h2 className="mt-12 text-xl font-black text-slate-900">
+          Planos de leitor
+        </h2>
+        <p className="mt-1 text-sm text-slate-500">
+          O que cada plano dá a quem lê o jornal. É uma pergunta diferente
+          da de cima: ali é o que a redacção pode fazer, aqui é o que uma
+          assinatura compra.
+        </p>
+
+        <div className="mt-4 flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          <span aria-hidden className="text-base">ℹ</span>
+          <p>
+            <strong>Gratuito</strong> descreve o que um leitor já podia fazer
+            antes desta página existir, por isso mexer aqui é que muda alguma
+            coisa — e não o contrário. A leitura de exclusivos entra em vigor
+            quando o paywall for ligado.
+          </p>
+        </div>
+
+        <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
+                <th className="px-5 py-3 text-left font-bold">Pode</th>
+                {initial.plans.keys.map((p) => (
+                  <th
+                    key={p.key}
+                    className={`px-3 py-3 text-center font-bold ${
+                      p.key === "PREMIUM" ? "text-amber-600" : "text-slate-600"
+                    }`}
+                  >
+                    {p.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {initial.plans.modules.map((mod) => (
+                <ModuleRows
+                  key={mod.key}
+                  mod={mod}
+                  roles={initial.plans.keys}
+                  matrix={planMatrix}
+                  onToggle={togglePlan}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </>
   );

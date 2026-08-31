@@ -337,6 +337,16 @@ model RolePermissions {
   updatedAt   DateTime @updatedAt
 }
 
+/// What a reader on each plan may do. Mirrors RolePermissions, and is a
+/// separate table on purpose: a reader's plan is not a Role, and folding
+/// the two lists together would let a staff role be granted a reader
+/// permission by accident. See the note in rbac.constants.ts.
+model PlanPermissions {
+  plan        ReaderPlan @id
+  permissions String[]
+  updatedAt   DateTime   @updatedAt
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Reader area — the PUBLIC audience.
 //
