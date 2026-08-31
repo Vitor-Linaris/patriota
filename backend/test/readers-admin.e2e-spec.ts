@@ -1,8 +1,8 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { createTestApp } from './helpers/app';
-import { makeUser, bearer } from './helpers/auth';
-import { makeReader } from './helpers/reader';
+import { makeUser, bearer, type TestUser } from './helpers/auth';
+import { makeReader, readerBearer } from './helpers/reader';
 import { truncate } from './helpers/db';
 import { PrismaService } from '../src/prisma/prisma.service';
 
@@ -144,6 +144,143 @@ describe('Readers admin (e2e)', () => {
       expect(res.body.plan.GRATIS).toBe(2);
       expect(res.body.status.PENDENTE_VERIFICACAO).toBe(1);
       expect(res.body.bannedNow).toBe(0);
+    });
+  });
+
+  describe('subscriptions given by hand', () => {
+    const grant = (
+      readerId: string,
+      actor: TestUser,
+      body: { until?: string; note?: string } = {},
+    ) =>
+      request(app.getHttpServer())
+        .post(`/admin/readers/${readerId}/subscription`)
+        .set(bearer(actor))
+        .send(body);
+
+    it('a MODERADOR cannot give a subscription away', async () => {
+      // Moderating a thread and giving away money are different
+      // decisions, so they are different permissions.
+      const reader = await makeReader(app);
+      const moderator = await makeUser(app, { role: 'MODERADOR' });
+      await grant(reader.id, moderator).expect(403);
+    });
+
+    it('a SUPER_ADMIN can, with an end date and a reason', async () => {
+      const reader = await makeReader(app);
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+      const until = new Date(Date.now() + 30 * DAY);
+
+      const res = await grant(reader.id, admin, {
+        until: until.toISOString(),
+        note: 'Colunista convidado.',
+      }).expect(200);
+
+      expect(res.body.plan).toBe('PREMIUM');
+      expect(res.body.planSource).toBe('MANUAL');
+      expect(res.body.planActive).toBe(true);
+      expect(res.body.planNote).toBe('Colunista convidado.');
+      expect(res.body.planGrantedBy.id).toBe(admin.id);
+    });
+
+    it('accepts a subscription with no end date, but only if asked', async () => {
+      const reader = await makeReader(app);
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+
+      const res = await grant(reader.id, admin, {}).expect(200);
+      expect(res.body.planRenewsAt).toBeNull();
+      expect(res.body.planActive).toBe(true);
+    });
+
+    it('refuses a date in the past', async () => {
+      // It would lapse on the way out of the endpoint, leaving an admin
+      // looking at a reader who is somehow still free.
+      const reader = await makeReader(app);
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+      await grant(reader.id, admin, {
+        until: new Date(Date.now() - DAY).toISOString(),
+      }).expect(400);
+    });
+
+    it('the gift expires on its own, with nothing scheduled', async () => {
+      // Same claim as the bans, and the one that makes a dated grant
+      // worth anything: backdating the row is all that happens between
+      // being a subscriber and not being one.
+      const reader = await makeReader(app);
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+      await grant(reader.id, admin, {
+        until: new Date(Date.now() + DAY).toISOString(),
+      }).expect(200);
+
+      await prisma.reader.update({
+        where: { id: reader.id },
+        data: { planRenewsAt: new Date(Date.now() - DAY) },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(`/admin/readers?q=${encodeURIComponent(reader.email)}`)
+        .set(bearer(admin))
+        .expect(200);
+      expect(res.body.items[0].plan).toBe('PREMIUM');
+      expect(res.body.items[0].planActive).toBe(false);
+    });
+
+    it('a lapsed subscription is tidied away on the next request', async () => {
+      const reader = await makeReader(app);
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+      await grant(reader.id, admin, {
+        until: new Date(Date.now() + DAY).toISOString(),
+      }).expect(200);
+      await prisma.reader.update({
+        where: { id: reader.id },
+        data: { planRenewsAt: new Date(Date.now() - DAY) },
+      });
+
+      await request(app.getHttpServer())
+        .get('/reader/me')
+        .set(readerBearer(reader))
+        .expect(200);
+
+      // Fire and forget in the guard, so give it a moment to land.
+      await new Promise((r) => setTimeout(r, 250));
+      const row = await prisma.reader.findUnique({ where: { id: reader.id } });
+      expect(row!.plan).toBe('GRATIS');
+      expect(row!.planSource).toBeNull();
+    });
+
+    it('takes a gift back', async () => {
+      const reader = await makeReader(app);
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+      await grant(reader.id, admin, {}).expect(200);
+
+      const res = await request(app.getHttpServer())
+        .delete(`/admin/readers/${reader.id}/subscription`)
+        .set(bearer(admin))
+        .expect(200);
+      expect(res.body.plan).toBe('GRATIS');
+      expect(res.body.planActive).toBe(false);
+    });
+
+    it('will not write a gift over a paid subscription', async () => {
+      // Two sources disagreeing about when a subscription ends, with the
+      // reader still being charged. Cancelling the payment is a decision
+      // for a person, not a side effect of this endpoint.
+      const reader = await makeReader(app);
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+      await prisma.reader.update({
+        where: { id: reader.id },
+        data: {
+          plan: 'PREMIUM',
+          planSource: 'STRIPE',
+          stripeCustomerId: `cus_${reader.id}`,
+        },
+      });
+
+      await grant(reader.id, admin, {}).expect(409);
+      await request(app.getHttpServer())
+        .delete(`/admin/readers/${reader.id}/subscription`)
+        .set(bearer(admin))
+        .expect(409);
     });
   });
 

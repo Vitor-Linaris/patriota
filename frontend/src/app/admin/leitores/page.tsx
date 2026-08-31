@@ -96,6 +96,7 @@ export default async function AdminReadersPage({
           suspended: suspended === "true",
         }}
         canBan={isSuper || perms.has("leitores.suspender")}
+        canGrant={isSuper || perms.has("leitores.oferecer_assinatura")}
       />
     </AdminShell>
   );

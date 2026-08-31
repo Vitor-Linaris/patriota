@@ -38,8 +38,17 @@ enum ReaderStatus {
   ANONIMIZADO
 }
 
-/// PREMIUM is inert until phase 2 (Stripe Billing). Shipped now so the
-/// paywall migration is data-only.
+/// Where a subscription came from. Lets the dashboard tell a gift from
+/// a paying customer, and stops a manual grant quietly overwriting a
+/// live Stripe subscription.
+enum PlanSource {
+  MANUAL
+  STRIPE
+}
+
+/// The reader's plan. No longer inert: the paywall reads it, though only
+/// through the PlanPermissions table — what PREMIUM actually buys is a
+/// question answered on /admin/permissions, not by this enum.
 enum ReaderPlan {
   GRATIS
   PREMIUM
@@ -191,6 +200,7 @@ model User {
   articles          Article[]
   moderatedComments Comment[]     @relation("CommentModerator")
   suspendedReaders  Reader[]      @relation("ReaderSuspender")
+  grantedPlans      Reader[]      @relation("PlanGranter")
 }
 
 /// Up to 4 levels: categoria (depth 0) -> subcategoria -> topico ->
@@ -398,12 +408,27 @@ model Reader {
   /// When false the reader shows as "Leitor" on their public comments.
   displayNamePublic Boolean @default(true)
 
-  // Phase 2 (Stripe Billing). Inert today; shipped now so enabling the
-  // paywall is a data migration rather than a schema migration.
-  plan             ReaderPlan @default(GRATIS)
-  planStatus       String?
+  plan       ReaderPlan @default(GRATIS)
+  planStatus String?
+  /// When the current entitlement ENDS. NULL means no end date.
+  ///
+  /// One column for both kinds of subscription, and one meaning:
+  /// "entitled until". For Stripe that is the end of the paid period —
+  /// which is also why a cancelled subscription keeps working to the
+  /// date it was paid up to. For a subscription given by hand it is the
+  /// expiry the admin chose.
+  ///
+  /// Read by date, like a suspension: a lapsed plan reads as GRATIS at
+  /// the next request, with no job to run. See reader-entitlement.ts.
   planRenewsAt     DateTime?
-  stripeCustomerId String?    @unique
+  /// Where the subscription came from. NULL on a free reader.
+  planSource       PlanSource?
+  /// Who gave it, on a manual grant. Kept so a gift has a name attached.
+  planGrantedById  String?
+  planGrantedBy    User?       @relation("PlanGranter", fields: [planGrantedById], references: [id], onDelete: SetNull)
+  /// Why it was given. Internal; the reader never sees it.
+  planNote         String?
+  stripeCustomerId String?     @unique
 
   lastLoginAt DateTime?
   createdAt   DateTime  @default(now())

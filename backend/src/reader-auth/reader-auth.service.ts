@@ -17,6 +17,7 @@ import {
   suspensionLapsed,
   suspensionMessage,
 } from './reader-suspension';
+import { effectivePlan } from './reader-entitlement';
 
 /** Same cost as staff passwords (users.service.ts). */
 const BCRYPT_ROUNDS = 12;
@@ -83,6 +84,7 @@ export class ReaderAuthService {
     avatarUrl: string | null;
     emailVerifiedAt: Date | null;
     plan: string;
+    planRenewsAt?: Date | null;
     displayNamePublic: boolean;
   }): ReaderPrincipal {
     return {
@@ -91,7 +93,11 @@ export class ReaderAuthService {
       name: r.name,
       avatarUrl: r.avatarUrl,
       emailVerified: r.emailVerifiedAt !== null,
-      plan: r.plan,
+      // Through effectivePlan() for the same reason the guard does it:
+      // the session handed back at login must not announce a plan that
+      // expired, or the account page shows "Assinante" to somebody the
+      // paywall is about to turn away.
+      plan: effectivePlan(r),
       displayNamePublic: r.displayNamePublic,
     };
   }
@@ -242,6 +248,8 @@ export class ReaderAuthService {
           avatarUrl: true,
           emailVerifiedAt: true,
           plan: true,
+
+          planRenewsAt: true,
           displayNamePublic: true,
           tokenVersion: true,
           status: true,
@@ -272,6 +280,8 @@ export class ReaderAuthService {
         suspendedUntil: true,
         suspensionReason: true,
         plan: true,
+
+        planRenewsAt: true,
         tokenVersion: true,
         displayNamePublic: true,
       },
@@ -434,6 +444,8 @@ export class ReaderAuthService {
         emailVerifiedAt: true,
         status: true,
         plan: true,
+
+        planRenewsAt: true,
         displayNamePublic: true,
         notifyNewArticles: true,
         digestFrequency: true,

@@ -158,6 +158,31 @@ describe('Paywall (e2e)', () => {
     expect(res.body.content).toContain(SECRET);
   });
 
+  it('a subscription that has run out stops opening the article', async () => {
+    // The end of the loop that stage 5 closes: a gift with a date is
+    // only worth something if the date is enforced where it counts.
+    // Backdating the row is the only thing that happens here — no job,
+    // no sweep, no second request to trigger anything.
+    await prisma.reader.update({
+      where: { id: subscriber.id },
+      data: { planRenewsAt: new Date(Date.now() - 60_000) },
+    });
+
+    const res = await get('artigo-exclusivo', subscriber).expect(200);
+    expect(res.body.paywalled).toBe(true);
+    expect(JSON.stringify(res.body)).not.toContain(SECRET);
+  });
+
+  it('one that has not run out still opens it', async () => {
+    await prisma.reader.update({
+      where: { id: subscriber.id },
+      data: { planRenewsAt: new Date(Date.now() + 60_000) },
+    });
+
+    const res = await get('artigo-exclusivo', subscriber).expect(200);
+    expect(res.body.content).toContain(SECRET);
+  });
+
   it('a suspended subscriber still reads the paper', async () => {
     // Banned from taking part, not from what they paid for. The optional
     // guard drops the principal, so they read as anonymous — which for a

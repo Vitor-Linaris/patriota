@@ -2,8 +2,14 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { suspendReaderAction, unsuspendReaderAction } from "./actions";
+import {
+  grantSubscriptionAction,
+  revokeSubscriptionAction,
+  suspendReaderAction,
+  unsuspendReaderAction,
+} from "./actions";
 import { BanReaderDialog } from "@/components/admin/BanReaderDialog";
+import { GrantSubscriptionDialog } from "@/components/admin/GrantSubscriptionDialog";
 
 export interface AdminReader {
   id: string;
@@ -13,6 +19,11 @@ export interface AdminReader {
   plan: "GRATIS" | "PREMIUM";
   planStatus: string | null;
   planRenewsAt: string | null;
+  planSource: "MANUAL" | "STRIPE" | null;
+  planNote: string | null;
+  planGrantedBy: { id: string; name: string | null } | null;
+  /** Computed server-side: the plan is PREMIUM and has not lapsed. */
+  planActive: boolean;
   emailVerifiedAt: string | null;
   createdAt: string;
   lastLoginAt: string | null;
@@ -64,6 +75,7 @@ export default function AdminReadersClient({
   pageSize,
   filters,
   canBan,
+  canGrant,
 }: {
   items: AdminReader[];
   total: number;
@@ -72,12 +84,14 @@ export default function AdminReadersClient({
   pageSize: number;
   filters: { q: string; plan: string; status: string; suspended: boolean };
   canBan: boolean;
+  canGrant: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState(filters.q);
   const [banning, setBanning] = useState<AdminReader | null>(null);
+  const [granting, setGranting] = useState<AdminReader | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
@@ -257,9 +271,22 @@ export default function AdminReadersClient({
                   <span className="text-[14px] font-bold text-white">
                     {r.name ?? "Sem nome"}
                   </span>
-                  {r.plan === "PREMIUM" && (
+                  {/* `planActive`, not `plan`. A row can still say
+                      PREMIUM past its end date — the plan lapses by
+                      comparison, tidied when the reader next signs in.
+                      Showing it as an active subscription would be the
+                      admin list disagreeing with the paywall. */}
+                  {r.planActive && (
                     <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-300">
-                      assinante
+                      {r.planSource === "MANUAL" ? "oferecida" : "assinante"}
+                      {r.planRenewsAt
+                        ? ` · até ${WHEN.format(new Date(r.planRenewsAt))}`
+                        : ""}
+                    </span>
+                  )}
+                  {r.plan === "PREMIUM" && !r.planActive && (
+                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-white/40">
+                      assinatura expirada
                     </span>
                   )}
                   {r.suspended && (
@@ -282,12 +309,49 @@ export default function AdminReadersClient({
                     {r.suspendedBy?.name ? ` — ${r.suspendedBy.name}` : ""}
                   </p>
                 )}
+                {r.planActive && r.planSource === "MANUAL" && r.planNote && (
+                  <p className="mt-1 text-[12px] text-amber-300/60">
+                    {r.planNote}
+                    {r.planGrantedBy?.name ? ` — ${r.planGrantedBy.name}` : ""}
+                  </p>
+                )}
               </div>
 
               <div className="flex shrink-0 flex-col items-end text-[12px] text-white/40">
                 <span>{r._count.comments} comentários</span>
                 <span>desde {WHEN.format(new Date(r.createdAt))}</span>
               </div>
+
+              {canGrant && r.status !== "ANONIMIZADO" && (
+                <div className="shrink-0">
+                  {r.planActive ? (
+                    // Only a gift can be taken back here. The API refuses
+                    // to touch a Stripe subscription, which belongs to
+                    // the reader's own billing portal.
+                    r.planSource === "MANUAL" ? (
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => run(() => revokeSubscriptionAction(r.id))}
+                        className="rounded-[8px] border border-white/20 px-3 py-1.5 text-[12px] text-white/70 transition hover:border-white/40 disabled:opacity-50"
+                      >
+                        Retirar
+                      </button>
+                    ) : (
+                      <span className="text-[12px] text-white/30">paga</span>
+                    )
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={isPending}
+                      onClick={() => setGranting(r)}
+                      className="rounded-[8px] border border-amber-400/30 px-3 py-1.5 text-[12px] text-amber-300 transition hover:border-amber-400/60 disabled:opacity-50"
+                    >
+                      Oferecer
+                    </button>
+                  )}
+                </div>
+              )}
 
               {canBan && r.status !== "ANONIMIZADO" && (
                 <div className="shrink-0">
@@ -326,6 +390,19 @@ export default function AdminReadersClient({
             const id = banning.id;
             setBanning(null);
             run(() => suspendReaderAction(id, duration, opts));
+          }}
+        />
+      )}
+
+      {granting && (
+        <GrantSubscriptionDialog
+          readerLabel={granting.name ?? granting.email}
+          busy={isPending}
+          onCancel={() => setGranting(null)}
+          onConfirm={(opts) => {
+            const id = granting.id;
+            setGranting(null);
+            run(() => grantSubscriptionAction(id, opts));
           }}
         />
       )}

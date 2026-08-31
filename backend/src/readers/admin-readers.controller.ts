@@ -12,6 +12,7 @@ import {
 import { ReadersService } from './readers.service';
 import { SuspendReaderDto } from './dto/suspend-reader.dto';
 import { ListReadersQueryDto } from './dto/list-readers.dto';
+import { GrantSubscriptionDto } from './dto/grant-subscription.dto';
 import { RequirePermissions } from '../auth/permissions.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthUser } from '../auth/auth.service';
@@ -68,5 +69,29 @@ export class AdminReadersController {
   @HttpCode(HttpStatus.OK)
   unsuspend(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.readers.unsuspend(id, user);
+  }
+
+  // Giving away a subscription is giving away money, so it sits behind
+  // its own permission rather than riding on leitores.suspender — a
+  // moderator clearing a comment queue has no business doing this.
+  @Post(':id/subscription')
+  @RequirePermissions('leitores.oferecer_assinatura')
+  @HttpCode(HttpStatus.OK)
+  grant(
+    @Param('id') id: string,
+    @Body() dto: GrantSubscriptionDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.readers.grantSubscription(id, user, {
+      until: dto.until ? new Date(dto.until) : null,
+      note: dto.note,
+    });
+  }
+
+  @Delete(':id/subscription')
+  @RequirePermissions('leitores.oferecer_assinatura')
+  @HttpCode(HttpStatus.OK)
+  revoke(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.readers.revokeSubscription(id, user);
   }
 }

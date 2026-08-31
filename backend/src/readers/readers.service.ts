@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { CommentsService, type ActingStaff } from '../comments/comments.service';
@@ -13,6 +18,10 @@ import {
   suspensionEndsAt,
   type SuspensionDuration,
 } from '../reader-auth/reader-suspension';
+import {
+  lapsedPlanData,
+  planActive,
+} from '../reader-auth/reader-entitlement';
 
 const READER_VIEW = {
   id: true,
@@ -37,6 +46,9 @@ const READER_ROW = {
   plan: true,
   planStatus: true,
   planRenewsAt: true,
+  planSource: true,
+  planNote: true,
+  planGrantedBy: { select: { id: true, name: true } },
   emailVerifiedAt: true,
   createdAt: true,
   lastLoginAt: true,
@@ -91,10 +103,16 @@ export class ReadersService {
     ]);
 
     return {
-      // `suspended` is computed rather than left to the client: the rule
-      // for reading it off status + date lives in one place, and this is
-      // that place's answer.
-      items: items.map((r) => ({ ...r, suspended: isSuspended(r) })),
+      // `suspended` and `planActive` are computed rather than left to
+      // the client. Both are the same kind of question — a status plus a
+      // date — and the rule for each lives in one module. Two copies of
+      // a date comparison, one of them in TypeScript in a browser, is
+      // how the admin list ends up disagreeing with the paywall.
+      items: items.map((r) => ({
+        ...r,
+        suspended: isSuspended(r),
+        planActive: planActive(r),
+      })),
       total,
       page: query.page ?? 1,
       pageSize: query.pageSize ?? 20,
@@ -229,6 +247,123 @@ export class ReadersService {
     });
 
     return updated;
+  }
+
+  // ───────────────────────── subscriptions by hand ─────────────────────
+
+  /**
+   * Gives someone a subscription without them paying for it.
+   *
+   * For the cases every newsroom has: a columnist, a source, a
+   * complaint worth settling, the two weeks somebody was promised at a
+   * conference. Recorded as MANUAL with a name attached, so a month
+   * later it is possible to answer "who gave this away and why".
+   */
+  async grantSubscription(
+    readerId: string,
+    staff: ActingStaff,
+    opts: { until?: Date | null; note?: string } = {},
+  ) {
+    const reader = await this.prisma.reader.findUnique({
+      where: { id: readerId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        status: true,
+        plan: true,
+        planSource: true,
+        stripeCustomerId: true,
+      },
+    });
+    if (!reader) throw new NotFoundException('Leitor não encontrado.');
+    if (reader.status === 'ANONIMIZADO') {
+      throw new BadRequestException('Esta conta já foi anonimizada.');
+    }
+
+    // Refused rather than merged. Writing a gift over a live Stripe
+    // subscription would leave the reader paying for something they have
+    // been given, with the two sources disagreeing about when it ends —
+    // and the next webhook would overwrite the gift anyway. Cancelling
+    // the payment is a decision for a person, not a side effect here.
+    if (reader.planSource === 'STRIPE' && reader.plan !== 'GRATIS') {
+      throw new ConflictException(
+        'Este leitor tem uma assinatura paga activa. Cancele-a primeiro no Stripe.',
+      );
+    }
+
+    const until = opts.until ?? null;
+    if (until && until.getTime() <= Date.now()) {
+      // Otherwise the grant lapses on the way out of this method and the
+      // admin is left looking at a reader who is somehow still free.
+      throw new BadRequestException('A data de fim tem de ser no futuro.');
+    }
+
+    const updated = await this.prisma.reader.update({
+      where: { id: readerId },
+      data: {
+        plan: 'PREMIUM',
+        planStatus: 'oferecida',
+        planRenewsAt: until,
+        planSource: 'MANUAL',
+        planGrantedById: staff.id,
+        planNote: opts.note?.trim() || null,
+      },
+      select: READER_ROW,
+    });
+
+    void this.activity.record({
+      userId: staff.id,
+      action: 'reader_plan_granted',
+      targetType: 'reader',
+      targetId: readerId,
+      targetLabel: `${reader.name ?? reader.email} — ${
+        until ? `até ${until.toISOString().slice(0, 10)}` : 'sem data de fim'
+      }`,
+    });
+
+    return {
+      ...updated,
+      suspended: isSuspended(updated),
+      planActive: planActive(updated),
+    };
+  }
+
+  /** Takes it back. Only ever a gift — a paid one is cancelled in Stripe. */
+  async revokeSubscription(readerId: string, staff: ActingStaff) {
+    const reader = await this.prisma.reader.findUnique({
+      where: { id: readerId },
+      select: { id: true, email: true, name: true, plan: true, planSource: true },
+    });
+    if (!reader) throw new NotFoundException('Leitor não encontrado.');
+    if (reader.plan === 'GRATIS') {
+      throw new BadRequestException('Este leitor não tem assinatura.');
+    }
+    if (reader.planSource === 'STRIPE') {
+      throw new ConflictException(
+        'Esta assinatura é paga. Cancele-a no Stripe, não aqui.',
+      );
+    }
+
+    const updated = await this.prisma.reader.update({
+      where: { id: readerId },
+      data: lapsedPlanData(),
+      select: READER_ROW,
+    });
+
+    void this.activity.record({
+      userId: staff.id,
+      action: 'reader_plan_revoked',
+      targetType: 'reader',
+      targetId: readerId,
+      targetLabel: reader.name ?? reader.email,
+    });
+
+    return {
+      ...updated,
+      suspended: isSuspended(updated),
+      planActive: planActive(updated),
+    };
   }
 
   /** The suspension state of one reader, for the moderation panel. */

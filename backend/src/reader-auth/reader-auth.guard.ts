@@ -14,6 +14,11 @@ import {
   suspensionLapsed,
   suspensionMessage,
 } from './reader-suspension';
+import {
+  effectivePlan,
+  lapsedPlanData,
+  planLapsed,
+} from './reader-entitlement';
 
 /**
  * The authenticated principal for a public reader. Intentionally NOT
@@ -25,7 +30,15 @@ export interface ReaderPrincipal {
   name: string | null;
   avatarUrl: string | null;
   emailVerified: boolean;
-  /** Phase 2 reads this; today it is always GRATIS. */
+  /**
+   * The EFFECTIVE plan — already downgraded to GRATIS if the
+   * subscription's end date has passed.
+   *
+   * Downgrading here rather than at each call site is the point: a
+   * lapsed subscription is indistinguishable from never having had one,
+   * and nothing downstream has to remember to check a date. See
+   * reader-entitlement.ts.
+   */
   plan: string;
   displayNamePublic: boolean;
 }
@@ -99,6 +112,7 @@ export class ReaderAuthGuard implements CanActivate {
         suspendedUntil: true,
         suspensionReason: true,
         plan: true,
+        planRenewsAt: true,
         tokenVersion: true,
         displayNamePublic: true,
       },
@@ -131,13 +145,22 @@ export class ReaderAuthGuard implements CanActivate {
         .catch(() => undefined);
     }
 
+    // Same treatment for an expired subscription, and for the same
+    // reason: the date below has already decided the answer, this only
+    // stops the row from claiming a plan that ended. Fire and forget.
+    if (planLapsed(reader)) {
+      void this.prisma.reader
+        .update({ where: { id: reader.id }, data: lapsedPlanData() })
+        .catch(() => undefined);
+    }
+
     return {
       id: reader.id,
       email: reader.email,
       name: reader.name,
       avatarUrl: reader.avatarUrl,
       emailVerified: reader.emailVerifiedAt !== null,
-      plan: reader.plan,
+      plan: effectivePlan(reader),
       displayNamePublic: reader.displayNamePublic,
     };
   }
