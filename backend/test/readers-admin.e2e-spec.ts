@@ -282,6 +282,167 @@ describe('Readers admin (e2e)', () => {
       expect(res.body.subscriptions.expiringSoon).toBe(0);
       expect(res.body.subscriptions.lapsed).toBe(0);
     });
+
+    it('every figure opens a list of exactly that many rows', async () => {
+      // The promise the dashboard links make. A card reading 12 that
+      // opens a list of 15 is worse than a card that links nowhere, so
+      // this walks the whole panel: read the count, follow the filter,
+      // compare. They share their where-clauses in the service, and this
+      // is what stops the two drifting apart.
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+      const now = Date.now();
+
+      const active = await makeReader(app, { name: 'Activo' });
+      const soon = await makeReader(app, { name: 'A expirar' });
+      const fresh = await makeReader(app, { name: 'Nova' });
+      const ended = await makeReader(app, { name: 'Terminada' });
+      await makeReader(app, { name: 'Gratuito' });
+
+      await prisma.reader.update({
+        where: { id: active.id },
+        data: {
+          plan: 'PREMIUM',
+          planSource: 'MANUAL',
+          planRenewsAt: new Date(now + 200 * DAY),
+          planStartedAt: new Date(now - 100 * DAY),
+        },
+      });
+      await prisma.reader.update({
+        where: { id: soon.id },
+        data: {
+          plan: 'PREMIUM',
+          planSource: 'MANUAL',
+          planRenewsAt: new Date(now + 5 * DAY),
+          planStartedAt: new Date(now - 100 * DAY),
+        },
+      });
+      await prisma.reader.update({
+        where: { id: fresh.id },
+        data: {
+          plan: 'PREMIUM',
+          planSource: 'STRIPE',
+          planRenewsAt: null,
+          planStartedAt: new Date(now - 2 * DAY),
+        },
+      });
+      await prisma.reader.update({
+        where: { id: ended.id },
+        data: {
+          plan: 'PREMIUM',
+          planSource: 'MANUAL',
+          planRenewsAt: new Date(now - DAY),
+          planStartedAt: new Date(now - 60 * DAY),
+        },
+      });
+
+      const stats = await request(app.getHttpServer())
+        .get('/admin/readers/stats')
+        .set(bearer(admin))
+        .expect(200);
+      const s = stats.body.subscriptions;
+
+      const listed = async (queryString: string) => {
+        const res = await request(app.getHttpServer())
+          .get(`/admin/readers?${queryString}`)
+          .set(bearer(admin))
+          .expect(200);
+        return res.body.total as number;
+      };
+
+      expect(await listed('active=true')).toBe(s.active);
+      expect(await listed('plan=GRATIS')).toBe(s.free);
+      expect(await listed('newPlans=true')).toBe(s.newRecently);
+      expect(await listed('expiring=true')).toBe(s.expiringSoon);
+
+      // And the figures are the ones the fixture set up, so a bug that
+      // made both sides equally wrong would still be caught.
+      expect(s.active).toBe(3);
+      expect(s.expiringSoon).toBe(1);
+      expect(s.newRecently).toBe(1);
+      expect(s.free).toBe(1);
+    });
+  });
+
+  describe('filter composition', () => {
+    it('search works alongside a date filter', async () => {
+      // These used to fight over `where.OR`, so the search was dropped
+      // whenever a date filter was on. Narrowing a campaign list down to
+      // one person is exactly what somebody does with it.
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+      const now = Date.now();
+      const ana = await makeReader(app, { name: 'Ana Expira', email: 'ana@test.local' });
+      const bruno = await makeReader(app, {
+        name: 'Bruno Expira',
+        email: 'bruno@test.local',
+      });
+      for (const r of [ana, bruno]) {
+        await prisma.reader.update({
+          where: { id: r.id },
+          data: {
+            plan: 'PREMIUM',
+            planSource: 'MANUAL',
+            planRenewsAt: new Date(now + 5 * DAY),
+          },
+        });
+      }
+
+      const both = await request(app.getHttpServer())
+        .get('/admin/readers?expiring=true')
+        .set(bearer(admin))
+        .expect(200);
+      expect(both.body.total).toBe(2);
+
+      const justAna = await request(app.getHttpServer())
+        .get('/admin/readers?expiring=true&q=ana@')
+        .set(bearer(admin))
+        .expect(200);
+      expect(justAna.body.total).toBe(1);
+      expect(justAna.body.items[0].id).toBe(ana.id);
+    });
+
+    it('search works alongside the suspended filter too', async () => {
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+      const banned = await makeReader(app, { name: 'Banido Um' });
+      const other = await makeReader(app, { name: 'Banido Dois' });
+      for (const r of [banned, other]) {
+        await prisma.reader.update({
+          where: { id: r.id },
+          data: { status: 'SUSPENSO', suspendedUntil: null },
+        });
+      }
+
+      const res = await request(app.getHttpServer())
+        .get(`/admin/readers?suspended=true&q=${encodeURIComponent(banned.email)}`)
+        .set(bearer(admin))
+        .expect(200);
+      expect(res.body.total).toBe(1);
+      expect(res.body.items[0].id).toBe(banned.id);
+    });
+
+    it('"active" and "plan=PREMIUM" are not the same question', async () => {
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+      const ended = await makeReader(app);
+      await prisma.reader.update({
+        where: { id: ended.id },
+        data: {
+          plan: 'PREMIUM',
+          planSource: 'MANUAL',
+          planRenewsAt: new Date(Date.now() - DAY),
+        },
+      });
+
+      const raw = await request(app.getHttpServer())
+        .get('/admin/readers?plan=PREMIUM')
+        .set(bearer(admin))
+        .expect(200);
+      const live = await request(app.getHttpServer())
+        .get('/admin/readers?active=true')
+        .set(bearer(admin))
+        .expect(200);
+
+      expect(raw.body.total).toBe(1);
+      expect(live.body.total).toBe(0);
+    });
   });
 
   describe('subscriptions given by hand', () => {

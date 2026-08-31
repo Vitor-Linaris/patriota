@@ -23,6 +23,59 @@ import {
   planActive,
 } from '../reader-auth/reader-entitlement';
 
+/** How far ahead "a expirar em breve" looks. */
+export const EXPIRY_HORIZON_DAYS = 30;
+/** The window for "novas assinaturas". */
+export const NEW_WINDOW_DAYS = 30;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function windowStart(now: Date, days: number): Date {
+  return new Date(now.getTime() - days * DAY_MS);
+}
+
+function windowEnd(now: Date, days: number): Date {
+  return new Date(now.getTime() + days * DAY_MS);
+}
+
+/**
+ * The questions the dashboard asks, as reusable clauses.
+ *
+ * Shared with list() on purpose. Every figure on the dashboard is a link
+ * into the list filtered the same way, and the only way to guarantee the
+ * count and the list agree is for both to be this one function — not two
+ * copies somebody has to remember to change together. A card that reads
+ * 12 and opens a list of 15 is worse than a card that links nowhere.
+ */
+function activePlanWhere(now: Date): Prisma.ReaderWhereInput {
+  return {
+    plan: 'PREMIUM',
+    OR: [{ planRenewsAt: null }, { planRenewsAt: { gt: now } }],
+  };
+}
+
+function suspendedNowWhere(now: Date): Prisma.ReaderWhereInput {
+  return {
+    status: 'SUSPENSO',
+    OR: [{ suspendedUntil: null }, { suspendedUntil: { gt: now } }],
+  };
+}
+
+/**
+ * Gifts running out inside the horizon — the list to write to.
+ *
+ * MANUAL only. Once Stripe is live a renewal five days out is routine
+ * and needs nobody; a GIVEN subscription ending is the one somebody has
+ * to decide about, and the one worth a "renova?" mail.
+ */
+function expiringWhere(now: Date): Prisma.ReaderWhereInput {
+  return {
+    plan: 'PREMIUM',
+    planSource: 'MANUAL',
+    planRenewsAt: { gt: now, lte: windowEnd(now, EXPIRY_HORIZON_DAYS) },
+  };
+}
+
 const READER_VIEW = {
   id: true,
   email: true,
@@ -63,32 +116,50 @@ export class ReadersService {
     private readonly comments: CommentsService,
   ) {}
 
+  /**
+   * Built as a list of AND clauses rather than by assigning onto one
+   * object.
+   *
+   * Several of these filters need an `OR` of their own — "banned right
+   * now" is "no end date OR a future one" — and writing them onto a
+   * shared `where.OR` meant the last one silently won. The text search
+   * used to be dropped whenever a date filter was on, for exactly that
+   * reason. Composed like this each clause keeps its own OR and they
+   * intersect, so search now works alongside every filter.
+   */
   async list(query: ListReadersQueryDto): Promise<PageResult<unknown>> {
-    const where: Prisma.ReaderWhereInput = {};
+    const now = new Date();
+    const and: Prisma.ReaderWhereInput[] = [];
+
     if (query.q) {
-      where.OR = [
-        { name: { contains: query.q, mode: 'insensitive' } },
-        { email: { contains: query.q, mode: 'insensitive' } },
-      ];
+      and.push({
+        OR: [
+          { name: { contains: query.q, mode: 'insensitive' } },
+          { email: { contains: query.q, mode: 'insensitive' } },
+        ],
+      });
     }
-    if (query.plan) where.plan = query.plan;
-    if (query.status) where.status = query.status;
+    if (query.plan) and.push({ plan: query.plan });
+    if (query.status) and.push({ status: query.status });
 
     // "Banned right now" is a date question, not a status one: a row can
     // still say SUSPENSO with an end date from last week, because nothing
     // sweeps the column — it is tidied when a checkpoint next sees it.
     // Filtering on status alone would list people who are free to comment.
-    if (query.suspended === 'true') {
-      where.status = 'SUSPENSO';
-      where.OR = [
-        { suspendedUntil: null },
-        { suspendedUntil: { gt: new Date() } },
-      ];
-      // A text search plus this filter would fight over `OR`. The search
-      // is dropped rather than silently ANDed into nonsense; the UI
-      // disables one while the other is on.
-      if (query.q) delete where.OR;
+    if (query.suspended === 'true') and.push(suspendedNowWhere(now));
+
+    // These three are the dashboard's figures, as filters. Same helpers,
+    // same window constants — the count and the list it opens are the
+    // same query by construction.
+    if (query.active === 'true') and.push(activePlanWhere(now));
+    if (query.newPlans === 'true') {
+      and.push(activePlanWhere(now), {
+        planStartedAt: { gte: windowStart(now, NEW_WINDOW_DAYS) },
+      });
     }
+    if (query.expiring === 'true') and.push(expiringWhere(now));
+
+    const where: Prisma.ReaderWhereInput = and.length ? { AND: and } : {};
 
     const { skip, take } = toSkipTake(query);
     const [items, total] = await Promise.all([
@@ -119,11 +190,6 @@ export class ReadersService {
     };
   }
 
-  /** How far ahead "a expirar em breve" looks. */
-  private static readonly EXPIRY_HORIZON_DAYS = 30;
-  /** The window for "novas assinaturas". */
-  private static readonly NEW_WINDOW_DAYS = 30;
-
   /**
    * Counts across the whole table, not just the visible page — otherwise
    * the cards would change every time somebody turns a page.
@@ -136,16 +202,9 @@ export class ReadersService {
    */
   async getStats() {
     const now = new Date();
-    const activeWhere: Prisma.ReaderWhereInput = {
-      plan: 'PREMIUM',
-      OR: [{ planRenewsAt: null }, { planRenewsAt: { gt: now } }],
-    };
-    const horizon = new Date(
-      now.getTime() + ReadersService.EXPIRY_HORIZON_DAYS * 24 * 60 * 60 * 1000,
-    );
-    const since = new Date(
-      now.getTime() - ReadersService.NEW_WINDOW_DAYS * 24 * 60 * 60 * 1000,
-    );
+    const activeWhere = activePlanWhere(now);
+    const expiringSoonWhere = expiringWhere(now);
+    const since = windowStart(now, NEW_WINDOW_DAYS);
 
     const [
       total,
@@ -160,36 +219,21 @@ export class ReadersService {
       this.prisma.reader.count(),
       this.prisma.reader.groupBy({ by: ['plan'], _count: { _all: true } }),
       this.prisma.reader.groupBy({ by: ['status'], _count: { _all: true } }),
-      this.prisma.reader.count({
-        where: {
-          status: 'SUSPENSO',
-          OR: [{ suspendedUntil: null }, { suspendedUntil: { gt: now } }],
-        },
-      }),
+      this.prisma.reader.count({ where: suspendedNowWhere(now) }),
       this.prisma.reader.groupBy({
         by: ['planSource'],
         where: activeWhere,
         _count: { _all: true },
       }),
       this.prisma.reader.count({
-        where: { ...activeWhere, planStartedAt: { gte: since } },
+        // AND, not a spread: activeWhere carries its own OR, and
+        // spreading would have `planStartedAt` sit beside it rather than
+        // narrowing it — the same trap list() used to fall into.
+        where: { AND: [activeWhere, { planStartedAt: { gte: since } }] },
       }),
-      // Only the gifts. Once Stripe is live a renewal five days out is
-      // routine and needs nobody; a GIVEN subscription running out is
-      // the one somebody has to decide about.
-      this.prisma.reader.count({
-        where: {
-          plan: 'PREMIUM',
-          planSource: 'MANUAL',
-          planRenewsAt: { gt: now, lte: horizon },
-        },
-      }),
+      this.prisma.reader.count({ where: expiringSoonWhere }),
       this.prisma.reader.findMany({
-        where: {
-          plan: 'PREMIUM',
-          planSource: 'MANUAL',
-          planRenewsAt: { gt: now, lte: horizon },
-        },
+        where: expiringSoonWhere,
         orderBy: { planRenewsAt: 'asc' },
         take: 5,
         select: {
@@ -240,9 +284,9 @@ export class ReadersService {
         lapsed: Math.max(0, (plan.PREMIUM ?? 0) - active),
         free: plan.GRATIS ?? 0,
         newRecently,
-        newWindowDays: ReadersService.NEW_WINDOW_DAYS,
+        newWindowDays: NEW_WINDOW_DAYS,
         expiringSoon,
-        expiryHorizonDays: ReadersService.EXPIRY_HORIZON_DAYS,
+        expiryHorizonDays: EXPIRY_HORIZON_DAYS,
         expiring,
       },
     };

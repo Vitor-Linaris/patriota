@@ -47,6 +47,11 @@ export function SubscriptionsPanel({ s }: { s: SubscriptionStats }) {
         </Link>
       </header>
 
+      {/* Each figure opens the list filtered to exactly the rows it
+          counted — same helper, same window constants, server side. The
+          two campaign lists are the reason this panel links anywhere:
+          "12 a expirar" is a fact, and the click is what turns it into
+          twelve addresses to write to. */}
       <div className="grid grid-cols-2 gap-px bg-gray-100 md:grid-cols-4">
         <Figure
           label="Assinantes activos"
@@ -57,24 +62,28 @@ export function SubscriptionsPanel({ s }: { s: SubscriptionStats }) {
               : "Ainda nenhuma"
           }
           accent="text-amber-700"
+          href="/admin/leitores?active=true"
         />
         <Figure
           label="Leitores gratuitos"
           value={s.free}
           hint="Conta criada, sem assinatura"
           accent="text-[#0F2C6B]"
+          href="/admin/leitores?plan=GRATIS"
         />
         <Figure
           label={`Novas em ${s.newWindowDays} dias`}
           value={s.newRecently}
           hint="Começadas neste período"
           accent="text-green-700"
+          href="/admin/leitores?newPlans=true"
         />
         <Figure
           label={`A expirar em ${s.expiryHorizonDays} dias`}
           value={s.expiringSoon}
           hint="Só as oferecidas"
           accent={s.expiringSoon > 0 ? "text-red-700" : "text-gray-400"}
+          href="/admin/leitores?expiring=true"
         />
       </div>
 
@@ -85,10 +94,15 @@ export function SubscriptionsPanel({ s }: { s: SubscriptionStats }) {
           {s.expiring.map((r) => (
             <li
               key={r.id}
-              className="flex flex-wrap items-center gap-3 px-5 py-3"
+              className="flex flex-wrap items-center gap-3 px-5 py-3 transition-colors hover:bg-[#F7F8FA]"
             >
-              <span className="min-w-0 flex-1">
-                <span className="text-sm font-semibold text-gray-800">
+              {/* Straight to this one reader, by e-mail — the surest
+                  handle, since two people can share a name. */}
+              <Link
+                href={`/admin/leitores?q=${encodeURIComponent(r.email)}`}
+                className="min-w-0 flex-1"
+              >
+                <span className="text-sm font-semibold text-gray-800 hover:underline">
                   {r.name ?? r.email}
                 </span>
                 {r.planNote && (
@@ -96,7 +110,7 @@ export function SubscriptionsPanel({ s }: { s: SubscriptionStats }) {
                     {r.planNote}
                   </span>
                 )}
-              </span>
+              </Link>
               {r.planRenewsAt && (
                 <span
                   className={`text-xs font-semibold ${
@@ -135,19 +149,31 @@ function Figure({
   value,
   hint,
   accent,
+  href,
 }: {
   label: string;
   value: number;
   hint: string;
   accent: string;
+  href: string;
 }) {
   return (
-    <div className="bg-white p-5">
+    <Link
+      href={href}
+      className="group block bg-white p-5 transition-colors hover:bg-[#F7F8FA]"
+    >
       <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
         {label}
       </p>
       <p className={`text-3xl font-black ${accent}`}>{intFmt.format(value)}</p>
-      <p className="mt-1 text-xs text-gray-500">{hint}</p>
-    </div>
+      <p className="mt-1 text-xs text-gray-500">
+        {hint}
+        {/* Only on hover: an arrow on every card at rest turns four
+            figures into four calls to action and buries the numbers. */}
+        <span className="ml-1 text-[#0F2C6B] opacity-0 transition-opacity group-hover:opacity-100">
+          →
+        </span>
+      </p>
+    </Link>
   );
 }

@@ -10,6 +10,11 @@ export class ListReadersQueryDto extends PageQueryDto {
   @MaxLength(120)
   q?: string;
 
+  /**
+   * The raw column. Matches a reader whose subscription ended but whose
+   * row has not been tidied yet — use `active` for "is a subscriber
+   * today", which is what the dashboard counts.
+   */
   @IsOptional()
   @IsEnum(ReaderPlan)
   plan?: ReaderPlan;
@@ -27,4 +32,32 @@ export class ListReadersQueryDto extends PageQueryDto {
   @IsOptional()
   @IsIn(['true', 'false'])
   suspended?: string;
+
+  /**
+   * Subscribers as of right now, by date.
+   *
+   * The three below exist so the dashboard's figures are clickable and
+   * land on EXACTLY the rows that were counted. They share their window
+   * constants with getStats() for that reason — a card saying 12 that
+   * opens a list of 15 is worse than no link at all.
+   */
+  @IsOptional()
+  @IsIn(['true', 'false'])
+  active?: string;
+
+  /** Subscriptions that STARTED inside the recent window. */
+  @IsOptional()
+  @IsIn(['true', 'false'])
+  newPlans?: string;
+
+  /**
+   * Gifts running out soon — the list to send a "renova?" mail to.
+   *
+   * Given subscriptions only, matching the dashboard card. A Stripe
+   * subscription renewing in five days needs nobody; a gift ending in
+   * five days is the whole point of this filter.
+   */
+  @IsOptional()
+  @IsIn(['true', 'false'])
+  expiring?: string;
 }

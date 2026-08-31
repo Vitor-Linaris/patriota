@@ -104,7 +104,15 @@ export default function AdminReadersClient({
   stats: ReaderStats;
   currentPage: number;
   pageSize: number;
-  filters: { q: string; plan: string; status: string; suspended: boolean };
+  filters: {
+    q: string;
+    plan: string;
+    status: string;
+    suspended: boolean;
+    active: boolean;
+    newPlans: boolean;
+    expiring: boolean;
+  };
   canBan: boolean;
   canGrant: boolean;
 }) {
@@ -134,12 +142,42 @@ export default function AdminReadersClient({
       plan: filters.plan,
       status: filters.status,
       suspended: filters.suspended ? "true" : "",
+      active: filters.active ? "true" : "",
+      newPlans: filters.newPlans ? "true" : "",
+      expiring: filters.expiring ? "true" : "",
       page: String(currentPage),
       ...patch,
     };
     for (const [k, v] of Object.entries(base)) if (v) next[k] = v;
     router.push(`/admin/leitores?${new URLSearchParams(next).toString()}`);
   }
+
+  /**
+   * Every chip clears the others.
+   *
+   * They answer overlapping questions about the same column — "assinante
+   * agora" and "a expirar" both match a subscriber — so leaving one on
+   * while clicking another produces an intersection nobody asked for.
+   * The search box is deliberately NOT cleared: filtering the expiring
+   * list down to one name is exactly what it is for.
+   */
+  const CLEAR = {
+    plan: "",
+    status: "",
+    suspended: "",
+    active: "",
+    newPlans: "",
+    expiring: "",
+    page: "1",
+  };
+
+  const noFilter =
+    !filters.plan &&
+    !filters.status &&
+    !filters.suspended &&
+    !filters.active &&
+    !filters.newPlans &&
+    !filters.expiring;
 
   const CARDS = [
     { label: "Total", value: stats.total, tone: "text-[#0F2C6B]" },
@@ -211,39 +249,49 @@ export default function AdminReadersClient({
         ))}
       </div>
 
-      <nav className="mb-4 flex flex-wrap gap-2 border-b border-gray-200 pb-3">
-        <Chip
-          on={!filters.plan && !filters.status && !filters.suspended}
-          onClick={() => goto({ plan: "", status: "", suspended: "", page: "1" })}
-        >
+      <nav className="mb-4 flex flex-wrap items-center gap-2 border-b border-gray-200 pb-3">
+        <Chip on={noFilter} onClick={() => goto(CLEAR)}>
           Todos
         </Chip>
+        {/* `active`, not `plan=PREMIUM`. The raw column also matches
+            whoever's subscription ended without them signing in since,
+            and this chip has to show the same people the dashboard
+            counted. */}
         <Chip
-          on={filters.plan === "PREMIUM"}
-          onClick={() =>
-            goto({ plan: "PREMIUM", status: "", suspended: "", page: "1" })
-          }
+          on={filters.active}
+          onClick={() => goto({ ...CLEAR, active: "true" })}
         >
           Assinantes
         </Chip>
         <Chip
           on={filters.plan === "GRATIS"}
-          onClick={() =>
-            goto({ plan: "GRATIS", status: "", suspended: "", page: "1" })
-          }
+          onClick={() => goto({ ...CLEAR, plan: "GRATIS" })}
         >
           Gratuitos
         </Chip>
+
+        <span aria-hidden className="mx-1 h-5 w-px bg-gray-200" />
+
+        {/* The two campaign lists: who just joined, and who is about to
+            leave. Both exist to be exported into a mailing. */}
+        <Chip
+          on={filters.newPlans}
+          onClick={() => goto({ ...CLEAR, newPlans: "true" })}
+        >
+          Novas (30 dias)
+        </Chip>
+        <Chip
+          on={filters.expiring}
+          onClick={() => goto({ ...CLEAR, expiring: "true" })}
+        >
+          A expirar (30 dias)
+        </Chip>
+
+        <span aria-hidden className="mx-1 h-5 w-px bg-gray-200" />
+
         <Chip
           on={filters.status === "PENDENTE_VERIFICACAO"}
-          onClick={() =>
-            goto({
-              status: "PENDENTE_VERIFICACAO",
-              plan: "",
-              suspended: "",
-              page: "1",
-            })
-          }
+          onClick={() => goto({ ...CLEAR, status: "PENDENTE_VERIFICACAO" })}
         >
           Por confirmar
         </Chip>
@@ -251,19 +299,29 @@ export default function AdminReadersClient({
             ban and is free to comment again. This asks the date. */}
         <Chip
           on={filters.suspended}
-          onClick={() =>
-            goto({ suspended: "true", plan: "", status: "", q: "", page: "1" })
-          }
+          onClick={() => goto({ ...CLEAR, suspended: "true" })}
         >
           Suspensos agora
         </Chip>
       </nav>
 
-      {filters.suspended && (
-        <p className="mb-3 text-xs text-gray-400">
-          A pesquisa por texto está desligada enquanto este filtro estiver
-          activo.
-        </p>
+      {/* The point of the expiring filter is to write to these people,
+          so hand over the addresses rather than making somebody copy
+          them out of the rows one at a time. */}
+      {filters.expiring && items.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <p className="text-sm text-amber-900">
+            <strong>{total}</strong>{" "}
+            {total === 1 ? "assinatura oferecida termina" : "assinaturas oferecidas terminam"}{" "}
+            nos próximos 30 dias.
+          </p>
+          <a
+            href={`mailto:?bcc=${items.map((r) => encodeURIComponent(r.email)).join(",")}`}
+            className="ml-auto rounded-lg bg-[#0F2C6B] px-3 py-1.5 text-xs font-bold text-white transition-colors hover:bg-[#1A3A7A]"
+          >
+            Escrever a esta página ({items.length})
+          </a>
+        </div>
       )}
 
       {error && (

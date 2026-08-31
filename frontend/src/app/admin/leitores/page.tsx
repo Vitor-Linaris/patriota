@@ -24,6 +24,9 @@ export default async function AdminReadersPage({
     plan?: string;
     status?: string;
     suspended?: string;
+    active?: string;
+    newPlans?: string;
+    expiring?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -38,7 +41,11 @@ export default async function AdminReadersPage({
   const status = STATUSES.includes(sp.status as (typeof STATUSES)[number])
     ? sp.status
     : undefined;
-  const suspended = sp.suspended === "true" ? "true" : undefined;
+  const flag = (v: string | undefined) => (v === "true" ? "true" : undefined);
+  const suspended = flag(sp.suspended);
+  const active = flag(sp.active);
+  const newPlans = flag(sp.newPlans);
+  const expiring = flag(sp.expiring);
 
   const params = new URLSearchParams({
     page: String(currentPage),
@@ -48,6 +55,9 @@ export default async function AdminReadersPage({
   if (plan) params.set("plan", plan);
   if (status) params.set("status", status);
   if (suspended) params.set("suspended", suspended);
+  if (active) params.set("active", active);
+  if (newPlans) params.set("newPlans", newPlans);
+  if (expiring) params.set("expiring", expiring);
 
   const [listRes, statsRes, meRes] = await Promise.all([
     apiFetch(`/admin/readers?${params.toString()}`),
@@ -94,6 +104,9 @@ export default async function AdminReadersPage({
           plan: plan ?? "",
           status: status ?? "",
           suspended: suspended === "true",
+          active: active === "true",
+          newPlans: newPlans === "true",
+          expiring: expiring === "true",
         }}
         canBan={isSuper || perms.has("leitores.suspender")}
         canGrant={isSuper || perms.has("leitores.oferecer_assinatura")}
