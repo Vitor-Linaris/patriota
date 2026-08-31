@@ -175,6 +175,59 @@ describe('Comments (e2e)', () => {
     expect(res.body.body).toContain('mundo');
   });
 
+  describe('word limit', () => {
+    const words = (n: number) => Array(n).fill('palavra').join(' ');
+
+    it('accepts a comment right on the limit', async () => {
+      const reader = await makeReader(app);
+      await post(reader, words(200)).expect(201);
+    });
+
+    it('refuses one word over, and says how many', async () => {
+      const reader = await makeReader(app);
+      const res = await post(reader, words(201)).expect(400);
+      expect(res.body.message).toMatch(/201 palavras/);
+      expect(res.body.message).toMatch(/200/);
+    });
+
+    it('counts words after the tags are stripped, not before', async () => {
+      // Markup the reader never typed — pasted out of a word processor —
+      // must not eat into their allowance.
+      //
+      // 70 real words, each trailed by a tag containing a space. Split
+      // naively on the RAW text that is 210 tokens, over the limit;
+      // stripped it is 70 words, well under. Kept deliberately short so
+      // the 2000-CHARACTER cap does not fire first and mask the result:
+      // that cap is why heavily marked-up paste is refused regardless,
+      // which is existing behaviour and not what this test is about.
+      const reader = await makeReader(app);
+      const wrapped = Array(70).fill('palavra <i q>').join(' ');
+      expect(wrapped.length).toBeLessThan(2000);
+      expect(wrapped.trim().split(/\s+/).length).toBeGreaterThan(200);
+
+      await post(reader, wrapped).expect(201);
+    });
+
+    it('still refuses a single absurd string under the word limit', async () => {
+      // One "word" of 2500 characters: the word count sees 1, so the
+      // character cap is what has to catch this. Both bounds earn their
+      // keep.
+      const reader = await makeReader(app);
+      await post(reader, 'a'.repeat(2500)).expect(400);
+    });
+
+    it('applies the same limit to an edit', async () => {
+      const reader = await makeReader(app);
+      const created = await post(reader, 'Comentário curto').expect(201);
+
+      await request(app.getHttpServer())
+        .patch(`/public/comments/${created.body.id}`)
+        .set(readerBearer(reader))
+        .send({ body: words(201) })
+        .expect(400);
+    });
+  });
+
   it('caps threads at two levels by re-parenting onto the root', async () => {
     const reader = await makeReader(app);
     const root = await post(reader, 'Comentário raiz').expect(201);

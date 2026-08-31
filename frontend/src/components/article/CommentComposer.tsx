@@ -28,12 +28,19 @@ export function CommentComposer({
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const MAX = 2000;
-  const remaining = MAX - body.length;
+  // Mirrors MAX_BODY / MAX_WORDS in comments.service.ts. The character
+  // cap still clamps as you type; the word cap deliberately does NOT —
+  // truncating mid-sentence while someone is composing is hostile, and
+  // unlike a character overflow they cannot see it coming. It disables
+  // the button and says why instead.
+  const MAX_CHARS = 2000;
+  const MAX_WORDS = 200;
+  const words = body.trim() === "" ? 0 : body.trim().split(/\s+/).length;
+  const overWordLimit = words > MAX_WORDS;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (body.trim().length < 2 || busy) return;
+    if (body.trim().length < 2 || overWordLimit || busy) return;
 
     setBusy(true);
     setError(null);
@@ -79,7 +86,7 @@ export function CommentComposer({
     <form onSubmit={submit} className="flex flex-col gap-2">
       <textarea
         value={body}
-        onChange={(e) => setBody(e.target.value.slice(0, MAX))}
+        onChange={(e) => setBody(e.target.value.slice(0, MAX_CHARS))}
         rows={parentId ? 3 : 4}
         autoFocus={autoFocus}
         placeholder={
@@ -106,10 +113,16 @@ export function CommentComposer({
       <div className="flex items-center justify-between">
         <span
           className={`text-[12px] ${
-            remaining < 100 ? "text-amber-600" : "text-slate-400"
+            overWordLimit
+              ? "font-semibold text-red-600"
+              : words > MAX_WORDS - 30
+                ? "text-amber-600"
+                : "text-slate-400"
           }`}
         >
-          {remaining} caracteres restantes
+          {overWordLimit
+            ? `${words} palavras — o limite é ${MAX_WORDS}`
+            : `${words} / ${MAX_WORDS} palavras`}
         </span>
         <div className="flex gap-2">
           {parentId && onDone ? (
@@ -123,7 +136,7 @@ export function CommentComposer({
           ) : null}
           <button
             type="submit"
-            disabled={busy || body.trim().length < 2}
+            disabled={busy || body.trim().length < 2 || overWordLimit}
             className="rounded-[8px] bg-patriota-pure px-4 py-1.5 text-[13px] font-bold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy ? "A enviar…" : parentId ? "Responder" : "Comentar"}

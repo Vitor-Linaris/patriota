@@ -20,6 +20,30 @@ const EDIT_WINDOW_MS = 15 * 60 * 1000;
 /** Hard cap; the DTO enforces it too, this is defence in depth. */
 const MAX_BODY = 2000;
 
+/**
+ * Word cap on a comment.
+ *
+ * The 2000-character bound above stays: the two catch different things.
+ * 200 words is roughly 1200 characters, so in normal prose this is the
+ * limit that bites — enough for a complete argument, short of a
+ * manifesto. The character cap still catches what a word count cannot
+ * see: a pasted 1900-character URL, or one absurdly long unbroken
+ * string, both of which count as a single word.
+ */
+export const MAX_WORDS = 200;
+
+/**
+ * Counts words the way a reader would.
+ *
+ * Split on whitespace rather than on `\b`: a regex word boundary counts
+ * "não" as two words and "bem-vindo" as two, which would punish
+ * Portuguese for being Portuguese.
+ */
+export function countWords(text: string): number {
+  const trimmed = text.trim();
+  return trimmed === '' ? 0 : trimmed.split(/\s+/).length;
+}
+
 export interface ActingStaff {
   id: string;
   email: string;
@@ -192,6 +216,15 @@ export class CommentsService {
     if (body.length < 2) {
       throw new BadRequestException('O comentário é demasiado curto.');
     }
+    // Counted AFTER stripTags, not in the DTO: the DTO sees the raw
+    // input, so markup a reader never typed — pasted from a word
+    // processor, say — would count against their limit.
+    const words = countWords(body);
+    if (words > MAX_WORDS) {
+      throw new BadRequestException(
+        `O comentário tem ${words} palavras. O limite é ${MAX_WORDS}.`,
+      );
+    }
 
     // Threads are capped at two levels. A reply to a reply is re-parented
     // onto the root rather than rejected — rejecting would be a confusing
@@ -243,6 +276,15 @@ export class CommentsService {
     const body = stripTags(rawBody);
     if (body.length < 2) {
       throw new BadRequestException('O comentário é demasiado curto.');
+    }
+    // Counted AFTER stripTags, not in the DTO: the DTO sees the raw
+    // input, so markup a reader never typed — pasted from a word
+    // processor, say — would count against their limit.
+    const words = countWords(body);
+    if (words > MAX_WORDS) {
+      throw new BadRequestException(
+        `O comentário tem ${words} palavras. O limite é ${MAX_WORDS}.`,
+      );
     }
 
     // An edit sends it back through moderation. Otherwise an approved
