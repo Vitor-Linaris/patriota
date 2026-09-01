@@ -120,6 +120,23 @@ model Media {
   /// the file — the stored format is WebP either way, so the mime type
   /// cannot answer it.
   frames       Int?
+
+  /// Everything this upload actually occupies: all three variants, not
+  /// just the canonical one.
+  ///
+  /// Separate from `size` on purpose. `size` is what the library shows
+  /// next to "Tamanho", and it has to match the file somebody would
+  /// download; this is what the quota has to count, and counting only
+  /// the large variant would undercount every upload by the other two —
+  /// roughly a third of the disk, invisible.
+  ///
+  /// NULL on rows that predate the column and on pasted external URLs,
+  /// which occupy nothing of ours.
+  ///
+  /// Int, not BigInt: one row holds ONE upload, which is capped well
+  /// below the ~2.1 GB an Int reaches. The per-person total can exceed
+  /// that safely — Postgres sums integers into a bigint.
+  bytesOnDisk  Int?
   /// Who put this here. Written since the column existed but never read
   /// until the library became per-user — see media.service.ts.
   ///
@@ -146,6 +163,9 @@ model Media {
   /// the library is scoped to one person. Without it that is a full
   /// table scan on every page load.
   @@index([uploadedById, uploadedAt])
+  /// The quota sums bytesOnDisk per owner on every upload. Covering
+  /// both columns lets Postgres answer it from the index alone.
+  @@index([uploadedById, bytesOnDisk])
 }
 
 enum AdType {

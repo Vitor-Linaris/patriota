@@ -24,6 +24,7 @@ import {
   MAX_ANIMATION_FRAMES,
   MAX_IMAGE_BYTES,
   MAX_IMAGE_PIXELS,
+  MAX_USER_BYTES,
   formatBytes,
 } from './media-limits';
 
@@ -34,6 +35,13 @@ export interface CreateMediaInput {
   height?: number;
   size?: number;
   mimeType?: string;
+}
+
+/** How much of their allowance somebody has used. */
+export interface MediaQuota {
+  used: number;
+  limit: number;
+  remaining: number;
 }
 
 /**
@@ -142,7 +150,7 @@ export class MediaService {
   async list(
     query: PageQueryDto & { q?: string; scope?: 'minha' | 'todas' },
     actor: MediaActor,
-  ): Promise<PageResult<unknown>> {
+  ): Promise<PageResult<unknown> & { quota: MediaQuota }> {
     const { skip, take } = toSkipTake(query);
 
     if (query.scope === 'todas' && !canReachAll(actor)) {
@@ -291,6 +299,11 @@ export class MediaService {
       total,
       page: query.page ?? 1,
       pageSize: query.pageSize ?? 20,
+      // Always the CALLER's own allowance, even in the whole-team view:
+      // a quota belongs to a person, and there is no such thing as the
+      // team's. Shown here so somebody sees it filling up rather than
+      // discovering it at the moment an upload is refused.
+      quota: await this.usageFor(actor.id),
     };
   }
 
@@ -403,9 +416,26 @@ export class MediaService {
     const dir = join(this.uploadsDir, yyyy, mm);
     await mkdir(dir, { recursive: true });
 
+    // Checked BEFORE any work is done, against the size of what was
+    // sent. The variants are smaller than the original in every
+    // realistic case, so this is the pessimistic estimate — and getting
+    // a refusal before a 10 MB upload is processed beats getting one
+    // after.
+    //
+    // It is checked again below, against what was actually written,
+    // because two uploads racing each other would both pass this one.
+    const quota = await this.usageFor(userId);
+    if (file.buffer.length > quota.remaining) {
+      throw new ConflictException(
+        `Sem espaço: está a usar ${formatBytes(quota.used)} de ` +
+          `${formatBytes(quota.limit)}. Apague algo para libertar espaço.`,
+      );
+    }
+
     const baseId = randomBytes(8).toString('hex');
     const urls: Record<SizeSpec['key'], string> = {} as never;
     let largeBytes = 0;
+    let totalBytes = 0;
 
     // The written paths, so a failure part-way through can undo itself.
     const written: string[] = [];
@@ -422,6 +452,7 @@ export class MediaService {
         await writeFile(outPath, buf);
         written.push(outPath);
         urls[size.key] = `${this.publicBase}/${yyyy}/${mm}/${filename}`;
+        totalBytes += buf.length;
         if (size.key === 'large') largeBytes = buf.length;
       }
     } catch (e) {
@@ -444,6 +475,23 @@ export class MediaService {
       );
     }
 
+    // Re-checked against what was actually written. The estimate above
+    // used the size of the upload; an animation can come out larger
+    // than it went in, and two uploads racing each other would both
+    // have passed the first check.
+    //
+    // Re-read rather than reused, for the same reason: the other upload
+    // may have committed in between.
+    const after = await this.usageFor(userId);
+    if (totalBytes > after.remaining) {
+      await this.unlinkVariants(Object.values(urls));
+      throw new ConflictException(
+        `Sem espaço: este ficheiro ocupa ${formatBytes(totalBytes)} e ` +
+          `restam-lhe ${formatBytes(after.remaining)} de ` +
+          `${formatBytes(after.limit)}.`,
+      );
+    }
+
     const created = await this.prisma.media.create({
       data: {
         url: urls.large,
@@ -459,6 +507,9 @@ export class MediaService {
         // without opening the file.
         frames: animated ? (metadata.pages ?? null) : null,
         size: largeBytes,
+        // What the quota counts: all three variants, not just the one
+        // the library displays a size for.
+        bytesOnDisk: totalBytes,
         width: metadata.width ?? null,
         height: metadata.height ?? null,
         uploadedById: userId,
@@ -578,6 +629,35 @@ export class MediaService {
       }
       throw e;
     }
+  }
+
+  /**
+   * How much disk this person is using, and how much they are allowed.
+   *
+   * Sums `bytesOnDisk`, which counts all three variants — summing
+   * `size` would miss the small and medium ones and quietly allow about
+   * a third more than the allowance says.
+   *
+   * Rows uploaded before that column existed are backfilled to `size`
+   * and therefore undercount. Named here rather than papered over: the
+   * true figure is only on disk, and inventing a multiplier would be a
+   * made-up number that reads as a measured one.
+   */
+  async usageFor(userId: string): Promise<{
+    used: number;
+    limit: number;
+    remaining: number;
+  }> {
+    const agg = await this.prisma.media.aggregate({
+      where: { uploadedById: userId },
+      _sum: { bytesOnDisk: true },
+    });
+    const used = agg._sum.bytesOnDisk ?? 0;
+    return {
+      used,
+      limit: MAX_USER_BYTES,
+      remaining: Math.max(0, MAX_USER_BYTES - used),
+    };
   }
 
   /**

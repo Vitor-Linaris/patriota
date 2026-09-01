@@ -281,6 +281,111 @@ describe('Media uploads (e2e)', () => {
     });
   });
 
+  describe('the quota', () => {
+    /** NOT async: the caller chains `.expect()`, which needs the
+     *  supertest object rather than a promise wrapping it. */
+    function upload(user: Awaited<ReturnType<typeof makeUser>>, png: Buffer) {
+      return request(app.getHttpServer())
+        .post('/admin/media/upload')
+        .set(bearer(user))
+        .attach('file', png, { filename: 'q.png', contentType: 'image/png' });
+    }
+
+    it('counts all three variants, not just the one it shows a size for', async () => {
+      // `size` is the large variant — what the library displays and
+      // what somebody would download. Counting only that would miss the
+      // small and medium files: about a third of the disk, invisible.
+      const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const png = await makePngBuffer(800, 600);
+      const res = await upload(user, png).expect(201);
+
+      const row = await app
+        .get(PrismaService)
+        .media.findUnique({ where: { id: res.body.id } });
+      expect(row!.bytesOnDisk).toBeGreaterThan(row!.size!);
+    });
+
+    it('reports what is used and what is left', async () => {
+      const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const png = await makePngBuffer(800, 600);
+      await upload(user, png).expect(201);
+
+      const list = await request(app.getHttpServer())
+        .get('/admin/media')
+        .set(bearer(user))
+        .expect(200);
+
+      expect(list.body.quota.used).toBeGreaterThan(0);
+      expect(list.body.quota.limit).toBe(2 * 1024 * 1024 * 1024);
+      expect(list.body.quota.remaining).toBe(
+        list.body.quota.limit - list.body.quota.used,
+      );
+    });
+
+    it('is per person — one library filling up does not touch another', async () => {
+      const ana = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const png = await makePngBuffer(800, 600);
+      const bruno = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      await upload(ana, png).expect(201);
+
+      const hers = await request(app.getHttpServer())
+        .get('/admin/media')
+        .set(bearer(ana))
+        .expect(200);
+      const his = await request(app.getHttpServer())
+        .get('/admin/media')
+        .set(bearer(bruno))
+        .expect(200);
+
+      expect(hers.body.quota.used).toBeGreaterThan(0);
+      expect(his.body.quota.used).toBe(0);
+    });
+
+    it('refuses when there is no room, and says the numbers', async () => {
+      // "Sem espaço" on its own is not actionable. The message carries
+      // what is used and what the allowance is, so somebody knows
+      // whether to delete one file or fifty.
+      const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const png = await makePngBuffer(800, 600);
+      const first = await upload(user, png).expect(201);
+
+      // Push the recorded usage right up to the limit rather than
+      // uploading two gigabytes.
+      //
+      // 2147483647 and not 2 GB exactly: `bytesOnDisk` is an Int, and
+      // 2 GB is one past what a 32-bit signed integer holds. That is
+      // fine for the column — a single file is capped at 100 MB and
+      // will never come close — and Postgres sums Ints into a bigint,
+      // so the total is not at risk either. It only bites here, where a
+      // test wants one row to stand in for a whole full library.
+      await app.get(PrismaService).media.update({
+        where: { id: first.body.id },
+        data: { bytesOnDisk: 2_147_483_647 },
+      });
+
+      const res = await upload(user, png).expect(409);
+      expect(res.body.message).toMatch(/sem espaço/i);
+      expect(res.body.message).toMatch(/2\.0 GB/);
+    });
+
+    it('frees the space again when a file is deleted', async () => {
+      const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const png = await makePngBuffer(800, 600);
+      const res = await upload(user, png).expect(201);
+
+      await request(app.getHttpServer())
+        .delete(`/admin/media/${res.body.id}`)
+        .set(bearer(user))
+        .expect(200);
+
+      const list = await request(app.getHttpServer())
+        .get('/admin/media')
+        .set(bearer(user))
+        .expect(200);
+      expect(list.body.quota.used).toBe(0);
+    });
+  });
+
   describe('the library is per person', () => {
     async function uploadAs(
       user: Awaited<ReturnType<typeof makeUser>>,

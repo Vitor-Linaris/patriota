@@ -40,6 +40,16 @@ export interface MediaItem {
   uploadedBy?: string | null;
 }
 
+/** Bytes as a person reads them. GB matters here: the allowance is 2. */
+function humanBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  if (bytes < 1024 * 1024 * 1024) {
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  }
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
 function parseDimensions(text: string): { width?: number; height?: number } {
   const match = text.trim().match(/^(\d+)\s*[×x]\s*(\d+)$/i);
   if (!match) return {};
@@ -50,6 +60,7 @@ export default function AdminMediaClient({
   initialItems,
   totalItems,
   statsTotal,
+  quota,
   currentPage,
   totalPages,
   searchQuery,
@@ -61,6 +72,10 @@ export default function AdminMediaClient({
   totalItems: number;
   /** Whole-library count, ignoring search. */
   statsTotal: number;
+  /** Always the CALLER's own allowance, even in the whole-team view —
+   *  a quota belongs to a person, and there is no such thing as the
+   *  team's. */
+  quota: { used: number; limit: number; remaining: number } | null;
   currentPage: number;
   totalPages: number;
   searchQuery: string;
@@ -543,6 +558,50 @@ export default function AdminMediaClient({
           </div>
         ))}
       </div>
+
+      {/* STORAGE.
+          Shown all the time, not only when it is nearly full: somebody
+          should watch it fill rather than meet it at the moment an
+          upload is refused. */}
+      {quota && (
+        <div className="mb-5 rounded-xl border border-gray-200 bg-white px-4 py-3">
+          <div className="mb-1.5 flex items-baseline justify-between text-xs">
+            <span className="font-semibold text-gray-500">
+              O seu espaço
+              {scope === "todas" && (
+                // The list may be showing everyone, but this number
+                // never is.
+                <span className="ml-1 font-normal text-gray-400">
+                  (só o seu, mesmo nesta vista)
+                </span>
+              )}
+            </span>
+            <span
+              className={
+                quota.used / quota.limit > 0.9
+                  ? "font-bold text-red-600"
+                  : "text-gray-600"
+              }
+            >
+              {humanBytes(quota.used)} de {humanBytes(quota.limit)}
+            </span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-gray-100">
+            <div
+              className={`h-full rounded-full transition-all ${
+                quota.used / quota.limit > 0.9
+                  ? "bg-red-500"
+                  : quota.used / quota.limit > 0.7
+                    ? "bg-amber-500"
+                    : "bg-[#0F2C6B]"
+              }`}
+              style={{
+                width: `${Math.min(100, (quota.used / quota.limit) * 100)}%`,
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* FILTERS + SEARCH */}
       <div className="mb-5 flex flex-wrap items-center gap-3">

@@ -3,6 +3,13 @@ import AdminMediaClient, { type MediaItem } from "./AdminMediaClient";
 import { apiFetch } from "@/lib/api";
 import { mediaPreviewUrl } from "@/lib/media-preview";
 
+/** How much of their 2 GB allowance this person has used. */
+interface MediaQuota {
+  used: number;
+  limit: number;
+  remaining: number;
+}
+
 interface PageResult<T> {
   items: T[];
   total: number;
@@ -107,8 +114,14 @@ export default async function Page({
     apiFetch("/auth/me"),
   ]);
   const body = res.ok
-    ? ((await res.json()) as PageResult<MediaApi>)
-    : { items: [], total: 0, page: 1, pageSize: PAGE_SIZE };
+    ? ((await res.json()) as PageResult<MediaApi> & { quota?: MediaQuota })
+    : {
+        items: [] as MediaApi[],
+        total: 0,
+        page: 1,
+        pageSize: PAGE_SIZE,
+        quota: undefined,
+      };
   const totalLibrary = totalRes.ok
     ? ((await totalRes.json()) as PageResult<MediaApi>).total
     : body.total;
@@ -124,6 +137,7 @@ export default async function Page({
         initialItems={items}
         totalItems={body.total}
         statsTotal={totalLibrary}
+        quota={body.quota ?? null}
         currentPage={page}
         totalPages={totalPages}
         searchQuery={q}
