@@ -9,6 +9,7 @@ import {
   type ArticleContextBoxes,
 } from "@/components/admin/ArticleBoxesEditor";
 import { imageVariant } from "@/lib/images";
+import { adminMediaUrl } from "@/lib/media-preview";
 import { FEATURES } from "@/lib/features";
 import { Pagination } from "@/components/category/Pagination";
 import {
@@ -1523,7 +1524,12 @@ export default function AdminArticlesClient({
                       {a.coverImage ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src={imageVariant(a.coverImage, "small") ?? a.coverImage}
+                          src={
+                            adminMediaUrl(
+                              imageVariant(a.coverImage, "small") ??
+                                a.coverImage,
+                            ) ?? ""
+                          }
                           alt=""
                           className="h-9 w-12 shrink-0 rounded-md object-cover"
                         />

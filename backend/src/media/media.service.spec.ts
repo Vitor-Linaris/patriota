@@ -8,6 +8,7 @@ import { MediaService } from './media.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { VideoService } from './video.service';
+import { MediaAccessService } from './media-access.service';
 
 describe('MediaService', () => {
   let service: MediaService;
@@ -49,6 +50,12 @@ describe('MediaService', () => {
             assertAcceptable: jest.fn(),
             grabPoster: jest.fn().mockResolvedValue(null),
           },
+        },
+        // Another double: the real one talks to Redis, and nothing
+        // here publishes anything.
+        {
+          provide: MediaAccessService,
+          useValue: { invalidate: jest.fn() },
         },
       ],
     }).compile();

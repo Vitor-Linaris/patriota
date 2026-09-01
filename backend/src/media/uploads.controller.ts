@@ -62,7 +62,8 @@ export class UploadsController {
     const absolute = this.safeResolve(relative);
     if (!absolute) throw new NotFoundException();
 
-    if (!(await this.mayServe(relative, req))) {
+    const publicly = await this.mayServe(relative, req);
+    if (publicly === null) {
       // 404 and never 403. A 403 confirms the file exists, which turns
       // this route into a way to probe for unpublished material one
       // guess at a time — and the names are the only secret a private
@@ -70,7 +71,7 @@ export class UploadsController {
       throw new NotFoundException();
     }
 
-    await this.send(absolute, req, res);
+    await this.send(absolute, req, res, publicly);
   }
 
   /**
@@ -89,7 +90,13 @@ export class UploadsController {
   }
 
   /**
-   * Whether this request may have this file.
+   * Whether this request may have this file, and on what terms.
+   *
+   * Returns null when it may not. Otherwise true when the file is
+   * public to the world, and false when it is being shown to somebody
+   * who is specifically entitled to it — the difference decides how it
+   * may be cached, and a private file in a shared cache would undo the
+   * whole point of it being private.
    *
    * Four cases, in the order they are cheapest to answer:
    *
@@ -103,24 +110,30 @@ export class UploadsController {
    *     promotion that was missed. Corrected and served rather than
    *     refused, because the alternative is a broken image on the site.
    */
-  private async mayServe(relative: string, req: Request): Promise<boolean> {
+  private async mayServe(
+    relative: string,
+    req: Request,
+  ): Promise<boolean | null> {
     const access = await this.access.forPath(relative);
     if (access.isPublic) return true;
 
     if (!access.known) {
       // Avatars are the one path we write outside the media library.
       // Everything else unknown is an orphan or a guess: refused.
-      if (!relative.startsWith('avatars/')) return false;
-      return (await this.staffFrom(req)) !== null;
+      if (!relative.startsWith('avatars/')) return null;
+      // An avatar is admin-only, so never cacheable by a proxy.
+      return (await this.staffFrom(req)) !== null ? false : null;
     }
 
     const user = await this.staffFrom(req);
     if (user) {
-      if (user.role === 'SUPER_ADMIN') return true;
-      if (access.ownerId && access.ownerId === user.id) return true;
+      if (user.role === 'SUPER_ADMIN') return false;
+      if (access.ownerId && access.ownerId === user.id) return false;
     }
 
-    return this.access.healIfPublished(relative);
+    // A promotion that was missed: the file IS live on a published
+    // page, so it is public after all.
+    return (await this.access.healIfPublished(relative)) ? true : null;
   }
 
   /**
@@ -171,6 +184,7 @@ export class UploadsController {
     absolute: string,
     req: Request,
     res: Response,
+    publicly: boolean,
   ): Promise<void> {
     let size: number;
     try {
@@ -181,11 +195,19 @@ export class UploadsController {
       throw new NotFoundException();
     }
 
-    // The filename carries 8 random bytes and the contents never change
-    // under it, so the browser can hold on to it as long as it likes.
+    // A public file: the name carries 8 random bytes and the contents
+    // never change under it, so anybody may hold on to it as long as
+    // they like.
+    //
+    // A private one: never. It is being shown to one person who is
+    // entitled to it, and `public` would invite every proxy between
+    // here and them to keep a copy for whoever asks next — which is
+    // precisely what making it private was for.
     res.setHeader(
       'Cache-Control',
-      `public, max-age=${MAX_AGE_SECONDS}, immutable`,
+      publicly
+        ? `public, max-age=${MAX_AGE_SECONDS}, immutable`
+        : 'private, no-store',
     );
     res.setHeader('Content-Type', contentTypeFor(absolute));
     res.setHeader('Accept-Ranges', 'bytes');

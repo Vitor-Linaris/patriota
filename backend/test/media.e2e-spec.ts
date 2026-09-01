@@ -12,6 +12,7 @@ import { createTestApp } from './helpers/app';
 import { makeUser, bearer } from './helpers/auth';
 import { truncate } from './helpers/db';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { MediaService } from '../src/media/media.service';
 import { makeReader, readerBearer } from './helpers/reader';
 
 describe('Media uploads (e2e)', () => {
@@ -1008,6 +1009,40 @@ describe('Media uploads (e2e)', () => {
       // already holds one of these notices the change.
       expect(res.headers['cache-control']).toMatch(/immutable/);
       expect(res.headers['cache-control']).toMatch(/max-age=2592000/);
+    });
+
+    it('never lets a private file into a shared cache', async () => {
+      // It used to. Every file went out with `public, immutable` and 30
+      // days, private ones included — so a file the owner was shown
+      // could be kept by any proxy in between and handed to whoever
+      // asked next. That undoes the whole of the privacy work: the
+      // access check runs here, and a cache in front of it does not.
+      const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const media = await uploadAs(user);
+
+      const priv = await request(app.getHttpServer())
+        .get(`/uploads/${pathOf(media.url)}`)
+        .set(bearer(user))
+        .expect(200);
+      expect(priv.headers['cache-control']).toBe('private, no-store');
+
+      // And publishing it flips that, in the same breath as making it
+      // reachable — the public copy is the one worth caching hard.
+      //
+      // Through the real promotion rather than a direct write, because
+      // the read above has left "private" in the Redis cache and that
+      // is what the serving route consults. Writing the column behind
+      // its back leaves the reader on a 404 until the entry expires,
+      // which is precisely the bug this call now prevents.
+      await app
+        .get(MediaService)
+        .promoteForPublication(`<img src="${media.url}">`);
+
+      const pub = await request(app.getHttpServer())
+        .get(`/uploads/${pathOf(media.url)}`)
+        .expect(200);
+      expect(pub.headers['cache-control']).toMatch(/^public,/);
+      expect(pub.headers['cache-control']).toMatch(/immutable/);
     });
 
     it('hides unpublished media from a stranger', async () => {

@@ -12,9 +12,20 @@ import { apiBaseUrl } from "@/lib/api-base";
  * in any arrangement.
  *
  * This route is same-origin, so the cookie arrives; it reads the token
- * server-side and fetches the file with it. Only used for previews of
- * media that has not been published — everything already on the site is
- * fetched directly from its real URL, with no proxy in the way.
+ * server-side and fetches the file with it.
+ *
+ * Used for EVERY /uploads/ file shown inside the admin, public and
+ * private alike, rather than only the private ones. The reason is that
+ * the admin usually cannot tell which is which: an article stores its
+ * cover as a plain URL string with no foreign key to the media row, so
+ * the article list and the editor have no visibility field to consult.
+ * Made conditional it would be right until the first surface that
+ * forgot — which is exactly how the editor came to show a broken image
+ * for every freshly uploaded cover.
+ *
+ * Public files lose nothing by it: the API's own Cache-Control is
+ * passed straight through, so the browser still keeps them for 30 days
+ * and immutably. Only private ones carry `no-store`, which they must.
  *
  * Deliberately NOT a general pass-through: the path is confined to the
  * uploads namespace on the API, so this cannot be turned into a way to
@@ -61,11 +72,13 @@ export async function GET(
 
   const out = new Headers({
     "Content-Type": upstream.headers.get("content-type") ?? "image/webp",
-    // Private, so never in a shared cache. `no-store` and not the
-    // API's `immutable`: the moment the article is published the
-    // real URL takes over, and a stale copy of the preview would
-    // outlive the reason this route was used at all.
-    "Cache-Control": "private, no-store",
+    // Whatever the API decided, which is the only place that knows
+    // whether this file is public. It sends `immutable` for a public
+    // one and `private, no-store` for one being shown to the single
+    // person entitled to it. Deciding again here could only get it
+    // wrong.
+    "Cache-Control":
+      upstream.headers.get("cache-control") ?? "private, no-store",
     "Accept-Ranges": "bytes",
   });
   for (const h of ["content-range", "content-length"]) {

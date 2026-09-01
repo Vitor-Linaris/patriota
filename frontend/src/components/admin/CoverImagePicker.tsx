@@ -3,6 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { uploadMediaFileAction } from "@/app/admin/media/actions";
 import { imageVariant } from "@/lib/images";
+import { adminMediaUrl } from "@/lib/media-preview";
 import { validateImageUpload } from "@/lib/upload-limits";
 import { MediaLibraryModal } from "./MediaLibraryModal";
 
@@ -57,9 +58,13 @@ export function CoverImagePicker({
     handleFiles(e.dataTransfer.files?.[0]);
   };
 
-  // Show the medium variant for the inline preview (no need for full
-  // resolution in a tiny editor card).
-  const previewUrl = imageVariant(value, "medium") ?? value;
+  // The medium variant, for a small card — and through the admin
+  // proxy, because a cover that was just uploaded is private until the
+  // article is published, and an <img> pointed at the API carries no
+  // session. Without this the editor shows a broken image for exactly
+  // as long as the article is unpublished, which is all of the time
+  // anybody is looking at it.
+  const previewUrl = adminMediaUrl(imageVariant(value, "medium") ?? value);
 
   return (
     <div className="space-y-3">

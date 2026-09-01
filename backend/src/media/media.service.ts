@@ -19,6 +19,7 @@ import {
 } from '../common/dto/pagination.dto';
 import type { Role } from '../rbac/rbac.constants';
 import { detectType } from './file-type';
+import { MediaAccessService } from './media-access.service';
 import {
   MAX_ANIMATION_BYTES,
   MAX_ANIMATION_FRAMES,
@@ -140,6 +141,7 @@ export class MediaService {
     private readonly prisma: PrismaService,
     private readonly activity: ActivityLogService,
     private readonly video: VideoService,
+    private readonly access: MediaAccessService,
   ) {}
 
   /**
@@ -839,6 +841,12 @@ export class MediaService {
       });
       if (count > 0) {
         this.logger.log(`${count} media file(s) published.`);
+        // The cached answer still says "private", and it is what the
+        // serving route reads. Without this, an article that has just
+        // gone out shows broken images to every reader until that entry
+        // expires — the exact failure the short TTL on private answers
+        // was chosen to limit, and which this removes instead.
+        await Promise.all(keys.map((k) => this.access.invalidate(k)));
       }
       return count;
     } catch (e) {
