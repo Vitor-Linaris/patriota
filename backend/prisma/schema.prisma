@@ -85,6 +85,23 @@ enum NotificationStatus {
   FALHOU
 }
 
+/// Whether a file may be fetched by anyone with the address.
+///
+/// Media starts PRIVADO and becomes PUBLICO the moment it is used in
+/// something published. That is not a preference — an article on the
+/// site has to serve its images to readers with no session, to
+/// Googlebot, and to whatever generates the preview when somebody
+/// shares the link. None of those authenticate.
+///
+/// So the promise is narrower than "private files": an embargoed
+/// photograph or a draft graphic is unreachable, and the moment the
+/// piece runs, its images are public for good. See uploads serving in
+/// src/media/.
+enum MediaVisibility {
+  PRIVADO
+  PUBLICO
+}
+
 model Media {
   id           String   @id @default(cuid())
   // Canonical URL — points to the "large" WebP variant for uploads,
@@ -106,6 +123,17 @@ model Media {
   uploadedById String?
   uploadedBy   User?    @relation("MediaUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
   uploadedAt   DateTime @default(now())
+
+  visibility   MediaVisibility @default(PRIVADO)
+
+  /// "YYYY/MM/<baseId>" — the three variants share it and differ only by
+  /// suffix. NULL for pasted external URLs, which are not ours to serve.
+  ///
+  /// Exists so that serving a file is ONE indexed lookup. Without it,
+  /// answering "which row owns /uploads/2026/09/abc-large.webp" would
+  /// mean OR-ing three unindexed columns on every image request —
+  /// a full table scan per image on every page of the newspaper.
+  storageKey   String?         @unique
 
   @@index([uploadedAt])
   /// "my library, newest first" — the shape of every listing now that

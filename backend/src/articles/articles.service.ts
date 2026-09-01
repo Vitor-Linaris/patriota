@@ -20,6 +20,7 @@ import {
 } from '../common/dto/pagination.dto';
 import type { Role } from '../rbac/rbac.constants';
 import { previewOf } from './paywall';
+import { MediaService } from '../media/media.service';
 
 interface ActingUser {
   id: string;
@@ -110,6 +111,7 @@ export class ArticlesService {
     private readonly rbac: RbacService,
     private readonly tree: CategoryTreeService,
     private readonly config: ConfigService,
+    private readonly media: MediaService,
   ) {}
 
   // ── helpers ────────────────────────────────────────────────────────
@@ -326,10 +328,25 @@ export class ArticlesService {
       data.rejectionReason = null;
     }
     try {
-      return await this.prisma.article.update({
+      const updated = await this.prisma.article.update({
         where: { id },
         data,
       });
+
+      // Swapping the cover of an article that is already live, or
+      // dropping a new image into its body. The piece is published, so
+      // whatever it now points at has to be reachable — otherwise the
+      // change goes out with a broken image on it.
+      //
+      // Only for articles that are actually live: on a draft the images
+      // stay private, which is the point.
+      if (updated.status === 'PUBLICADO') {
+        await this.media.promoteForPublication(
+          updated.coverImageUrl,
+          updated.content,
+        );
+      }
+      return updated;
     } catch (e) {
       if (isPrismaCode(e, 'P2002')) {
         throw new ConflictException('Slug já existe.');
@@ -574,6 +591,20 @@ export class ArticlesService {
         draftAwaitingReview: false,
       },
     });
+    // The images stop being drafts the moment the piece does. A reader
+    // with no session, Googlebot and the robot that builds the link
+    // preview all have to be able to load them, and none of them
+    // authenticate.
+    //
+    // Awaited, not fire-and-forget: publishing and then serving a 404
+    // cover for a few hundred milliseconds is exactly the window in
+    // which somebody shares the link. It never throws — see
+    // promoteForPublication.
+    await this.media.promoteForPublication(
+      updated.coverImageUrl,
+      updated.content,
+    );
+
     void this.activity.record({
       userId: user.id,
       action: 'published',

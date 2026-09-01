@@ -3,6 +3,7 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ArticlesService } from './articles.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
+import { MediaService } from '../media/media.service';
 import { RbacService } from '../rbac/rbac.service';
 import { CategoryTreeService } from '../categories/category-tree.service';
 import { ConfigService } from '@nestjs/config';
@@ -54,6 +55,13 @@ describe('ArticlesService', () => {
         { provide: RbacService, useValue: rbac },
         { provide: CategoryTreeService, useValue: tree },
         { provide: ConfigService, useValue: { get: () => funnel } },
+        // Publishing an article publishes the images it uses. A double
+        // rather than the real thing: these tests are about article
+        // state, and the promotion has its own coverage.
+        {
+          provide: MediaService,
+          useValue: { promoteForPublication: jest.fn().mockResolvedValue(0) },
+        },
       ],
     }).compile();
     service = moduleRef.get(ArticlesService);

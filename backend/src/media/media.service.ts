@@ -79,6 +79,31 @@ function stripExtension(name: string | undefined | null): string {
   return i > 0 ? name.slice(0, i) : name;
 }
 
+/**
+ * Every storage key mentioned in a blob of text.
+ *
+ * Matches the shape our own uploads produce — `YYYY/MM/<hex>-large.webp`
+ * and its two siblings — and returns the key without the suffix, which
+ * is what identifies the whole set of three.
+ *
+ * Deliberately pattern-matching rather than parsing HTML: an inline
+ * image can be in an `src`, a `srcset`, a `style` background, or inside
+ * something a future editor produces. The address is the address
+ * wherever it appears, and missing one means an image that 404s on a
+ * live page.
+ */
+const STORAGE_KEY_IN_TEXT =
+  /(\d{4}\/\d{2}\/[0-9a-f]{8,})-(?:large|medium|small)\.webp/g;
+
+export function extractStorageKeys(...texts: (string | null | undefined)[]) {
+  const keys = new Set<string>();
+  for (const text of texts) {
+    if (!text) continue;
+    for (const m of text.matchAll(STORAGE_KEY_IN_TEXT)) keys.add(m[1]!);
+  }
+  return [...keys];
+}
+
 function loadSizes(): SizeSpec[] {
   return [
     { key: 'small', width: Number(process.env.IMAGE_SIZE_SMALL ?? 400) },
@@ -389,6 +414,13 @@ export class MediaService {
         width: metadata.width ?? null,
         height: metadata.height ?? null,
         uploadedById: userId,
+        // What the serving route looks a file up by, and what ties the
+        // three variants together as one thing.
+        storageKey: `${yyyy}/${mm}/${baseId}`,
+        // Private until something publishes it. The default on the
+        // column says the same; written here so the intent is visible
+        // at the one place a file comes into existence.
+        visibility: 'PRIVADO',
       },
     });
     this.logger.log(
@@ -497,6 +529,46 @@ export class MediaService {
         throw new NotFoundException('Imagem não encontrada.');
       }
       throw e;
+    }
+  }
+
+  /**
+   * Makes every file mentioned in this text publicly fetchable.
+   *
+   * Called when an article is published and when an ad is switched on —
+   * the moment the images stop being drafts and start being something a
+   * reader with no session has to be able to load.
+   *
+   * One-way on purpose. Unpublishing an article does NOT make its
+   * images private again: the address has been in the wild, in an RSS
+   * reader, in a Facebook cache, in somebody's open tab. Pretending
+   * otherwise would be a promise we cannot keep.
+   *
+   * Never throws. A failure here means an image 404s on a live page,
+   * which is bad — but throwing would fail the publish itself, which is
+   * worse. It is logged loudly and the serving route heals it on the
+   * next request (see the uploads controller).
+   */
+  async promoteForPublication(
+    ...texts: (string | null | undefined)[]
+  ): Promise<number> {
+    const keys = extractStorageKeys(...texts);
+    if (keys.length === 0) return 0;
+
+    try {
+      const { count } = await this.prisma.media.updateMany({
+        where: { storageKey: { in: keys }, visibility: 'PRIVADO' },
+        data: { visibility: 'PUBLICO' },
+      });
+      if (count > 0) {
+        this.logger.log(`${count} media file(s) published.`);
+      }
+      return count;
+    } catch (e) {
+      this.logger.error(
+        `Failed to publish media ${keys.join(', ')}: ${(e as Error).message}`,
+      );
+      return 0;
     }
   }
 

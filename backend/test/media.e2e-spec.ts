@@ -307,6 +307,204 @@ describe('Media uploads (e2e)', () => {
     });
   });
 
+  describe('private until published', () => {
+    async function uploadAs(user: Awaited<ReturnType<typeof makeUser>>) {
+      const png = await makePngBuffer(500, 400);
+      const res = await request(app.getHttpServer())
+        .post('/admin/media/upload')
+        .set(bearer(user))
+        .attach('file', png, { filename: 'foto.png', contentType: 'image/png' })
+        .expect(201);
+      return res.body as {
+        id: string;
+        url: string;
+        urlMedium: string;
+        urlSmall: string;
+      };
+    }
+
+    const visibilityOf = async (id: string) =>
+      (await app.get(PrismaService).media.findUnique({ where: { id } }))
+        ?.visibility;
+
+    async function makeCategory() {
+      return app.get(PrismaService).category.create({
+        data: {
+          slug: `cat-${Math.random().toString(36).slice(2, 8)}`,
+          name: 'Sociedade',
+          description: 'd',
+          icon: '◆',
+          color: '#1e40af',
+          order: 1,
+          visible: true,
+          path: '/root/',
+        },
+      });
+    }
+
+    it('a fresh upload is private and carries a storage key', async () => {
+      const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const media = await uploadAs(user);
+
+      const row = await app
+        .get(PrismaService)
+        .media.findUnique({ where: { id: media.id } });
+      expect(row!.visibility).toBe('PRIVADO');
+      // The key ties the three variants together and is what the
+      // serving route will look a file up by.
+      expect(row!.storageKey).toMatch(/^\d{4}\/\d{2}\/[0-9a-f]+$/);
+      expect(media.url).toContain(row!.storageKey!);
+    });
+
+    it('publishing an article publishes its cover', async () => {
+      const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const media = await uploadAs(user);
+      const cat = await makeCategory();
+
+      const draft = await app.get(PrismaService).article.create({
+        data: {
+          slug: 'rascunho',
+          title: 'Rascunho',
+          summary: 's',
+          content: 'c',
+          status: 'RASCUNHO',
+          coverImageUrl: media.url,
+          categoryId: cat.id,
+          authorId: user.id,
+        },
+      });
+      // Still a draft — the photograph has not run anywhere.
+      expect(await visibilityOf(media.id)).toBe('PRIVADO');
+
+      await request(app.getHttpServer())
+        .post(`/admin/articles/${draft.id}/publish`)
+        .set(bearer(user))
+        .expect(201);
+
+      expect(await visibilityOf(media.id)).toBe('PUBLICO');
+    });
+
+    it('publishes images embedded in the body, not just the cover', async () => {
+      // Inline images are inside the HTML, so they are found by the
+      // address wherever it appears rather than by parsing the markup.
+      // Missing one means a broken image on a live page.
+      const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const inline = await uploadAs(user);
+      const cat = await makeCategory();
+
+      const draft = await app.get(PrismaService).article.create({
+        data: {
+          slug: 'com-imagem',
+          title: 'Com imagem',
+          summary: 's',
+          content: `<p>texto</p><img src="${inline.urlMedium}" /><p>mais</p>`,
+          status: 'RASCUNHO',
+          categoryId: cat.id,
+          authorId: user.id,
+        },
+      });
+
+      await request(app.getHttpServer())
+        .post(`/admin/articles/${draft.id}/publish`)
+        .set(bearer(user))
+        .expect(201);
+
+      expect(await visibilityOf(inline.id)).toBe('PUBLICO');
+    });
+
+    it('swapping the cover of a live article publishes the new image', async () => {
+      // Otherwise the change goes out with a broken image on it.
+      const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const first = await uploadAs(user);
+      const second = await uploadAs(user);
+      const cat = await makeCategory();
+
+      const live = await app.get(PrismaService).article.create({
+        data: {
+          slug: 'no-ar',
+          title: 'No ar',
+          summary: 's',
+          content: 'c',
+          status: 'PUBLICADO',
+          publishedAt: new Date(),
+          coverImageUrl: first.url,
+          categoryId: cat.id,
+          authorId: user.id,
+        },
+      });
+
+      await request(app.getHttpServer())
+        .patch(`/admin/articles/${live.id}`)
+        .set(bearer(user))
+        .send({ coverImageUrl: second.url })
+        .expect(200);
+
+      expect(await visibilityOf(second.id)).toBe('PUBLICO');
+    });
+
+    it('editing a DRAFT leaves its images private', async () => {
+      // The whole point of the feature: work in progress stays out of
+      // reach until it runs.
+      const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const media = await uploadAs(user);
+      const cat = await makeCategory();
+
+      const draft = await app.get(PrismaService).article.create({
+        data: {
+          slug: 'ainda-rascunho',
+          title: 'Ainda rascunho',
+          summary: 's',
+          content: 'c',
+          status: 'RASCUNHO',
+          categoryId: cat.id,
+          authorId: user.id,
+        },
+      });
+
+      await request(app.getHttpServer())
+        .patch(`/admin/articles/${draft.id}`)
+        .set(bearer(user))
+        .send({ coverImageUrl: media.url })
+        .expect(200);
+
+      expect(await visibilityOf(media.id)).toBe('PRIVADO');
+    });
+
+    it('unpublishing does NOT make the images private again', async () => {
+      // One-way on purpose. The address has been in the wild — in an
+      // RSS reader, a Facebook cache, somebody's open tab. Flipping the
+      // column back would be a promise we cannot keep.
+      const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const media = await uploadAs(user);
+      const cat = await makeCategory();
+
+      const draft = await app.get(PrismaService).article.create({
+        data: {
+          slug: 'ida-e-volta',
+          title: 'Ida e volta',
+          summary: 's',
+          content: 'c',
+          status: 'RASCUNHO',
+          coverImageUrl: media.url,
+          categoryId: cat.id,
+          authorId: user.id,
+        },
+      });
+      await request(app.getHttpServer())
+        .post(`/admin/articles/${draft.id}/publish`)
+        .set(bearer(user))
+        .expect(201);
+      expect(await visibilityOf(media.id)).toBe('PUBLICO');
+
+      await request(app.getHttpServer())
+        .post(`/admin/articles/${draft.id}/archive`)
+        .set(bearer(user))
+        .expect(201);
+
+      expect(await visibilityOf(media.id)).toBe('PUBLICO');
+    });
+  });
+
   describe('deleting', () => {
     /** Uploads one image and returns its row plus the paths on disk. */
     async function upload(user: Awaited<ReturnType<typeof makeUser>>) {
