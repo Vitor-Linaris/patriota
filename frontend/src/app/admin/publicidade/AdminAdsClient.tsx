@@ -5,6 +5,7 @@ import { AdProvider, useAds, type Ad, type AdType } from "@/contexts/AdContext";
 import { CoverImagePicker } from "@/components/admin/CoverImagePicker";
 import { Toggle } from "@/components/admin/Toggle";
 import { parseAdSize } from "@/lib/ads";
+import { adminMediaUrl } from "@/lib/media-preview";
 
 const pageGroups = ["Homepage", "Artigo", "Categoria"];
 
@@ -46,7 +47,11 @@ function PreviewPanel({ ad }: { ad: Ad }) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={ad.imageUrl}
+        // Through the admin proxy. An ad's image is private until the
+        // ad is enabled, and this panel is what somebody looks at while
+        // deciding to enable it — so without this it is a broken box at
+        // exactly the moment it matters.
+        src={adminMediaUrl(ad.imageUrl) ?? ""}
         alt={ad.altText || "Preview"}
         style={aspectStyle}
         className="w-full rounded-lg border border-gray-200 bg-gray-50 object-contain"

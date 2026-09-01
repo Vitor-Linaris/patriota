@@ -775,6 +775,9 @@ export default function AdminMediaClient({
                       </div>
                     ) : (
                       /* eslint-disable-next-line @next/next/no-img-element */
+                      /* media-proxy-ok: page.tsx maps both of these
+                         through mediaPreviewUrl before handing them
+                         down, so they already point at the proxy. */
                       <img
                         src={
                           item.kind === "VIDEO" && item.posterUrl
@@ -867,6 +870,7 @@ export default function AdminMediaClient({
               {selected.kind === "VIDEO" ? (
                 <video
                   key={selected.id}
+                  // media-proxy-ok: proxied in page.tsx, as above.
                   src={selected.url}
                   poster={selected.posterUrl ?? undefined}
                   controls
@@ -875,6 +879,7 @@ export default function AdminMediaClient({
                 />
               ) : (
                 /* eslint-disable-next-line @next/next/no-img-element */
+                /* media-proxy-ok: proxied in page.tsx, as above. */
                 <img
                   src={selected.url}
                   alt={selected.name}
