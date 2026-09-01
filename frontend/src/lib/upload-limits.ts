@@ -29,6 +29,17 @@ export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB
  */
 export const MAX_ANIMATION_BYTES = 11 * 1024 * 1024;
 
+/**
+ * Video, which does NOT go through a Server Action.
+ *
+ * 100 MB, the same number as the backend, and it can be that big
+ * precisely because the video upload posts to a Route Handler instead
+ * (app/api/admin/media/video) where the 12 MB body limit above does not
+ * apply. Duration, resolution and codec are checked on the server with
+ * ffprobe — the browser cannot see any of the three before uploading.
+ */
+export const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
+
 const SUPPORTED_MIME_PREFIX = "image/";
 
 function formatBytes(bytes: number): string {
@@ -49,6 +60,27 @@ export function validateImageUpload(file: File): string | null {
   const cap = file.type === "image/gif" ? MAX_ANIMATION_BYTES : MAX_UPLOAD_BYTES;
   if (file.size > cap) {
     return `Imagem demasiado grande: ${formatBytes(file.size)}. O limite é ${formatBytes(cap)}. Reduza a imagem (por exemplo em tinypng.com) e tente novamente.`;
+  }
+  return null;
+}
+
+/**
+ * True when this file should take the video path rather than the image
+ * one. By the type the browser reports, which is a routing decision,
+ * not a security one — the server decides what the file really is by
+ * reading its bytes.
+ */
+export function isVideoUpload(file: File): boolean {
+  return file.type.startsWith("video/");
+}
+
+/** Returns null when the video is acceptable; otherwise a reason. */
+export function validateVideoUpload(file: File): string | null {
+  if (!file.type.startsWith("video/")) {
+    return "Apenas ficheiros de vídeo são suportados.";
+  }
+  if (file.size > MAX_VIDEO_BYTES) {
+    return `Vídeo demasiado grande: ${formatBytes(file.size)}. O limite é ${formatBytes(MAX_VIDEO_BYTES)}. Exporte em 1080p ou corte o vídeo e tente novamente.`;
   }
   return null;
 }

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MediaService } from './media.service';
 import { MediaAccessService } from './media-access.service';
+import { VideoService } from './video.service';
 import { MediaController } from './media.controller';
 import { UploadsController } from './uploads.controller';
 
@@ -17,8 +18,8 @@ import { UploadsController } from './uploads.controller';
  * the guard (it is @Public()).
  */
 @Module({
-  providers: [MediaService, MediaAccessService],
+  providers: [MediaService, MediaAccessService, VideoService],
   controllers: [MediaController, UploadsController],
-  exports: [MediaService, MediaAccessService],
+  exports: [MediaService, MediaAccessService, VideoService],
 })
 export class MediaModule {}

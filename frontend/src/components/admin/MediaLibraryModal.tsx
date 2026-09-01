@@ -48,7 +48,15 @@ export function MediaLibraryModal({
     let abort = false;
     setLoading(true);
     setError(null);
-    fetch("/api/admin/media/proxy?pageSize=200", { cache: "no-store" })
+    fetch("/api/admin/media/proxy?pageSize=200&kind=IMAGEM", {
+      // Images only. Both places this picker feeds — the cover and the
+      // article body — insert an <img>, so a video chosen here would
+      // render as a broken picture. Filtered by the server rather than
+      // here, because this fetches one page of 200 and stops: filtering
+      // afterwards would let videos push images off the end of a list
+      // that still looks complete.
+      cache: "no-store",
+    })
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json() as Promise<PageResult<MediaItem>>;

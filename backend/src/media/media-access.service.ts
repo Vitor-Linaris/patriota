@@ -53,15 +53,24 @@ export class MediaAccessService {
   /**
    * The storage key inside an uploads path, or null.
    *
-   * Accepts `2026/09/<hex>-large.webp` and its siblings — the shape our
-   * own pipeline writes. Anything else (a traversal attempt, an avatar,
-   * a hand-placed file) returns null and is handled by the caller.
+   * Every shape our own pipeline writes, and no others:
+   *   - three image variants, `-large|medium|small.webp`
+   *   - the video itself, `-video.mp4` or `-video.webm`
+   *   - the still taken from it, `-poster.webp`
+   *
+   * All of them share one key, which is the point: a video and its
+   * thumbnail are one thing, and publishing the article has to make
+   * both reachable at once.
+   *
+   * Anything else — a traversal attempt, an avatar, a hand-placed
+   * file — returns null and is handled by the caller.
    */
   static keyFromPath(path: string): string | null {
-    const m = /^(\d{4}\/\d{2}\/[0-9a-f]{8,})-(?:large|medium|small)\.webp$/.exec(
-      path,
-    );
-    return m ? m[1]! : null;
+    const m =
+      /^(\d{4}\/\d{2}\/[0-9a-f]{8,})-(?:large|medium|small|poster)\.webp$|^(\d{4}\/\d{2}\/[0-9a-f]{8,})-video\.(?:mp4|webm)$/.exec(
+        path,
+      );
+    return m ? (m[1] ?? m[2]!) : null;
   }
 
   async forPath(path: string): Promise<FileAccess> {

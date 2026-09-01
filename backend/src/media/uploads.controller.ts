@@ -70,7 +70,7 @@ export class UploadsController {
       throw new NotFoundException();
     }
 
-    await this.send(absolute, res);
+    await this.send(absolute, req, res);
   }
 
   /**
@@ -157,8 +157,21 @@ export class UploadsController {
     }
   }
 
-  /** Streams the file with the caching the static handler used to set. */
-  private async send(absolute: string, res: Response): Promise<void> {
+  /**
+   * Streams the file with the caching the static handler used to set,
+   * and with byte-range support for video.
+   *
+   * Ranges are not a nicety for a video tag. Without `Accept-Ranges` a
+   * reader cannot seek at all, and Safari refuses to start playing —
+   * it asks for a range before anything else and treats a plain 200 as
+   * a broken source. The static handler this route replaced did ranges
+   * for free; doing them by hand is the cost of the access check.
+   */
+  private async send(
+    absolute: string,
+    req: Request,
+    res: Response,
+  ): Promise<void> {
     let size: number;
     try {
       const info = await stat(absolute);
@@ -168,15 +181,78 @@ export class UploadsController {
       throw new NotFoundException();
     }
 
-    res.setHeader('Content-Length', size);
+    // The filename carries 8 random bytes and the contents never change
+    // under it, so the browser can hold on to it as long as it likes.
     res.setHeader(
       'Cache-Control',
       `public, max-age=${MAX_AGE_SECONDS}, immutable`,
     );
-    // The filename carries 8 random bytes and the contents never change
-    // under it, so the browser can hold on to it as long as it likes.
-    if (absolute.endsWith('.webp')) res.setHeader('Content-Type', 'image/webp');
+    res.setHeader('Content-Type', contentTypeFor(absolute));
+    res.setHeader('Accept-Ranges', 'bytes');
 
+    const range = parseRange(req.headers.range, size);
+    if (range === 'invalid') {
+      // 416, with the real size, so the client can ask again sensibly.
+      res.setHeader('Content-Range', `bytes */${size}`);
+      res.status(416).end();
+      return;
+    }
+
+    if (range) {
+      const length = range.end - range.start + 1;
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${range.start}-${range.end}/${size}`);
+      res.setHeader('Content-Length', length);
+      createReadStream(absolute, { start: range.start, end: range.end }).pipe(res);
+      return;
+    }
+
+    res.setHeader('Content-Length', size);
     createReadStream(absolute).pipe(res);
   }
+}
+
+/** Content type from the extension. Only what this project writes. */
+function contentTypeFor(path: string): string {
+  if (path.endsWith('.webp')) return 'image/webp';
+  if (path.endsWith('.mp4')) return 'video/mp4';
+  if (path.endsWith('.webm')) return 'video/webm';
+  return 'application/octet-stream';
+}
+
+/**
+ * A single byte range, or null for none, or 'invalid' for unsatisfiable.
+ *
+ * Only the single-range form, which is what every browser sends for
+ * media. Multipart ranges are legal and nothing asks for them.
+ */
+function parseRange(
+  header: string | undefined,
+  size: number,
+): { start: number; end: number } | null | 'invalid' {
+  if (!header) return null;
+
+  const m = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
+  if (!m) return null;
+
+  const [, rawStart, rawEnd] = m;
+  let start: number;
+  let end: number;
+
+  if (rawStart === '') {
+    // "bytes=-500" — the LAST 500 bytes, not the first. Getting this
+    // backwards serves the wrong part of the file with a 206, which
+    // looks like corruption rather than an error.
+    const suffix = Number(rawEnd);
+    if (!Number.isFinite(suffix) || suffix <= 0) return 'invalid';
+    start = Math.max(0, size - suffix);
+    end = size - 1;
+  } else {
+    start = Number(rawStart);
+    end = rawEnd === '' ? size - 1 : Number(rawEnd);
+  }
+
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return 'invalid';
+  if (start > end || start >= size) return 'invalid';
+  return { start, end: Math.min(end, size - 1) };
 }

@@ -22,7 +22,7 @@ import { apiBaseUrl } from "@/lib/api-base";
  * rule as the reader BFF routes.
  */
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
   const { path } = await params;
@@ -43,26 +43,42 @@ export async function GET(
     .map(encodeURIComponent)
     .join("/")}`;
 
-  const upstream = await fetch(target, {
-    cache: "no-store",
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  // The Range header is forwarded and the answer to it passed back
+  // untouched. Without this a private video preview cannot be seeked
+  // at all, and Safari will not start it: it asks for a range before
+  // anything else and treats a plain 200 as a broken source.
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+  };
+  const range = req.headers.get("range");
+  if (range) headers.Range = range;
+
+  const upstream = await fetch(target, { cache: "no-store", headers });
 
   if (!upstream.ok || !upstream.body) {
     return NextResponse.json({ message: "Not found" }, { status: 404 });
   }
 
-  // Streamed rather than buffered: these are images, and a video will
-  // be along shortly.
+  const out = new Headers({
+    "Content-Type": upstream.headers.get("content-type") ?? "image/webp",
+    // Private, so never in a shared cache. `no-store` and not the
+    // API's `immutable`: the moment the article is published the
+    // real URL takes over, and a stale copy of the preview would
+    // outlive the reason this route was used at all.
+    "Cache-Control": "private, no-store",
+    "Accept-Ranges": "bytes",
+  });
+  for (const h of ["content-range", "content-length"]) {
+    const v = upstream.headers.get(h);
+    if (v) out.set(h, v);
+  }
+
+  // Streamed rather than buffered — a 100 MB video must not be held in
+  // this process's memory on the way through.
   return new NextResponse(upstream.body, {
-    status: 200,
-    headers: {
-      "Content-Type": upstream.headers.get("content-type") ?? "image/webp",
-      // Private, so never in a shared cache. `no-store` and not the
-      // API's `immutable`: the moment the article is published the
-      // real URL takes over, and a stale copy of the preview would
-      // outlive the reason this route was used at all.
-      "Cache-Control": "private, no-store",
-    },
+    // 206 when a range was served. Answering 200 would tell the player
+    // it received the whole file when it received a slice.
+    status: upstream.status === 206 ? 206 : 200,
+    headers: out,
   });
 }

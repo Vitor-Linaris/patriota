@@ -102,6 +102,14 @@ enum MediaVisibility {
   PUBLICO
 }
 
+/// Image or video. The stored mime type cannot answer this on its own:
+/// an image is always converted to WebP, while a video is stored in
+/// whatever web-playable format it arrived in.
+enum MediaKind {
+  IMAGEM
+  VIDEO
+}
+
 model Media {
   id           String   @id @default(cuid())
   // Canonical URL — points to the "large" WebP variant for uploads,
@@ -148,6 +156,14 @@ model Media {
   uploadedAt   DateTime @default(now())
 
   visibility   MediaVisibility @default(PRIVADO)
+
+  kind         MediaKind       @default(IMAGEM)
+  /// Length in seconds, on a video. NULL on an image.
+  durationSeconds Int?
+  /// A still taken from the video, for the library grid and the picker.
+  /// NULL when the frame could not be extracted — a worse-looking
+  /// library, not a reason to refuse a working video.
+  posterUrl    String?
 
   /// "YYYY/MM/<baseId>" — the three variants share it and differ only by
   /// suffix. NULL for pasted external URLs, which are not ours to serve.

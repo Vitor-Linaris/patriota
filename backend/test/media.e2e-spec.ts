@@ -1,5 +1,9 @@
 import { INestApplication } from '@nestjs/common';
 import { existsSync, mkdtempSync, rmSync, readdirSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { promisify } from 'node:util';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import request from 'supertest';
@@ -99,10 +103,13 @@ describe('Media uploads (e2e)', () => {
 
   it('rejects oversized uploads with 413 and a friendly Portuguese message', async () => {
     const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
-    // Multer's limit is enforced before the body is buffered. We send
-    // a payload definitely bigger than the cap (MEDIA_MAX_UPLOAD_BYTES
-    // defaults to 10 MB) — 11 MB of zeros is enough.
-    const huge = Buffer.alloc(11 * 1024 * 1024, 0);
+    // Multer's limit is enforced before the body is buffered, and it is
+    // the OUTER gate: 15 MB, the animation limit, not the 10 MB still
+    // limit. It has to be the more generous of the two, or a 12 MB
+    // animated GIF dies here before the service can apply the rule that
+    // actually allows it. The per-kind limits are enforced below, in
+    // 'what may be uploaded'.
+    const huge = Buffer.alloc(16 * 1024 * 1024, 0);
     const res = await request(app.getHttpServer())
       .post('/admin/media/upload')
       .set(bearer(user))
@@ -278,6 +285,246 @@ describe('Media uploads (e2e)', () => {
         .expect(400);
 
       expect(res.body.message).toMatch(/vídeo/i);
+    });
+  });
+
+  describe('video', () => {
+    /**
+     * A real MP4, made by ffmpeg itself.
+     *
+     * A handcrafted byte blob would pass the signature check and then
+     * fail in ffprobe, which tests the wrong thing entirely — the point
+     * here is the probe, the limits and the poster frame.
+     */
+    async function makeMp4(opts: {
+      seconds?: number;
+      width?: number;
+      height?: number;
+      codec?: string;
+    } = {}): Promise<Buffer> {
+      const {
+        seconds = 2,
+        width = 320,
+        height = 240,
+        codec = 'libx264',
+      } = opts;
+      const out = join(uploadsDir, `probe-${randomUUID()}.mp4`);
+      await promisify(execFile)(
+        'ffmpeg',
+        [
+          '-v', 'error',
+          '-f', 'lavfi',
+          '-i', `testsrc=size=${width}x${height}:rate=10:duration=${seconds}`,
+          '-c:v', codec,
+          '-pix_fmt', 'yuv420p',
+          '-movflags', '+faststart',
+          '-y', out,
+        ],
+        { timeout: 60_000 },
+      );
+      const buf = await readFile(out);
+      rmSync(out, { force: true });
+      return buf;
+    }
+
+    const post = (
+      user: Awaited<ReturnType<typeof makeUser>>,
+      video: Buffer,
+      filename = 'clip.mp4',
+    ) =>
+      request(app.getHttpServer())
+        .post('/admin/media/video')
+        .set(bearer(user))
+        .attach('file', video, { filename, contentType: 'video/mp4' });
+
+    it('stores a video, reads it, and takes a thumbnail from it', async () => {
+      const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const mp4 = await makeMp4({ seconds: 3, width: 320, height: 240 });
+
+      const res = await post(user, mp4).expect(201);
+
+      expect(res.body.kind).toBe('VIDEO');
+      expect(res.body.mimeType).toBe('video/mp4');
+      expect(res.body.width).toBe(320);
+      expect(res.body.height).toBe(240);
+      expect(res.body.durationSeconds).toBe(3);
+      // The still, so the grid does not show a hole where a video is.
+      expect(res.body.posterUrl).toMatch(/-poster\.webp$/);
+      // Stored as it arrived: the URL keeps the real extension rather
+      // than pretending to be a WebP.
+      expect(res.body.url).toMatch(/-video\.mp4$/);
+    });
+
+    it('counts the video AND its thumbnail against the quota', async () => {
+      const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const res = await post(user, await makeMp4()).expect(201);
+
+      const row = await app
+        .get(PrismaService)
+        .media.findUnique({ where: { id: res.body.id } });
+      expect(row!.bytesOnDisk).toBeGreaterThan(row!.size!);
+    });
+
+    it('refuses a video longer than the limit, with the length found', async () => {
+      // "O limite é 5 minutos" alone tells somebody nothing about a
+      // clip they believe is short.
+      const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const long = await makeMp4({ seconds: 301, width: 160, height: 120 });
+
+      const res = await post(user, long).expect(400);
+      expect(res.body.message).toMatch(/5m0[01]s/);
+      expect(res.body.message).toMatch(/5 minutos/);
+    });
+
+    it('refuses a video bigger than 1080p, with the size found', async () => {
+      const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const huge = await makeMp4({ seconds: 1, width: 2560, height: 1440 });
+
+      const res = await post(huge ? user : user, huge).expect(400);
+      expect(res.body.message).toMatch(/2560×1440/);
+      expect(res.body.message).toMatch(/1080p/);
+    });
+
+    it('refuses a codec browsers will not play, and says what to export', async () => {
+      // The failure that would otherwise be invisible: it uploads
+      // happily and then simply does not play for a good share of
+      // readers.
+      const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      let mpeg4: Buffer;
+      try {
+        mpeg4 = await makeMp4({ seconds: 1, codec: 'mpeg4' });
+      } catch {
+        return; // encoder not built into this ffmpeg — nothing to assert
+      }
+
+      const res = await post(user, mpeg4).expect(400);
+      expect(res.body.message).toMatch(/mpeg4/);
+      expect(res.body.message).toMatch(/H\.264/);
+    });
+
+    it('refuses an image sent to the video route, and vice versa', async () => {
+      // Each route says what the file actually is rather than "tipo não
+      // suportado", which does not tell anybody where to go instead.
+      const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+
+      const wrongWay = await request(app.getHttpServer())
+        .post('/admin/media/video')
+        .set(bearer(user))
+        .attach('file', await makePngBuffer(100, 100), {
+          filename: 'foto.png',
+          contentType: 'video/mp4',
+        })
+        .expect(400);
+      expect(wrongWay.body.message).toMatch(/imagem/i);
+
+      const otherWay = await request(app.getHttpServer())
+        .post('/admin/media/upload')
+        .set(bearer(user))
+        .attach('file', await makeMp4({ seconds: 1 }), {
+          filename: 'clip.mp4',
+          contentType: 'image/png',
+        })
+        .expect(400);
+      expect(otherWay.body.message).toMatch(/vídeo/i);
+    });
+
+    it('keeps video out of the list when asked for images only', async () => {
+      // What the picker in the article editor asks for. It has to be
+      // the server that filters: the picker fetches one page and stops,
+      // so filtering afterwards would let video push images off the end
+      // of a list that still looks complete. And both places the picker
+      // feeds insert an <img>, so a video chosen there is a broken
+      // picture on a published article.
+      const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      await post(user, await makeMp4()).expect(201);
+      await request(app.getHttpServer())
+        .post('/admin/media/upload')
+        .set(bearer(user))
+        .attach('file', await makePngBuffer(100, 100), {
+          filename: 'foto.png',
+          contentType: 'image/png',
+        })
+        .expect(201);
+
+      const all = await request(app.getHttpServer())
+        .get('/admin/media')
+        .set(bearer(user))
+        .expect(200);
+      expect(all.body.total).toBe(2);
+
+      const images = await request(app.getHttpServer())
+        .get('/admin/media?kind=IMAGEM')
+        .set(bearer(user))
+        .expect(200);
+      expect(images.body.total).toBe(1);
+      expect(images.body.items[0].kind).toBe('IMAGEM');
+
+      const videos = await request(app.getHttpServer())
+        .get('/admin/media?kind=VIDEO')
+        .set(bearer(user))
+        .expect(200);
+      expect(videos.body.total).toBe(1);
+      expect(videos.body.items[0].kind).toBe('VIDEO');
+    });
+
+    it('a video is private until published, like everything else', async () => {
+      const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const res = await post(user, await makeMp4()).expect(201);
+      const path = res.body.url.replace('http://api.test/uploads/', '');
+
+      await request(app.getHttpServer()).get(`/uploads/${path}`).expect(404);
+      await request(app.getHttpServer())
+        .get(`/uploads/${path}`)
+        .set(bearer(user))
+        .expect(200);
+    });
+
+    it('serves a byte range, which is what makes a video seekable', async () => {
+      // Not a nicety. Without it a reader cannot seek at all, and
+      // Safari refuses to start playing — it asks for a range first and
+      // treats a plain 200 as a broken source.
+      const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const res = await post(user, await makeMp4()).expect(201);
+      await app
+        .get(PrismaService)
+        .media.update({
+          where: { id: res.body.id },
+          data: { visibility: 'PUBLICO' },
+        });
+      const path = res.body.url.replace('http://api.test/uploads/', '');
+
+      const full = await request(app.getHttpServer())
+        .get(`/uploads/${path}`)
+        .expect(200);
+      expect(full.headers['accept-ranges']).toBe('bytes');
+      expect(full.headers['content-type']).toBe('video/mp4');
+
+      const part = await request(app.getHttpServer())
+        .get(`/uploads/${path}`)
+        .set('Range', 'bytes=0-99')
+        .expect(206);
+      expect(part.headers['content-range']).toMatch(/^bytes 0-99\//);
+      expect(part.headers['content-length']).toBe('100');
+
+      // A suffix range asks for the LAST n bytes, not the first.
+      // Getting it backwards serves the wrong part with a 206, which
+      // looks like corruption rather than an error.
+      const tail = await request(app.getHttpServer())
+        .get(`/uploads/${path}`)
+        .set('Range', 'bytes=-50')
+        .expect(206);
+      const size = Number(full.headers['content-length']);
+      expect(tail.headers['content-range']).toBe(
+        `bytes ${size - 50}-${size - 1}/${size}`,
+      );
+
+      // Past the end is 416, with the real size so the client can ask
+      // again sensibly.
+      const bad = await request(app.getHttpServer())
+        .get(`/uploads/${path}`)
+        .set('Range', `bytes=${size + 10}-`)
+        .expect(416);
+      expect(bad.headers['content-range']).toBe(`bytes */${size}`);
     });
   });
 

@@ -4,7 +4,11 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CopyButton } from "@/components/admin/CopyButton";
 import { Pagination } from "@/components/category/Pagination";
-import { validateImageUpload } from "@/lib/upload-limits";
+import {
+  isVideoUpload,
+  validateImageUpload,
+  validateVideoUpload,
+} from "@/lib/upload-limits";
 import {
   createMediaAction,
   deleteMediaAction,
@@ -21,6 +25,13 @@ export interface MediaItem {
   /** Frame count on an animation. The stored format is WebP either way,
    *  so the mime type cannot tell a GIF from a photograph. */
   frames?: number | null;
+  /** IMAGEM or VIDEO. The mime type cannot say: a video is stored
+   *  alongside a WebP poster and the row carries the poster's type. */
+  kind?: "IMAGEM" | "VIDEO";
+  /** Length in seconds, on a video. */
+  durationSeconds?: number | null;
+  /** The still taken from the video. What the grid tile shows. */
+  posterUrl?: string | null;
   name: string;
   uploadedAt: string;
   size?: string;
@@ -48,6 +59,13 @@ function humanBytes(bytes: number): string {
     return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   }
   return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+/** Seconds as m:ss, the way a player shows them. */
+function humanDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 function parseDimensions(text: string): { width?: number; height?: number } {
@@ -124,14 +142,20 @@ export default function AdminMediaClient({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   /**
-   * Direct-file upload — same flow as the article cover picker.
-   * Validates client-side (mime + size), then POSTs FormData via the
-   * server action. On success, refreshes the page so the new item
-   * appears in the grid.
+   * Direct-file upload. Validates client-side (mime + size), then sends
+   * the file. On success, refreshes the page so the new item appears
+   * in the grid.
+   *
+   * Two paths, and the split is not cosmetic. An image goes through the
+   * Server Action, as it always has. A video CANNOT: Server Actions are
+   * capped at 12 MB by next.config.ts, and over it Next aborts with an
+   * error that says nothing about size. So video posts to a Route
+   * Handler, which has no such cap. See app/api/admin/media/video.
    */
   const uploadFile = (file: File | null | undefined) => {
     if (!file) return;
-    const reason = validateImageUpload(file);
+    const video = isVideoUpload(file);
+    const reason = video ? validateVideoUpload(file) : validateImageUpload(file);
     if (reason) {
       setUploadError(reason);
       return;
@@ -140,11 +164,29 @@ export default function AdminMediaClient({
     startTransition(async () => {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await uploadMediaFileAction(fd);
-      if (!res.ok) {
-        setUploadError(res.error);
-        return;
+
+      if (video) {
+        const res = await fetch("/api/admin/media/video", {
+          method: "POST",
+          body: fd,
+        });
+        if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as {
+            message?: string;
+          };
+          setUploadError(
+            body.message ?? `O envio falhou (HTTP ${res.status}).`,
+          );
+          return;
+        }
+      } else {
+        const res = await uploadMediaFileAction(fd);
+        if (!res.ok) {
+          setUploadError(res.error);
+          return;
+        }
       }
+
       setUploadOpen(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
       router.refresh();
@@ -312,19 +354,22 @@ export default function AdminMediaClient({
                 <p className="text-sm font-semibold text-gray-600">
                   {pending
                     ? "A enviar…"
-                    : "Arraste uma imagem ou clique para escolher"}
+                    : "Arraste um ficheiro ou clique para escolher"}
                 </p>
-                <p className="text-[10px] text-gray-400">
-                  JPG, PNG, WebP, AVIF — até 10 MB. GIF animado até 11 MB
-                  e 300 fotogramas, e a animação é mantida. Processada em
-                  3 variantes WebP automaticamente.
+                <p className="text-[10px] leading-relaxed text-gray-400">
+                  Imagem: JPG, PNG, WebP, AVIF — até 10 MB, processada em
+                  3 variantes WebP. GIF animado até 11 MB e 300
+                  fotogramas, e a animação é mantida.
+                  <br />
+                  Vídeo: MP4 (H.264) ou WebM — até 100 MB, 5 minutos e
+                  1920×1080. A miniatura é tirada automaticamente.
                 </p>
               </div>
 
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/*,video/mp4,video/webm"
                 className="hidden"
                 onChange={(e) => uploadFile(e.target.files?.[0])}
               />
@@ -721,12 +766,32 @@ export default function AdminMediaClient({
                     }
                     className={`group relative aspect-video overflow-hidden rounded-xl border-2 bg-gray-100 text-left transition-all ${selected?.id === item.id ? "border-[#0F2C6B] shadow-lg" : "border-transparent hover:border-gray-300"}`}
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={item.url}
-                      alt={item.name}
-                      className="h-full w-full object-cover"
-                    />
+                    {/* A video's tile is its poster. Never the video
+                        itself: a grid of <video> elements would have
+                        the browser opening a connection per tile. */}
+                    {item.kind === "VIDEO" && !item.posterUrl ? (
+                      <div className="flex h-full w-full items-center justify-center bg-gray-200 text-2xl text-gray-400">
+                        ▶
+                      </div>
+                    ) : (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        src={
+                          item.kind === "VIDEO" && item.posterUrl
+                            ? item.posterUrl
+                            : item.url
+                        }
+                        alt={item.name}
+                        className="h-full w-full object-cover"
+                      />
+                    )}
+                    {item.kind === "VIDEO" && (
+                      <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-black/50 pl-0.5 text-xs text-white">
+                          ▶
+                        </span>
+                      </span>
+                    )}
                     <div className="absolute inset-0 bg-black/0 transition-colors group-hover:bg-black/30" />
                     <div
                       className={`absolute right-2 top-2 flex h-5 items-center gap-1 rounded-full px-1.5 text-[10px] font-bold ${used ? "bg-green-500 text-white" : "bg-gray-300 text-white"}`}
@@ -745,6 +810,16 @@ export default function AdminMediaClient({
                         frame of an animation looks like a photograph,
                         and a private file looks like any other. */}
                     <div className="absolute bottom-2 left-2 flex gap-1">
+                      {item.kind === "VIDEO" && (
+                        <span
+                          title="Vídeo"
+                          className="rounded bg-black/60 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white"
+                        >
+                          {item.durationSeconds
+                            ? humanDuration(item.durationSeconds)
+                            : "vídeo"}
+                        </span>
+                      )}
                       {(item.frames ?? 0) > 1 && (
                         <span
                           title={`Animação com ${item.frames} fotogramas`}
@@ -789,12 +864,23 @@ export default function AdminMediaClient({
         {selected && (
           <div className="sticky top-4 h-fit w-72 shrink-0 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
             <div className="aspect-video overflow-hidden bg-gray-100">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={selected.url}
-                alt={selected.name}
-                className="h-full w-full object-cover"
-              />
+              {selected.kind === "VIDEO" ? (
+                <video
+                  key={selected.id}
+                  src={selected.url}
+                  poster={selected.posterUrl ?? undefined}
+                  controls
+                  preload="metadata"
+                  className="h-full w-full bg-black object-contain"
+                />
+              ) : (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={selected.url}
+                  alt={selected.name}
+                  className="h-full w-full object-cover"
+                />
+              )}
             </div>
             <div className="p-4">
               <div className="mb-4 flex items-start justify-between gap-2">
@@ -823,6 +909,14 @@ export default function AdminMediaClient({
                     </span>
                     <span className="font-mono text-gray-700">
                       {selected.dimensions}
+                    </span>
+                  </div>
+                )}
+                {selected.durationSeconds != null && (
+                  <div className="flex justify-between text-xs">
+                    <span className="font-semibold text-gray-400">Duração</span>
+                    <span className="font-mono text-gray-700">
+                      {humanDuration(selected.durationSeconds)}
                     </span>
                   </div>
                 )}

@@ -7,6 +7,7 @@ import {
 import { MediaService } from './media.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
+import { VideoService } from './video.service';
 
 describe('MediaService', () => {
   let service: MediaService;
@@ -39,6 +40,16 @@ describe('MediaService', () => {
         MediaService,
         { provide: PrismaService, useValue: prisma },
         { provide: ActivityLogService, useValue: { record: jest.fn() } },
+        // A double: these tests never touch video, and the real thing
+        // shells out to ffmpeg.
+        {
+          provide: VideoService,
+          useValue: {
+            probe: jest.fn(),
+            assertAcceptable: jest.fn(),
+            grabPoster: jest.fn().mockResolvedValue(null),
+          },
+        },
       ],
     }).compile();
     service = moduleRef.get(MediaService);

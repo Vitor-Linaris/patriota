@@ -34,6 +34,13 @@ interface MediaApi {
   visibility: "PRIVADO" | "PUBLICO";
   /** Frame count on an animation, null on a still. */
   frames: number | null;
+  /** IMAGEM or VIDEO. Not derivable from the mime type: a video's row
+   *  carries the type of the WebP poster taken from it. */
+  kind: "IMAGEM" | "VIDEO";
+  /** Length in seconds. Only on a video. */
+  durationSeconds: number | null;
+  /** The still taken from the video, for the grid. Only on a video. */
+  posterUrl: string | null;
   /** Count of articles that reference this media (cover or inline). */
   articleCount: number;
   /** Count of ad slots whose imageUrl points at this media. */
@@ -68,6 +75,13 @@ function toMediaItem(m: MediaApi): MediaItem {
     canonicalUrl: m.url,
     visibility: m.visibility,
     frames: m.frames,
+    kind: m.kind ?? "IMAGEM",
+    durationSeconds: m.durationSeconds ?? null,
+    // The tile shows the poster, and the poster is a file with the
+    // same visibility as the video it was taken from.
+    posterUrl: m.posterUrl
+      ? mediaPreviewUrl(m.posterUrl, m.visibility)
+      : null,
     name: m.name,
     uploadedAt: dateFmt.format(new Date(m.uploadedAt)),
     size: humanSize(m.size),

@@ -25,8 +25,10 @@ import {
   MAX_IMAGE_BYTES,
   MAX_IMAGE_PIXELS,
   MAX_USER_BYTES,
+  MAX_VIDEO_BYTES,
   formatBytes,
 } from './media-limits';
+import { VideoService } from './video.service';
 
 export interface CreateMediaInput {
   url: string;
@@ -100,13 +102,18 @@ function stripExtension(name: string | undefined | null): string {
  * live page.
  */
 const STORAGE_KEY_IN_TEXT =
-  /(\d{4}\/\d{2}\/[0-9a-f]{8,})-(?:large|medium|small)\.webp/g;
+  /(\d{4}\/\d{2}\/[0-9a-f]{8,})-(?:large|medium|small|poster)\.webp|(\d{4}\/\d{2}\/[0-9a-f]{8,})-video\.(?:mp4|webm)/g;
 
 export function extractStorageKeys(...texts: (string | null | undefined)[]) {
   const keys = new Set<string>();
   for (const text of texts) {
     if (!text) continue;
-    for (const m of text.matchAll(STORAGE_KEY_IN_TEXT)) keys.add(m[1]!);
+    // Either alternative may match; both carry the same key. A video
+    // referenced only by its poster still has to be published, because
+    // the poster is what a `<video>` shows before anybody presses play.
+    for (const m of text.matchAll(STORAGE_KEY_IN_TEXT)) {
+      keys.add((m[1] ?? m[2])!);
+    }
   }
   return [...keys];
 }
@@ -132,6 +139,7 @@ export class MediaService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly activity: ActivityLogService,
+    private readonly video: VideoService,
   ) {}
 
   /**
@@ -148,7 +156,11 @@ export class MediaService {
    * break a page they cannot see.
    */
   async list(
-    query: PageQueryDto & { q?: string; scope?: 'minha' | 'todas' },
+    query: PageQueryDto & {
+      q?: string;
+      scope?: 'minha' | 'todas';
+      kind?: 'IMAGEM' | 'VIDEO';
+    },
     actor: MediaActor,
   ): Promise<PageResult<unknown> & { quota: MediaQuota }> {
     const { skip, take } = toSkipTake(query);
@@ -172,6 +184,8 @@ export class MediaService {
       ...(query.q
         ? { name: { contains: query.q, mode: 'insensitive' as const } }
         : {}),
+      // What the article editor's picker asks for. See the DTO.
+      ...(query.kind ? { kind: query.kind } : {}),
     };
     const [items, total] = await Promise.all([
       this.prisma.media.findMany({
@@ -626,6 +640,141 @@ export class MediaService {
     } catch (e) {
       if ((e as { code?: string }).code === 'P2025') {
         throw new NotFoundException('Imagem não encontrada.');
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * Stores a video, as it arrived.
+   *
+   * Not transcoded — see VideoService. The file is written first
+   * because ffprobe reads from disk rather than a buffer, and then
+   * removed again if it turns out to be unacceptable. Writing to check
+   * and deleting on refusal is cheaper and simpler than streaming a
+   * hundred megabytes through a pipe to be told it is HEVC.
+   */
+  async uploadVideo(file: UploadedFile, userId: string) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Ficheiro vazio.');
+    }
+
+    const detected = detectType(file.buffer);
+    if (!detected) {
+      throw new BadRequestException(
+        `Tipo de ficheiro não suportado: ${file.mimetype}.`,
+      );
+    }
+    if (detected.kind !== 'video') {
+      throw new BadRequestException(
+        `Isto é uma imagem (${detected.mime}). Use o carregamento de imagens.`,
+      );
+    }
+    if (detected.mime === 'video/quicktime') {
+      // Straight off an iPhone, and very often HEVC inside. Named so
+      // the message can say what to do rather than "tipo não suportado".
+      throw new BadRequestException(
+        'Ficheiros .mov não são reproduzidos por todos os browsers. ' +
+          'Exporte em MP4 (H.264) e volte a tentar.',
+      );
+    }
+    if (file.buffer.length > MAX_VIDEO_BYTES) {
+      throw new BadRequestException(
+        `Vídeo demasiado grande: ${formatBytes(file.buffer.length)}. ` +
+          `O limite é ${formatBytes(MAX_VIDEO_BYTES)}.`,
+      );
+    }
+
+    const quota = await this.usageFor(userId);
+    if (file.buffer.length > quota.remaining) {
+      throw new ConflictException(
+        `Sem espaço: está a usar ${formatBytes(quota.used)} de ` +
+          `${formatBytes(quota.limit)}. Apague algo para libertar espaço.`,
+      );
+    }
+
+    const now = new Date();
+    const yyyy = String(now.getUTCFullYear());
+    const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
+    const dir = join(this.uploadsDir, yyyy, mm);
+    await mkdir(dir, { recursive: true });
+
+    const baseId = randomBytes(8).toString('hex');
+    const ext = detected.mime === 'video/webm' ? 'webm' : 'mp4';
+    const videoName = `${baseId}-video.${ext}`;
+    const videoPath = join(dir, videoName);
+    const written: string[] = [];
+
+    await writeFile(videoPath, file.buffer);
+    written.push(videoPath);
+
+    try {
+      const info = await this.video.probe(videoPath);
+      this.video.assertAcceptable(info);
+
+      // A still, so the grid and the picker do not show a hole. Its
+      // absence is tolerated; see grabPoster.
+      let posterUrl: string | null = null;
+      let posterBytes = 0;
+      const frame = await this.video.grabPoster(videoPath, info.durationSeconds);
+      if (frame) {
+        const posterName = `${baseId}-poster.webp`;
+        const posterPath = join(dir, posterName);
+        const buf = await sharp(frame)
+          .resize({ width: this.sizes[1]?.width ?? 800, withoutEnlargement: true })
+          .webp({ quality: this.quality })
+          .toBuffer();
+        await writeFile(posterPath, buf);
+        written.push(posterPath);
+        posterUrl = `${this.publicBase}/${yyyy}/${mm}/${posterName}`;
+        posterBytes = buf.length;
+      }
+
+      const totalBytes = file.buffer.length + posterBytes;
+      const after = await this.usageFor(userId);
+      if (totalBytes > after.remaining) {
+        throw new ConflictException(
+          `Sem espaço: este ficheiro ocupa ${formatBytes(totalBytes)} e ` +
+            `restam-lhe ${formatBytes(after.remaining)}.`,
+        );
+      }
+
+      const created = await this.prisma.media.create({
+        data: {
+          url: `${this.publicBase}/${yyyy}/${mm}/${videoName}`,
+          name: stripExtension(file.originalname) || baseId,
+          mimeType: detected.mime,
+          kind: 'VIDEO',
+          size: file.buffer.length,
+          bytesOnDisk: totalBytes,
+          width: info.width,
+          height: info.height,
+          durationSeconds: Math.round(info.durationSeconds),
+          posterUrl,
+          uploadedById: userId,
+          storageKey: `${yyyy}/${mm}/${baseId}`,
+          visibility: 'PRIVADO',
+        },
+      });
+
+      this.logger.log(
+        `Uploaded video ${baseId} (${info.width}×${info.height}, ` +
+          `${Math.round(info.durationSeconds)}s, ${info.videoCodec})`,
+      );
+      void this.activity.record({
+        userId,
+        action: 'uploaded',
+        targetType: 'media',
+        targetId: created.id,
+        targetLabel: created.name,
+      });
+      return created;
+    } catch (e) {
+      // Anything from the probe onwards leaves the file on disk with no
+      // row pointing at it, which is exactly the invisible-file problem
+      // the quota exists to avoid.
+      for (const p of written) {
+        await unlink(p).catch(() => undefined);
       }
       throw e;
     }
