@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -101,23 +102,55 @@ export class MediaService {
     private readonly activity: ActivityLogService,
   ) {}
 
+  /**
+   * The library, scoped to whoever is asking.
+   *
+   * Everyone used to see everything. Now each person sees what they put
+   * there, and only a SUPER_ADMIN can ask for `scope=todas` — which is
+   * how ownerless files (staff who left) and support questions stay
+   * reachable at all.
+   *
+   * What is NOT scoped, deliberately: the usage counts below still look
+   * at every article and every ad. An image used in somebody else's
+   * article has to show as in-use, or its owner would delete it and
+   * break a page they cannot see.
+   */
   async list(
-    query: PageQueryDto & { q?: string },
+    query: PageQueryDto & { q?: string; scope?: 'minha' | 'todas' },
+    actor: MediaActor,
   ): Promise<PageResult<unknown>> {
     const { skip, take } = toSkipTake(query);
+
+    if (query.scope === 'todas' && !canReachAll(actor)) {
+      // Said plainly rather than silently narrowed to their own. A
+      // filter that quietly does something else is worse than one that
+      // refuses.
+      throw new ForbiddenException(
+        'Só o Super Admin pode ver a média de toda a gente.',
+      );
+    }
+    const everyone = query.scope === 'todas' && canReachAll(actor);
+
     // Free-text search across the filename — keeps the implementation
     // simple while covering the common case ("where's that header.jpg
     // I uploaded last week?"). For URL/mimeType/dimension search we'd
     // need a more involved schema; OOS for now.
-    const where = query.q
-      ? { name: { contains: query.q, mode: 'insensitive' as const } }
-      : {};
+    const where = {
+      ...(everyone ? {} : { uploadedById: actor.id }),
+      ...(query.q
+        ? { name: { contains: query.q, mode: 'insensitive' as const } }
+        : {}),
+    };
     const [items, total] = await Promise.all([
       this.prisma.media.findMany({
         where,
         skip,
         take,
         orderBy: { uploadedAt: 'desc' },
+        // The owner's name rides along so the global view can say whose
+        // each file is. Explicit select on the relation: `User` carries
+        // a password hash, and an include would bring it.
+        include: { uploadedBy: { select: { id: true, name: true } } },
       }),
       this.prisma.media.count({ where }),
     ]);
@@ -304,17 +337,41 @@ export class MediaService {
     const urls: Record<SizeSpec['key'], string> = {} as never;
     let largeBytes = 0;
 
-    for (const size of this.sizes) {
-      const filename = `${baseId}-${size.key}.webp`;
-      const outPath = join(dir, filename);
-      const buf = await sharp(file.buffer)
-        .rotate()
-        .resize({ width: size.width, withoutEnlargement: true })
-        .webp({ quality: this.quality })
-        .toBuffer();
-      await writeFile(outPath, buf);
-      urls[size.key] = `${this.publicBase}/${yyyy}/${mm}/${filename}`;
-      if (size.key === 'large') largeBytes = buf.length;
+    // The written paths, so a failure part-way through can undo itself.
+    const written: string[] = [];
+
+    try {
+      for (const size of this.sizes) {
+        const filename = `${baseId}-${size.key}.webp`;
+        const outPath = join(dir, filename);
+        const buf = await sharp(file.buffer)
+          .rotate()
+          .resize({ width: size.width, withoutEnlargement: true })
+          .webp({ quality: this.quality })
+          .toBuffer();
+        await writeFile(outPath, buf);
+        written.push(outPath);
+        urls[size.key] = `${this.publicBase}/${yyyy}/${mm}/${filename}`;
+        if (size.key === 'large') largeBytes = buf.length;
+      }
+    } catch (e) {
+      // A 500 for a corrupt upload, until now.
+      //
+      // metadata() above is wrapped and gives a clean 400, but a file
+      // whose HEADER parses and whose pixel data does not — a truncated
+      // download, a half-written export — only fails here, at
+      // toBuffer(). The uploader was told "erro interno do servidor"
+      // about their own bad file.
+      //
+      // Whatever variants did get written are removed: leaving them
+      // would be files on disk that no row points at, invisible for
+      // ever and counting against a quota.
+      await this.unlinkVariants(
+        written.map((p) => `${this.publicBase}/${yyyy}/${mm}/${p.split(/[\\/]/).pop()}`),
+      );
+      throw new BadRequestException(
+        `Não foi possível processar a imagem: ${(e as Error).message}`,
+      );
     }
 
     const created = await this.prisma.media.create({

@@ -14,6 +14,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { MulterExceptionFilter } from './multer-exception.filter';
 import {
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -37,6 +38,19 @@ class ListMediaQueryDto extends PageQueryDto {
   @IsString()
   @Length(0, 100)
   q?: string;
+
+  /**
+   * Whose library to list. Defaults to the caller's own.
+   *
+   * Declared here and not just read off the query string because the
+   * global ValidationPipe runs with `forbidNonWhitelisted: true`
+   * (main.ts) — an undeclared parameter is a 400, not an ignored one.
+   *
+   * `todas` is refused to anyone but a SUPER_ADMIN, in the service.
+   */
+  @IsOptional()
+  @IsIn(['minha', 'todas'])
+  scope?: 'minha' | 'todas';
 }
 
 class CreateMediaDto {
@@ -74,8 +88,10 @@ export class MediaController {
 
   @Get()
   @RequirePermissions('media.carregar')
-  list(@Query() query: ListMediaQueryDto) {
-    return this.service.list(query);
+  list(@Query() query: ListMediaQueryDto, @CurrentUser() user: AuthUser) {
+    // `media.carregar` says "may use the media library at all"; whose
+    // library is the service's decision, from the role.
+    return this.service.list(query, { id: user.id, role: user.role });
   }
 
   @Post()

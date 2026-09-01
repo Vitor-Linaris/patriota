@@ -7,6 +7,7 @@ import sharp from 'sharp';
 import { createTestApp } from './helpers/app';
 import { makeUser, bearer } from './helpers/auth';
 import { truncate } from './helpers/db';
+import { PrismaService } from '../src/prisma/prisma.service';
 
 describe('Media uploads (e2e)', () => {
   let app: INestApplication;
@@ -39,7 +40,7 @@ describe('Media uploads (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await truncate(app, ['Media']);
+    await truncate(app, ['Article', 'Category', 'Media', 'User']);
   });
 
   async function makePngBuffer(width = 1200, height = 800): Promise<Buffer> {
@@ -112,6 +113,39 @@ describe('Media uploads (e2e)', () => {
     expect(res.body.message).toMatch(/demasiado grande/i);
   });
 
+  it('answers 400, not 500, for a file whose header parses but whose data does not', async () => {
+    // A truncated download or a half-written export. The header is a
+    // real PNG signature so `metadata()` accepts it; the pixel data is
+    // rubbish and only blows up in the resize loop — which used to give
+    // the uploader "erro interno do servidor" about their own bad file.
+    const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+    const real = await makePngBuffer(100, 100);
+    const truncated = real.subarray(0, 60);
+
+    // The uploads dir accumulates across the whole spec — only the
+    // database is truncated between tests — so count the difference
+    // rather than the total.
+    const webpCount = () =>
+      (readdirSync(uploadsDir, { recursive: true }) as string[]).filter((f) =>
+        String(f).endsWith('.webp'),
+      ).length;
+    const before = webpCount();
+
+    const res = await request(app.getHttpServer())
+      .post('/admin/media/upload')
+      .set(bearer(user))
+      .attach('file', truncated, {
+        filename: 'partido.png',
+        contentType: 'image/png',
+      });
+
+    expect(res.status).toBe(400);
+    // And the variants that were written before it failed are cleaned
+    // up: files no row points at are invisible for ever and would count
+    // against a quota nobody could explain.
+    expect(webpCount()).toBe(before);
+  });
+
   it('rejects unauthenticated upload with 401', async () => {
     const png = await makePngBuffer(100, 100);
     await request(app.getHttpServer())
@@ -131,6 +165,146 @@ describe('Media uploads (e2e)', () => {
       .expect(201);
     expect(res.body.width).toBe(200);
     expect(res.body.height).toBe(200);
+  });
+
+  describe('the library is per person', () => {
+    async function uploadAs(
+      user: Awaited<ReturnType<typeof makeUser>>,
+      filename: string,
+    ) {
+      const png = await makePngBuffer(300, 200);
+      const res = await request(app.getHttpServer())
+        .post('/admin/media/upload')
+        .set(bearer(user))
+        .attach('file', png, { filename, contentType: 'image/png' })
+        .expect(201);
+      return res.body.id as string;
+    }
+
+    const listAs = (
+      user: Awaited<ReturnType<typeof makeUser>>,
+      qs = '',
+    ) =>
+      request(app.getHttpServer())
+        .get(`/admin/media${qs}`)
+        .set(bearer(user));
+
+    it('each person sees only what they uploaded', async () => {
+      // The whole point. Until now `list()` had no user filter at all
+      // and everybody saw everybody's.
+      const ana = await makeUser(app, { role: 'JORNALISTA' });
+      const bruno = await makeUser(app, { role: 'EDITOR' });
+      await uploadAs(ana, 'da-ana.png');
+      await uploadAs(bruno, 'do-bruno.png');
+
+      const mine = await listAs(ana).expect(200);
+      expect(mine.body.total).toBe(1);
+      expect(mine.body.items[0].name).toBe('da-ana');
+
+      const theirs = await listAs(bruno).expect(200);
+      expect(theirs.body.total).toBe(1);
+      expect(theirs.body.items[0].name).toBe('do-bruno');
+    });
+
+    it('the search only searches your own library', async () => {
+      // A filter that reached past the scope would be a way to confirm
+      // what other people have, one filename at a time.
+      const ana = await makeUser(app, { role: 'JORNALISTA' });
+      const bruno = await makeUser(app, { role: 'EDITOR' });
+      await uploadAs(bruno, 'segredo.png');
+
+      const res = await listAs(ana, '?q=segredo').expect(200);
+      expect(res.body.total).toBe(0);
+    });
+
+    it('a SUPER_ADMIN can ask for everything, with the owner attached', async () => {
+      // Without this, files belonging to staff who have left would be
+      // unreachable for ever and no one could answer "where did that
+      // photo go".
+      const ana = await makeUser(app, { role: 'JORNALISTA', name: 'Ana' });
+      const boss = await makeUser(app, { role: 'SUPER_ADMIN' });
+      await uploadAs(ana, 'da-ana.png');
+
+      const own = await listAs(boss).expect(200);
+      expect(own.body.total).toBe(0);
+
+      const all = await listAs(boss, '?scope=todas').expect(200);
+      expect(all.body.total).toBe(1);
+      expect(all.body.items[0].uploadedBy.name).toBe('Ana');
+    });
+
+    it('refuses scope=todas to anybody else, rather than quietly narrowing', async () => {
+      // Silently returning their own library would look like the filter
+      // worked and showed nothing — a filter that does something else
+      // is worse than one that refuses.
+      const chief = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      await listAs(chief, '?scope=todas').expect(403);
+    });
+
+    it('never leaks the owner password hash', async () => {
+      // The relation is selected explicitly. An `include` on User would
+      // bring the whole row, hash and all.
+      const ana = await makeUser(app, { role: 'JORNALISTA' });
+      await uploadAs(ana, 'da-ana.png');
+
+      const res = await listAs(ana).expect(200);
+      const owner = res.body.items[0].uploadedBy;
+      expect(Object.keys(owner).sort()).toEqual(['id', 'name']);
+    });
+
+    it('still counts usage across everybody, not just your own articles', async () => {
+      // Deliberately NOT scoped. An image embedded in somebody else's
+      // article has to read as in-use, or its owner deletes it and
+      // breaks a page they cannot even see.
+      // Ana is an EDITOR_CHEFE here only because the delete assertion at
+      // the end needs `media.eliminar`; a JORNALISTA would be stopped by
+      // the permission guard at 403 and never reach the in-use check
+      // this test is about.
+      const ana = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const bruno = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const id = await uploadAs(ana, 'capa.png');
+
+      const listed = await listAs(ana).expect(200);
+      const url = listed.body.items[0].url as string;
+
+      const prisma = app.get(PrismaService);
+      const cat = await prisma.category.create({
+        data: {
+          slug: 'sociedade',
+          name: 'Sociedade',
+          description: 'd',
+          icon: '◆',
+          color: '#1e40af',
+          order: 1,
+          visible: true,
+          path: '/root/',
+        },
+      });
+      await prisma.article.create({
+        data: {
+          slug: 'artigo-do-bruno',
+          title: 'Artigo do Bruno',
+          summary: 's',
+          content: 'c',
+          status: 'PUBLICADO',
+          publishedAt: new Date(),
+          coverImageUrl: url,
+          categoryId: cat.id,
+          authorId: bruno.id,
+        },
+      });
+
+      const after = await listAs(ana).expect(200);
+      expect(after.body.items[0].articleCount).toBe(1);
+
+      // And she cannot delete it out from under him.
+      await request(app.getHttpServer())
+        .delete(`/admin/media/${id}`)
+        .set(bearer(ana))
+        .expect(409);
+
+      await truncate(app, ['Article', 'Category', 'Media']);
+    });
   });
 
   describe('deleting', () => {

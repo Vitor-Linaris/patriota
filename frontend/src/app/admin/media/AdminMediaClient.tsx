@@ -28,6 +28,9 @@ export interface MediaItem {
     | { kind: "article"; id: string; slug: string; title: string }
     | { kind: "ad"; id: string; title: string }
   >;
+  /** Owner's name. Only ever filled in the whole-team view — in your
+   *  own library every row would say your own name. */
+  uploadedBy?: string | null;
 }
 
 function parseDimensions(text: string): { width?: number; height?: number } {
@@ -43,6 +46,8 @@ export default function AdminMediaClient({
   currentPage,
   totalPages,
   searchQuery,
+  scope,
+  canSeeAll,
 }: {
   initialItems: MediaItem[];
   /** Items in the CURRENT page + search filter. */
@@ -52,6 +57,10 @@ export default function AdminMediaClient({
   currentPage: number;
   totalPages: number;
   searchQuery: string;
+  /** Whose library is on screen. */
+  scope: "minha" | "todas";
+  /** Whether "toda a equipa" is on offer at all — SUPER_ADMIN only. */
+  canSeeAll: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -61,12 +70,18 @@ export default function AdminMediaClient({
     "todas",
   );
 
-  const buildUrl = (updates: { q?: string | null; page?: number | null }) => {
+  const buildUrl = (updates: {
+    q?: string | null;
+    page?: number | null;
+    scope?: "minha" | "todas";
+  }) => {
     const params = new URLSearchParams();
     const q = updates.q !== undefined ? updates.q : searchQuery;
     const page = updates.page !== undefined ? updates.page : currentPage;
+    const nextScope = updates.scope ?? scope;
     if (q) params.set("q", q);
     if (page && page > 1) params.set("page", String(page));
+    if (nextScope === "todas") params.set("scope", "todas");
     const qs = params.toString();
     return qs ? `/admin/media?${qs}` : "/admin/media";
   };
@@ -523,6 +538,33 @@ export default function AdminMediaClient({
 
       {/* FILTERS + SEARCH */}
       <div className="mb-5 flex flex-wrap items-center gap-3">
+        {/* Whose library. Server-driven, unlike the usage filter beside
+            it — this one changes the query, not just what is hidden on
+            the page already. Offered to the SUPER_ADMIN alone; the API
+            refuses scope=todas to everyone else regardless of what the
+            page renders. */}
+        {canSeeAll && (
+          <div className="flex items-center divide-x divide-gray-100 overflow-hidden rounded-xl border border-gray-200 bg-white">
+            {(
+              [
+                { key: "minha", label: "A minha" },
+                { key: "todas", label: "Toda a equipa" },
+              ] as const
+            ).map((s) => (
+              <button
+                key={s.key}
+                type="button"
+                onClick={() =>
+                  router.push(buildUrl({ scope: s.key, page: 1 }))
+                }
+                className={`whitespace-nowrap px-4 py-2.5 text-xs font-bold transition-colors ${scope === s.key ? "bg-[#0F2C6B] text-white" : "text-gray-500 hover:bg-gray-50"}`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="flex items-center divide-x divide-gray-100 overflow-hidden rounded-xl border border-gray-200 bg-white">
           {(
             [
@@ -697,6 +739,22 @@ export default function AdminMediaClient({
                   <div className="flex justify-between text-xs">
                     <span className="font-semibold text-gray-400">Tamanho</span>
                     <span className="text-gray-700">{selected.size}</span>
+                  </div>
+                )}
+                {/* Only in the whole-team view — in your own library
+                    every row would carry your own name. */}
+                {scope === "todas" && (
+                  <div className="flex justify-between text-xs">
+                    <span className="font-semibold text-gray-400">
+                      Enviado por
+                    </span>
+                    <span className="text-gray-700">
+                      {selected.uploadedBy ?? (
+                        // Staff who have left. The file outlives the
+                        // account on purpose — articles still use it.
+                        <em className="text-gray-400">sem dono</em>
+                      )}
+                    </span>
                   </div>
                 )}
               </div>

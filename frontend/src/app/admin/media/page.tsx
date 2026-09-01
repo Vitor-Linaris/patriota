@@ -20,6 +20,8 @@ interface MediaApi {
   width: number | null;
   height: number | null;
   uploadedAt: string;
+  /** Who put it there. Null for files left by staff who have gone. */
+  uploadedBy: { id: string; name: string | null } | null;
   /** Count of articles that reference this media (cover or inline). */
   articleCount: number;
   /** Count of ad slots whose imageUrl points at this media. */
@@ -56,6 +58,7 @@ function toMediaItem(m: MediaApi): MediaItem {
     articleCount: m.articleCount ?? 0,
     adCount: m.adCount ?? 0,
     usedIn: m.usedIn ?? [],
+    uploadedBy: m.uploadedBy?.name ?? null,
   };
 }
 
@@ -64,23 +67,33 @@ const PAGE_SIZE = 24;
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; q?: string }>;
+  searchParams: Promise<{ page?: string; q?: string; scope?: string }>;
 }) {
-  const { page: pageParam, q: qParam } = await searchParams;
+  const { page: pageParam, q: qParam, scope: scopeParam } = await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
   const q = (qParam ?? "").trim();
+  // Anything unrecognised is dropped rather than forwarded: the API
+  // rejects unknown query params outright (forbidNonWhitelisted), so a
+  // typo in a bookmark would render an empty page instead of a library.
+  const scope = scopeParam === "todas" ? "todas" : undefined;
 
   const listParams = new URLSearchParams();
   listParams.set("page", String(page));
   listParams.set("pageSize", String(PAGE_SIZE));
   if (q) listParams.set("q", q);
+  if (scope) listParams.set("scope", scope);
 
   // Fire the page query AND a no-search count query in parallel — the
   // latter feeds the "X imagens no total" stat (always the full
   // library count, ignores the search filter).
-  const [res, totalRes] = await Promise.all([
+  const [res, totalRes, meRes] = await Promise.all([
     apiFetch(`/admin/media?${listParams.toString()}`),
-    apiFetch("/admin/media?pageSize=1"),
+    // The stat card's denominator. Same scope as the list, so "de X no
+    // total" never counts files the grid below cannot show.
+    apiFetch(`/admin/media?pageSize=1${scope ? "&scope=todas" : ""}`),
+    // Only to decide whether to offer the "toda a equipa" filter. The
+    // API refuses scope=todas to anyone else regardless.
+    apiFetch("/auth/me"),
   ]);
   const body = res.ok
     ? ((await res.json()) as PageResult<MediaApi>)
@@ -88,6 +101,10 @@ export default async function Page({
   const totalLibrary = totalRes.ok
     ? ((await totalRes.json()) as PageResult<MediaApi>).total
     : body.total;
+  const me = meRes.ok
+    ? ((await meRes.json()) as { role?: string })
+    : {};
+  const canSeeAll = me.role === "SUPER_ADMIN";
   const items = body.items.map(toMediaItem);
   const totalPages = Math.max(1, Math.ceil(body.total / PAGE_SIZE));
   return (
@@ -99,6 +116,8 @@ export default async function Page({
         currentPage={page}
         totalPages={totalPages}
         searchQuery={q}
+        scope={scope === "todas" ? "todas" : "minha"}
+        canSeeAll={canSeeAll}
       />
     </AdminShell>
   );
