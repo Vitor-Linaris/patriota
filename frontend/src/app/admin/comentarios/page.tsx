@@ -25,9 +25,12 @@ export default async function Page({
   });
   if (q) params.set("q", q);
 
-  const [listRes, statsRes] = await Promise.all([
+  const [listRes, statsRes, meRes] = await Promise.all([
     apiFetch(`/admin/comments?${params.toString()}`),
     apiFetch("/admin/comments/stats"),
+    // Only to decide whether to draw the ban control. The API enforces
+    // leitores.suspender regardless of what the page renders.
+    apiFetch("/auth/me"),
   ]);
 
   const list = listRes.ok
@@ -36,6 +39,12 @@ export default async function Page({
   const stats = statsRes.ok
     ? ((await statsRes.json()) as CommentStats)
     : ({} as CommentStats);
+  const me = meRes.ok
+    ? ((await meRes.json()) as { role?: string; permissions?: string[] })
+    : {};
+  const canBan =
+    me.role === "SUPER_ADMIN" ||
+    (me.permissions ?? []).includes("leitores.suspender");
 
   return (
     <AdminShell active="/admin/comentarios">
@@ -46,6 +55,7 @@ export default async function Page({
         activeStatus={active}
         currentPage={currentPage}
         query={q ?? ""}
+        canBan={canBan}
       />
     </AdminShell>
   );

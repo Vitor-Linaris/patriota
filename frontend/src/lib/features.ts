@@ -17,6 +17,18 @@ export const FEATURES = {
   readerArea: process.env.NEXT_PUBLIC_FEATURE_READER_AREA === "true",
 
   /**
+   * Whether this deployment can take a payment today.
+   *
+   * Mirrors the presence of STRIPE_SECRET_KEY on the API, which is the
+   * real switch — this one only decides whether the reader is offered a
+   * "Assinar agora" button or the page that explains what is coming. A
+   * button that can only ever produce an error is worse than no button,
+   * which is the whole reason this flag exists rather than always
+   * showing the checkout.
+   */
+  billing: process.env.NEXT_PUBLIC_FEATURE_BILLING === "true",
+
+  /**
    * Comments engine (posting, moderation, "Mais comentadas" tab). The
    * backend has no Comment model yet, so the UI is hidden until the
    * module ships.
@@ -45,12 +57,14 @@ export const FEATURES = {
   /**
    * The "Conteúdo Exclusivo" switch in the article editor.
    *
-   * The field, the DTO and the write path all work already — what does
-   * not exist is the paywall itself: listPublic() and findPublicBySlug()
-   * never look at Article.exclusive, so a flagged article is served in
-   * full to anyone. Hidden until paid subscriptions ship, so nobody
-   * marks a piece "subscribers only" months before a reader has any way
-   * to subscribe.
+   * The paywall behind it now exists: findPublicBySlug() withholds the
+   * body of a flagged article from anyone whose plan lacks
+   * `assinantes.ler_exclusivos`. Two other things still have to be true
+   * for marking a piece exclusive to mean anything —
+   * FEATURE_PAYWALL=true on the API, and a way for a reader to actually
+   * subscribe, which arrives with Stripe. Until then this stays off in
+   * production so nobody marks a piece "subscribers only" months before
+   * anyone can become one.
    */
   subscriberPublishing:
     process.env.NEXT_PUBLIC_FEATURE_SUBSCRIBER_PUBLISHING === "true",

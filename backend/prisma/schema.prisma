@@ -38,8 +38,17 @@ enum ReaderStatus {
   ANONIMIZADO
 }
 
-/// PREMIUM is inert until phase 2 (Stripe Billing). Shipped now so the
-/// paywall migration is data-only.
+/// Where a subscription came from. Lets the dashboard tell a gift from
+/// a paying customer, and stops a manual grant quietly overwriting a
+/// live Stripe subscription.
+enum PlanSource {
+  MANUAL
+  STRIPE
+}
+
+/// The reader's plan. No longer inert: the paywall reads it, though only
+/// through the PlanPermissions table — what PREMIUM actually buys is a
+/// question answered on /admin/permissions, not by this enum.
 enum ReaderPlan {
   GRATIS
   PREMIUM
@@ -190,6 +199,8 @@ model User {
   activities        ActivityLog[]
   articles          Article[]
   moderatedComments Comment[]     @relation("CommentModerator")
+  suspendedReaders  Reader[]      @relation("ReaderSuspender")
+  grantedPlans      Reader[]      @relation("PlanGranter")
 }
 
 /// Up to 4 levels: categoria (depth 0) -> subcategoria -> topico ->
@@ -336,6 +347,38 @@ model RolePermissions {
   updatedAt   DateTime @updatedAt
 }
 
+/// What a reader on each plan may do. Mirrors RolePermissions, and is a
+/// separate table on purpose: a reader's plan is not a Role, and folding
+/// the two lists together would let a staff role be granted a reader
+/// permission by accident. See the note in rbac.constants.ts.
+/// Every Stripe event we have already acted on.
+///
+/// Stripe retries a webhook until it gets a 2xx, and it sends the same
+/// event more than once by design — "at least once" delivery. Handling
+/// one twice must not extend a subscription twice, so the id goes in
+/// here first, inside the same transaction as the change it authorises.
+/// The primary key is Stripe's own event id, which makes the second
+/// delivery a unique-constraint violation rather than a judgement call.
+///
+/// Rows are never updated. Old ones can be pruned by date if this ever
+/// grows enough to matter.
+model StripeEvent {
+  /// Stripe's `evt_…` id.
+  id         String   @id
+  type       String
+  /// Which reader it touched, when we could tell. For support, not logic.
+  readerId   String?
+  receivedAt DateTime @default(now())
+
+  @@index([receivedAt])
+}
+
+model PlanPermissions {
+  plan        ReaderPlan @id
+  permissions String[]
+  updatedAt   DateTime   @updatedAt
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Reader area — the PUBLIC audience.
 //
@@ -363,6 +406,18 @@ model Reader {
   /// 30-day cookie gets revoked without server-side session storage.
   tokenVersion    Int          @default(0)
 
+  /// Suspension detail. `status = SUSPENSO` is the flag; this is the rest
+  /// of the story. A NULL `suspendedUntil` alongside SUSPENSO means
+  /// permanent; a date in the future is a ban that LAPSES ON ITS OWN,
+  /// because every checkpoint compares the date instead of trusting a
+  /// scheduled job to come along and flip the status back. If the process
+  /// is down on the day a ban ends, nobody stays banned by accident.
+  /// reader-suspension.ts is the single place that decides.
+  suspendedUntil   DateTime?
+  suspensionReason String?
+  suspendedById    String?
+  suspendedBy      User?     @relation("ReaderSuspender", fields: [suspendedById], references: [id], onDelete: SetNull)
+
   // Notification preferences (global; per-category lives on CategoryFavorite)
   notifyNewArticles Boolean         @default(true)
   digestFrequency   DigestFrequency @default(DIARIO)
@@ -375,12 +430,39 @@ model Reader {
   /// When false the reader shows as "Leitor" on their public comments.
   displayNamePublic Boolean @default(true)
 
-  // Phase 2 (Stripe Billing). Inert today; shipped now so enabling the
-  // paywall is a data migration rather than a schema migration.
-  plan             ReaderPlan @default(GRATIS)
-  planStatus       String?
+  plan       ReaderPlan @default(GRATIS)
+  planStatus String?
+  /// When the current entitlement ENDS. NULL means no end date.
+  ///
+  /// One column for both kinds of subscription, and one meaning:
+  /// "entitled until". For Stripe that is the end of the paid period —
+  /// which is also why a cancelled subscription keeps working to the
+  /// date it was paid up to. For a subscription given by hand it is the
+  /// expiry the admin chose.
+  ///
+  /// Read by date, like a suspension: a lapsed plan reads as GRATIS at
+  /// the next request, with no job to run. See reader-entitlement.ts.
   planRenewsAt     DateTime?
-  stripeCustomerId String?    @unique
+  /// When the current subscription BEGAN.
+  ///
+  /// Needed to answer "how many new subscribers this month", which no
+  /// other column can: planRenewsAt moves forward on every renewal, and
+  /// createdAt is when the account was opened, not when they started
+  /// paying.
+  planStartedAt    DateTime?
+  /// Where the subscription came from. NULL on a free reader.
+  planSource       PlanSource?
+  /// Who gave it, on a manual grant. Kept so a gift has a name attached.
+  planGrantedById  String?
+  planGrantedBy    User?       @relation("PlanGranter", fields: [planGrantedById], references: [id], onDelete: SetNull)
+  /// Why it was given. Internal; the reader never sees it.
+  planNote         String?
+  /// The Stripe customer. Kept even after a subscription ends — they are
+  /// still the same customer, and losing it would orphan their invoice
+  /// history and mint a second customer if they ever come back.
+  stripeCustomerId String?     @unique
+  /// The Stripe subscription currently backing this plan, if any.
+  stripeSubscriptionId String? @unique
 
   lastLoginAt DateTime?
   createdAt   DateTime  @default(now())
@@ -396,6 +478,16 @@ model Reader {
 
   @@index([status])
   @@index([createdAt])
+  /// Counting live subscribers is "plan = PREMIUM AND the end date has
+  /// not passed" — the shape of every subscription figure on the
+  /// dashboard. Without this it is a full table scan on every load.
+  @@index([plan, planRenewsAt])
+  /// Both of these exist in the database already, created by hand in the
+  /// migrations that added the foreign keys. Declared here so the schema
+  /// and the database agree — undeclared, the next `migrate dev` would
+  /// generate a migration to drop them.
+  @@index([suspendedById])
+  @@index([planGrantedById])
 }
 
 /// A linked social account. One Reader may hold several.

@@ -175,6 +175,61 @@ describe('Comments (e2e)', () => {
     expect(res.body.body).toContain('mundo');
   });
 
+  describe('length limit', () => {
+    it('accepts a comment right on the limit', async () => {
+      const reader = await makeReader(app);
+      await post(reader, 'a'.repeat(280)).expect(201);
+    });
+
+    it('refuses one character over, and says by how much', async () => {
+      const reader = await makeReader(app);
+      const res = await post(reader, 'a'.repeat(281)).expect(400);
+      expect(res.body.message).toMatch(/281 caracteres/);
+      expect(res.body.message).toMatch(/280/);
+    });
+
+    it('measures after the tags come off, not before', async () => {
+      // Markup the reader never typed — pasted out of a word processor —
+      // must not eat their allowance. 270 characters of text wrapped in
+      // spans is well over 280 raw and well under it once stripped.
+      const reader = await makeReader(app);
+      const wrapped = `<span class="x">${'a'.repeat(270)}</span>`;
+      expect(wrapped.length).toBeGreaterThan(280);
+
+      const res = await post(reader, wrapped).expect(201);
+      expect(res.body.body).toBe('a'.repeat(270));
+    });
+
+    it('refuses rather than silently truncating', async () => {
+      // The old code sliced at the cap. At 280 that would publish half
+      // an argument under the reader's name, with no sign anything was
+      // lost.
+      const reader = await makeReader(app);
+      await post(reader, 'a'.repeat(400)).expect(400);
+      const count = await app
+        .get(PrismaService)
+        .comment.count({ where: { articleId } });
+      expect(count).toBe(0);
+    });
+
+    it('stops an absurd paste at the door', async () => {
+      // Past the DTO's raw ceiling, so it never reaches the sanitiser.
+      const reader = await makeReader(app);
+      await post(reader, 'a'.repeat(50_000)).expect(400);
+    });
+
+    it('applies the same limit to an edit', async () => {
+      const reader = await makeReader(app);
+      const created = await post(reader, 'Comentário curto').expect(201);
+
+      await request(app.getHttpServer())
+        .patch(`/public/comments/${created.body.id}`)
+        .set(readerBearer(reader))
+        .send({ body: 'a'.repeat(281) })
+        .expect(400);
+    });
+  });
+
   it('caps threads at two levels by re-parenting onto the root', async () => {
     const reader = await makeReader(app);
     const root = await post(reader, 'Comentário raiz').expect(201);

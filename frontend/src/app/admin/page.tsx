@@ -1,5 +1,7 @@
 import { AdminShell } from "./AdminShell";
 import { DashboardActions } from "./DashboardActions";
+import { SubscriptionsPanel } from "./SubscriptionsPanel";
+import type { ReaderStats } from "./leitores/AdminReadersClient";
 import { apiFetch } from "@/lib/api";
 
 interface StatsResponse {
@@ -137,13 +139,17 @@ interface RejectedArticleItem {
 }
 
 async function loadDashboard() {
-  const [statsRes, activityRes, pendingRes, rejectedRes, meRes] =
+  const [statsRes, activityRes, pendingRes, rejectedRes, meRes, readerStatsRes] =
     await Promise.all([
       apiFetch("/admin/stats"),
       apiFetch("/admin/activity?pageSize=8"),
       apiFetch("/admin/articles?status=EM_REVISAO,AGENDADO&pageSize=6"),
       apiFetch("/admin/articles/my-rejected"),
       apiFetch("/auth/me"),
+      // Guarded by leitores.ver on the API. A 403 here is the normal
+      // answer for most of the newsroom, not an error — how many people
+      // pay for the paper is not a number for everyone who can log in.
+      apiFetch("/admin/readers/stats"),
     ]);
   const stats = statsRes.ok ? ((await statsRes.json()) as StatsResponse) : null;
   const activity = activityRes.ok
@@ -160,11 +166,14 @@ async function loadDashboard() {
     me?.role === "SUPER_ADMIN" ||
     me?.permissions?.includes("artigos.aprovar") ||
     false;
-  return { stats, activity, pending, rejected, canApprove };
+  const readerStats = readerStatsRes.ok
+    ? ((await readerStatsRes.json()) as ReaderStats)
+    : null;
+  return { stats, activity, pending, rejected, canApprove, readerStats };
 }
 
 export default async function AdminDashboardPage() {
-  const { stats, activity, pending, rejected, canApprove } =
+  const { stats, activity, pending, rejected, canApprove, readerStats } =
     await loadDashboard();
 
   const statCards = [
@@ -297,6 +306,10 @@ export default async function AdminDashboardPage() {
             </div>
           ))}
         </section>
+
+        {readerStats && (
+          <SubscriptionsPanel s={readerStats.subscriptions} />
+        )}
 
         <section className="grid gap-6 xl:grid-cols-3">
           {/* Pending articles */}

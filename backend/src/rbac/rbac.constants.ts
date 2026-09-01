@@ -1,6 +1,6 @@
-import { Role } from '../../generated/prisma/enums';
+import { Role, ReaderPlan } from '../../generated/prisma/enums';
 
-export { Role };
+export { Role, ReaderPlan };
 
 export const ROLE_LABELS: Record<Role, string> = {
   SUPER_ADMIN: 'Super Admin',
@@ -89,6 +89,15 @@ export const MODULES: ModuleDef[] = [
     ],
   },
   {
+    key: 'leitores',
+    label: 'Leitores',
+    permissions: [
+      { key: 'leitores.ver', label: 'Ver leitores', description: 'Listar as contas do público e pesquisar entre elas' },
+      { key: 'leitores.suspender', label: 'Suspender/Banir', description: 'Banir um leitor por 15 dias, 30 dias ou definitivamente' },
+      { key: 'leitores.oferecer_assinatura', label: 'Oferecer assinatura', description: 'Dar ou retirar assinatura à mão, sem pagamento' },
+    ],
+  },
+  {
     key: 'media',
     label: 'Média',
     permissions: [
@@ -128,6 +137,61 @@ export const MODULES: ModuleDef[] = [
 export const ALL_PERMISSIONS: string[] = MODULES.flatMap((m) =>
   m.permissions.map((p) => p.key),
 );
+
+// ─────────────────────────── reader plans ───────────────────────────
+//
+// A SECOND, separate axis. Everything above answers "what may this
+// member of the newsroom do"; everything below answers "what may a
+// reader on this plan do". They are stored apart (PlanPermissions vs
+// RolePermissions) and validated apart, and that separation is the point:
+// merging the two lists would put `assinantes.ler_exclusivos` inside
+// ALL_PERMISSIONS, where EDITOR_CHEFE's "everything except the RBAC
+// matrix" filter would hand it to staff — a reader permission granted to
+// people who are not readers, silently.
+//
+// The plan of a reader is not a Role, so it cannot ride in the existing
+// table either: `Reader.plan` is its own enum.
+
+export const PLAN_LABELS: Record<ReaderPlan, string> = {
+  GRATIS: 'Gratuito',
+  PREMIUM: 'Assinante',
+};
+
+export const PLAN_ORDER: ReaderPlan[] = ['GRATIS', 'PREMIUM'];
+
+export const PLAN_MODULES: ModuleDef[] = [
+  {
+    key: 'assinantes',
+    label: 'O que cada plano pode',
+    permissions: [
+      { key: 'assinantes.ler_exclusivos', label: 'Ler exclusivos', description: 'Aceder aos artigos marcados como exclusivos, por inteiro' },
+      { key: 'assinantes.comentar', label: 'Comentar', description: 'Escrever comentários nos artigos' },
+      { key: 'assinantes.guardar_artigos', label: 'Guardar artigos', description: 'Guardar artigos para ler mais tarde' },
+      { key: 'assinantes.seguir_categorias', label: 'Seguir categorias', description: 'Seguir secções e receber aviso de artigos novos' },
+    ],
+  },
+];
+
+export const ALL_PLAN_PERMISSIONS: string[] = PLAN_MODULES.flatMap((m) =>
+  m.permissions.map((p) => p.key),
+);
+
+/**
+ * Defaults per plan.
+ *
+ * GRATIS is deliberately a description of what a free reader can already
+ * do today, so switching this on changes nothing for anybody. The single
+ * difference PREMIUM brings is the exclusives — which is the whole
+ * proposition, and the only line the paywall will read.
+ */
+export const DEFAULT_PLAN_PERMISSIONS: Record<ReaderPlan, string[]> = {
+  GRATIS: [
+    'assinantes.comentar',
+    'assinantes.guardar_artigos',
+    'assinantes.seguir_categorias',
+  ],
+  PREMIUM: [...ALL_PLAN_PERMISSIONS],
+};
 
 /**
  * Default permission set per role. SUPER_ADMIN bypasses checks and has all.
@@ -232,6 +296,12 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, string[]> = {
     'comentarios.ver',
     'comentarios.aprovar',
     'comentarios.eliminar',
+    'leitores.ver',
+    'leitores.suspender',
+    // NOT leitores.oferecer_assinatura: handing out subscriptions is
+    // giving away money, which is a different kind of decision from
+    // moderating a thread. It stays with SUPER_ADMIN and EDITOR_CHEFE,
+    // who get it through their own blanket grants.
     'utilizadores.ver',
     'utilizadores.suspender',
   ],

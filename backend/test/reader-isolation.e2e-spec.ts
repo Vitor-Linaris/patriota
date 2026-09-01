@@ -162,11 +162,16 @@ describe('Reader / staff session isolation (e2e)', () => {
   });
 
   it('refuses a suspended reader holding an otherwise valid token', async () => {
+    // 403 rather than the 401 a stale or forged token gets: the signature
+    // is good and the account is real, so "sessão inválida" would be a
+    // lie — and the one that sends a banned reader to support instead of
+    // telling them they are banned.
     const suspended = await makeReader(app, { status: 'SUSPENSO' });
-    await request(app.getHttpServer())
+    const res = await request(app.getHttpServer())
       .get('/reader/me')
       .set(readerBearer(suspended))
-      .expect(401);
+      .expect(403);
+    expect(res.body.message).toMatch(/suspensa/i);
   });
 });
 

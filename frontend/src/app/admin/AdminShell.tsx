@@ -54,6 +54,14 @@ const NAV: readonly NavItem[] = [
     requires: ["comentarios.ver"],
   },
   {
+    // The public's accounts, as distinct from "Utilizadores", which is
+    // the newsroom's. Two different populations, two different screens.
+    href: "/admin/leitores",
+    label: "Leitores",
+    icon: "☺",
+    requires: ["leitores.ver"],
+  },
+  {
     href: "/admin/categorias",
     label: "Categorias",
     icon: "◉",

@@ -14,6 +14,7 @@ import {
   STATIC_PAGE_SLUGS,
   type Block,
 } from "@/lib/static-pages";
+import { SubscribeButton } from "@/components/article/SubscribeButton";
 
 export function generateStaticParams() {
   return STATIC_PAGE_SLUGS.map((slug) => ({ slug }));
@@ -113,18 +114,45 @@ export default async function StaticPageRoute({
             */}
             {slug === "assinatura" && FEATURES.readerArea && (
               <div className="mt-8 flex flex-wrap items-center gap-3 rounded-[12px] border border-slate-200 bg-slate-50 px-5 py-4">
-                <Link
-                  href="/conta/registar"
-                  className="rounded-[8px] bg-patriota-pure px-4 py-2.5 text-[14px] font-bold text-white transition hover:brightness-110"
-                >
-                  Criar conta gratuita
-                </Link>
-                <Link
-                  href="/conta/entrar"
-                  className="text-[14px] font-semibold text-patriota-medium hover:underline"
-                >
-                  Já tenho conta
-                </Link>
+                {/* Once payments are live, subscribing is the action
+                    this page exists for and goes first. Until then the
+                    free account is the only thing on offer, and leading
+                    with a button that cannot work would be a lie. */}
+                {FEATURES.billing ? (
+                  <>
+                    <SubscribeButton
+                      returnTo="/p/assinatura"
+                      className="rounded-[8px] bg-patriota-pure px-4 py-2.5 text-[14px] font-bold text-white transition hover:brightness-110 disabled:opacity-60"
+                    >
+                      Assinar
+                    </SubscribeButton>
+                    {/* One label for both states, and no cookie read:
+                        /conta sends an anonymous visitor to sign in on
+                        its own, and reading the cookie here would opt
+                        every static page out of static generation. */}
+                    <Link
+                      href="/conta/assinatura"
+                      className="text-[14px] font-semibold text-patriota-medium hover:underline"
+                    >
+                      A minha assinatura
+                    </Link>
+                  </>
+                ) : (
+                  <>
+                    <Link
+                      href="/conta/registar"
+                      className="rounded-[8px] bg-patriota-pure px-4 py-2.5 text-[14px] font-bold text-white transition hover:brightness-110"
+                    >
+                      Criar conta gratuita
+                    </Link>
+                    <Link
+                      href="/conta/entrar"
+                      className="text-[14px] font-semibold text-patriota-medium hover:underline"
+                    >
+                      Já tenho conta
+                    </Link>
+                  </>
+                )}
               </div>
             )}
 

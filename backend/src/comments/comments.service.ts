@@ -17,8 +17,19 @@ import type { CommentStatus } from '../../generated/prisma/enums';
 /** How long an author may edit their own comment. */
 const EDIT_WINDOW_MS = 15 * 60 * 1000;
 
-/** Hard cap; the DTO enforces it too, this is defence in depth. */
-const MAX_BODY = 2000;
+/**
+ * Length cap on a comment, in characters.
+ *
+ * 280 is the one number in this range that has been tested at scale and
+ * shown to hold a complete thought — long enough to state a position AND
+ * the fact behind it, short of an essay. Portuguese runs about a fifth
+ * longer than English for the same content, so 280 here is roughly 230
+ * in English: still comfortably one clear point, around 50 words.
+ *
+ * Measured on the STRIPPED text (see the guard in create/update), not on
+ * what arrives: markup a reader never typed must not eat the allowance.
+ */
+export const MAX_BODY = 280;
 
 export interface ActingStaff {
   id: string;
@@ -34,14 +45,18 @@ export interface ActingStaff {
  * comment would be stored XSS on every article page. Sanitising on write
  * AND rendering as {body} on read means both layers have to fail before
  * anything executes.
+ *
+ * It no longer truncates. It used to slice at the old 2000-character
+ * bound, which was harmless at that length; at 280 a silent cut would
+ * publish half an argument under somebody's name. Too long is now a
+ * refusal with a count, made by the caller.
  */
 export function stripTags(input: string): string {
   return input
     .replace(/<[^>]*>/g, '')
     .replace(/\r\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
-    .trim()
-    .slice(0, MAX_BODY);
+    .trim();
 }
 
 @Injectable()
@@ -192,6 +207,15 @@ export class CommentsService {
     if (body.length < 2) {
       throw new BadRequestException('O comentário é demasiado curto.');
     }
+    // Measured AFTER stripTags, not in the DTO: the DTO sees the raw
+    // input, so markup a reader never typed — pasted out of a word
+    // processor, say — would eat their allowance. At 280 that is the
+    // difference between a comment going through and being refused.
+    if (body.length > MAX_BODY) {
+      throw new BadRequestException(
+        `O comentário tem ${body.length} caracteres. O limite é ${MAX_BODY}.`,
+      );
+    }
 
     // Threads are capped at two levels. A reply to a reply is re-parented
     // onto the root rather than rejected — rejecting would be a confusing
@@ -243,6 +267,15 @@ export class CommentsService {
     const body = stripTags(rawBody);
     if (body.length < 2) {
       throw new BadRequestException('O comentário é demasiado curto.');
+    }
+    // Measured AFTER stripTags, not in the DTO: the DTO sees the raw
+    // input, so markup a reader never typed — pasted out of a word
+    // processor, say — would eat their allowance. At 280 that is the
+    // difference between a comment going through and being refused.
+    if (body.length > MAX_BODY) {
+      throw new BadRequestException(
+        `O comentário tem ${body.length} caracteres. O limite é ${MAX_BODY}.`,
+      );
     }
 
     // An edit sends it back through moderation. Otherwise an approved
@@ -376,7 +409,19 @@ export class CommentsService {
           editedAt: true,
           moderatedAt: true,
           moderationNote: true,
-          reader: { select: { id: true, name: true, email: true, status: true } },
+          // suspendedUntil rides along so the queue can show "já banido
+          // até 14 de Setembro" instead of offering to ban them again.
+          // `status` on its own cannot answer that: it still says
+          // SUSPENSO after the end date has passed.
+          reader: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              status: true,
+              suspendedUntil: true,
+            },
+          },
           moderatedBy: { select: { id: true, name: true } },
           article: { select: { slug: true, title: true } },
         },
@@ -483,6 +528,40 @@ export class CommentsService {
     });
 
     return { updated: rows.length };
+  }
+
+  /**
+   * Wipes every comment a reader has written. Used when a ban is handed
+   * out and the moderator asks for the trail to go with it.
+   *
+   * ELIMINADO rather than a hard delete, exactly like the moderator's own
+   * "eliminar" button: replies stay attached to their parent and the
+   * thread keeps its shape instead of collapsing around the hole.
+   */
+  async purgeByReader(readerId: string, staff: ActingStaff): Promise<number> {
+    const rows = await this.prisma.comment.findMany({
+      where: { readerId, status: { not: 'ELIMINADO' } },
+      select: { id: true, articleId: true },
+    });
+    if (rows.length === 0) return 0;
+
+    await this.prisma.comment.updateMany({
+      where: { id: { in: rows.map((r) => r.id) } },
+      data: {
+        status: 'ELIMINADO',
+        moderatedById: staff.id,
+        moderatedAt: new Date(),
+      },
+    });
+
+    for (const articleId of new Set(rows.map((r) => r.articleId))) {
+      await this.recount(articleId);
+    }
+
+    // No activity entry of its own — the suspension that ordered this
+    // logs the count, and two rows for one action makes the log read as
+    // if a moderator did something twice.
+    return rows.length;
   }
 
   // ─────────────────────────── denormalised count ───────────────────────────

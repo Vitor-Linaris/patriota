@@ -1,14 +1,13 @@
 import Link from "next/link";
 import {
   timeAgo,
-  type ArticleSummary,
-  type ArticleDetail,
+  type ArticleSummary,
 } from "@/lib/public-api";
 import { imageVariant } from "@/lib/images";
 import { CategoryBadge } from "../CategoryBadge";
 
 interface Props {
-  featured: ArticleDetail | null;
+  featured: ArticleSummary | null;
   side: ArticleSummary[];
 }
 

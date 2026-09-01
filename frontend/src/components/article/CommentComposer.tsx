@@ -28,12 +28,23 @@ export function CommentComposer({
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const MAX = 2000;
-  const remaining = MAX - body.length;
+  // Mirrors MAX_BODY in comments.service.ts.
+  //
+  // Typing past it is allowed on purpose. Hard-clamping at 280 makes the
+  // next keystroke vanish with no explanation, usually mid-sentence;
+  // letting the count go negative lets the reader finish the thought and
+  // then cut the part they care about least. The button stays disabled
+  // until they do. PASTE_CEILING only exists so a runaway paste does not
+  // hand the counter a megabyte to measure.
+  const MAX_CHARS = 280;
+  const PASTE_CEILING = 4000;
+  const used = body.trim().length;
+  const remaining = MAX_CHARS - used;
+  const overLimit = remaining < 0;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (body.trim().length < 2 || busy) return;
+    if (body.trim().length < 2 || overLimit || busy) return;
 
     setBusy(true);
     setError(null);
@@ -50,7 +61,15 @@ export function CommentComposer({
         return;
       }
       if (res.status === 403) {
-        setError("Confirme o seu e-mail antes de comentar.");
+        // Two different refusals arrive as 403 here: an unconfirmed
+        // address and a suspended account. Telling a banned reader to
+        // confirm an e-mail they confirmed months ago sends them to
+        // support over something they cannot fix, so prefer whatever the
+        // server said and keep the old line only as a fallback.
+        const body = (await res.json().catch(() => ({}))) as {
+          message?: string;
+        };
+        setError(body.message ?? "Confirme o seu e-mail antes de comentar.");
         return;
       }
       if (res.status === 429) {
@@ -79,7 +98,7 @@ export function CommentComposer({
     <form onSubmit={submit} className="flex flex-col gap-2">
       <textarea
         value={body}
-        onChange={(e) => setBody(e.target.value.slice(0, MAX))}
+        onChange={(e) => setBody(e.target.value.slice(0, PASTE_CEILING))}
         rows={parentId ? 3 : 4}
         autoFocus={autoFocus}
         placeholder={
@@ -104,12 +123,23 @@ export function CommentComposer({
       ) : null}
 
       <div className="flex items-center justify-between">
+        {/* Counts DOWN, not up. "restam 40" is something to act on;
+            "240 / 280" makes the reader do the subtraction. Once past
+            zero it shows how much has to go, which is the only number
+            that matters at that point. */}
         <span
-          className={`text-[12px] ${
-            remaining < 100 ? "text-amber-600" : "text-slate-400"
+          aria-live="polite"
+          className={`text-[12px] tabular-nums ${
+            overLimit
+              ? "font-semibold text-red-600"
+              : remaining <= 40
+                ? "text-amber-600"
+                : "text-slate-400"
           }`}
         >
-          {remaining} caracteres restantes
+          {overLimit
+            ? `${-remaining} caracteres a mais — o limite é ${MAX_CHARS}`
+            : `restam ${remaining} caracteres`}
         </span>
         <div className="flex gap-2">
           {parentId && onDone ? (
@@ -123,7 +153,7 @@ export function CommentComposer({
           ) : null}
           <button
             type="submit"
-            disabled={busy || body.trim().length < 2}
+            disabled={busy || body.trim().length < 2 || overLimit}
             className="rounded-[8px] bg-patriota-pure px-4 py-1.5 text-[13px] font-bold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy ? "A enviar…" : parentId ? "Responder" : "Comentar"}

@@ -27,6 +27,20 @@ export interface ReaderMe {
   emailVerifiedAt: string | null;
   status: "PENDENTE_VERIFICACAO" | "ATIVO" | "SUSPENSO" | "ANONIMIZADO";
   plan: "GRATIS" | "PREMIUM";
+  /**
+   * Whether the plan is live TODAY, by date. NOT the same as
+   * `plan === "PREMIUM"`: a row keeps saying PREMIUM past its end date
+   * until something tidies it, and this is the page a reader comes to
+   * when they cannot work out why an article is closed to them.
+   */
+  planActive: boolean;
+  planStatus: string | null;
+  /** When the current entitlement ends. NULL means no end date. */
+  planRenewsAt: string | null;
+  planSource: "MANUAL" | "STRIPE" | null;
+  planStartedAt: string | null;
+  /** There is a Stripe customer behind this account, so the portal opens. */
+  hasBilling: boolean;
   displayNamePublic: boolean;
   notifyNewArticles: boolean;
   digestFrequency: "IMEDIATO" | "DIARIO" | "SEMANAL" | "NUNCA";

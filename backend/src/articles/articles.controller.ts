@@ -15,6 +15,11 @@ import { IsOptional, IsString, Length } from 'class-validator';
 import { CreateArticleDto } from './dto/create-article.dto';
 import { UpdateArticleDto } from './dto/update-article.dto';
 import { ListArticlesQueryDto } from './dto/list-articles.query.dto';
+import {
+  AnonymousOrReader,
+  CurrentReader,
+} from '../reader-auth/reader-auth.decorators';
+import type { ReaderPrincipal } from '../reader-auth/reader-auth.guard';
 
 class SubmitArticleDto {
   @IsOptional()
@@ -160,10 +165,17 @@ export class ArticlesController {
     return this.service.listPublic(query);
   }
 
-  @Public()
+  // The one public route that varies by reader. @AnonymousOrReader()
+  // rather than @OptionalReaderAuth(): the latter drags in
+  // ReaderFeatureGuard, which would 404 every article page the day
+  // somebody switched the reader area off.
+  @AnonymousOrReader()
   @Get('public/articles/by-slug/:slug')
-  publicBySlug(@Param('slug') slug: string) {
-    return this.service.findPublicBySlug(slug);
+  publicBySlug(
+    @Param('slug') slug: string,
+    @CurrentReader() reader?: ReaderPrincipal,
+  ) {
+    return this.service.findPublicBySlug(slug, reader);
   }
 
   @Public()
