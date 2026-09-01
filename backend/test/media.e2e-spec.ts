@@ -8,6 +8,7 @@ import { createTestApp } from './helpers/app';
 import { makeUser, bearer } from './helpers/auth';
 import { truncate } from './helpers/db';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { makeReader, readerBearer } from './helpers/reader';
 
 describe('Media uploads (e2e)', () => {
   let app: INestApplication;
@@ -502,6 +503,200 @@ describe('Media uploads (e2e)', () => {
         .expect(201);
 
       expect(await visibilityOf(media.id)).toBe('PUBLICO');
+    });
+  });
+
+  describe('serving files', () => {
+    /** The path part of an uploads URL, as the route receives it. */
+    const pathOf = (url: string) =>
+      url.replace('http://api.test/uploads/', '');
+
+    async function uploadAs(user: Awaited<ReturnType<typeof makeUser>>) {
+      const png = await makePngBuffer(400, 300);
+      const res = await request(app.getHttpServer())
+        .post('/admin/media/upload')
+        .set(bearer(user))
+        .attach('file', png, { filename: 'foto.png', contentType: 'image/png' })
+        .expect(201);
+      return res.body as { id: string; url: string };
+    }
+
+    const publish = async (id: string) =>
+      app
+        .get(PrismaService)
+        .media.update({ where: { id }, data: { visibility: 'PUBLICO' } });
+
+    it('serves published media to a complete stranger', async () => {
+      // The assertion the whole feature is balanced on. A reader with
+      // no session, Googlebot and the robot that builds a link preview
+      // all arrive exactly like this.
+      const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const media = await uploadAs(user);
+      await publish(media.id);
+
+      const res = await request(app.getHttpServer())
+        .get(`/uploads/${pathOf(media.url)}`)
+        .expect(200);
+
+      expect(res.headers['content-type']).toBe('image/webp');
+      // Same caching the static handler used to send, so nothing that
+      // already holds one of these notices the change.
+      expect(res.headers['cache-control']).toMatch(/immutable/);
+      expect(res.headers['cache-control']).toMatch(/max-age=2592000/);
+    });
+
+    it('hides unpublished media from a stranger', async () => {
+      const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const media = await uploadAs(user);
+
+      // 404 and not 403: a 403 would confirm the file is there, which
+      // turns this route into a way to probe for unpublished material.
+      await request(app.getHttpServer())
+        .get(`/uploads/${pathOf(media.url)}`)
+        .expect(404);
+    });
+
+    it('shows unpublished media to its owner and to a SUPER_ADMIN', async () => {
+      const owner = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const boss = await makeUser(app, { role: 'SUPER_ADMIN' });
+      const media = await uploadAs(owner);
+
+      await request(app.getHttpServer())
+        .get(`/uploads/${pathOf(media.url)}`)
+        .set(bearer(owner))
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .get(`/uploads/${pathOf(media.url)}`)
+        .set(bearer(boss))
+        .expect(200);
+    });
+
+    it('hides one person\'s unpublished media from another', async () => {
+      const owner = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const other = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const media = await uploadAs(owner);
+
+      await request(app.getHttpServer())
+        .get(`/uploads/${pathOf(media.url)}`)
+        .set(bearer(other))
+        .expect(404);
+    });
+
+    it('heals a missed promotion instead of breaking a live page', async () => {
+      // A publish path nobody thought of, a database blip. The
+      // consequence would be a broken image on a published article,
+      // which readers see and nobody gets told about — so before
+      // refusing, the route asks the articles directly.
+      const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const media = await uploadAs(user);
+      const prisma = app.get(PrismaService);
+
+      const cat = await prisma.category.create({
+        data: {
+          slug: `cat-${Math.random().toString(36).slice(2, 8)}`,
+          name: 'Sociedade',
+          description: 'd',
+          icon: '◆',
+          color: '#1e40af',
+          order: 1,
+          visible: true,
+          path: '/root/',
+        },
+      });
+      // Written straight to the database, so no promotion ever ran.
+      await prisma.article.create({
+        data: {
+          slug: 'ja-no-ar',
+          title: 'Já no ar',
+          summary: 's',
+          content: 'c',
+          status: 'PUBLICADO',
+          publishedAt: new Date(),
+          coverImageUrl: media.url,
+          categoryId: cat.id,
+          authorId: user.id,
+        },
+      });
+      expect(
+        (await prisma.media.findUnique({ where: { id: media.id } }))!
+          .visibility,
+      ).toBe('PRIVADO');
+
+      await request(app.getHttpServer())
+        .get(`/uploads/${pathOf(media.url)}`)
+        .expect(200);
+
+      // And it corrected itself, so the next request takes the fast path.
+      expect(
+        (await prisma.media.findUnique({ where: { id: media.id } }))!
+          .visibility,
+      ).toBe('PUBLICO');
+    });
+
+    it('does not heal for a DRAFT article', async () => {
+      // The self-heal must only rescue what is actually live, or it
+      // becomes a way to read any image by referencing it from a draft.
+      const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const media = await uploadAs(user);
+      const prisma = app.get(PrismaService);
+      const cat = await prisma.category.create({
+        data: {
+          slug: `cat-${Math.random().toString(36).slice(2, 8)}`,
+          name: 'Sociedade',
+          description: 'd',
+          icon: '◆',
+          color: '#1e40af',
+          order: 1,
+          visible: true,
+          path: '/root/',
+        },
+      });
+      await prisma.article.create({
+        data: {
+          slug: 'so-rascunho',
+          title: 'Só rascunho',
+          summary: 's',
+          content: 'c',
+          status: 'RASCUNHO',
+          coverImageUrl: media.url,
+          categoryId: cat.id,
+          authorId: user.id,
+        },
+      });
+
+      await request(app.getHttpServer())
+        .get(`/uploads/${pathOf(media.url)}`)
+        .expect(404);
+    });
+
+    it('refuses to climb out of the uploads directory', async () => {
+      await request(app.getHttpServer())
+        .get('/uploads/../../etc/passwd')
+        .expect(404);
+      await request(app.getHttpServer())
+        .get('/uploads/2026/09/../../../package.json')
+        .expect(404);
+    });
+
+    it('will not take a reader token for a staff one', async () => {
+      // Both are JWTs. They are signed with different secrets AND
+      // stamped with an audience, and this route reproduces the guard's
+      // check rather than just verifying a signature.
+      const owner = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const media = await uploadAs(owner);
+      const reader = await makeReader(app);
+
+      await request(app.getHttpServer())
+        .get(`/uploads/${pathOf(media.url)}`)
+        .set(readerBearer(reader))
+        .expect(404);
+    });
+
+    it('404s a path that nothing in the database claims', async () => {
+      await request(app.getHttpServer())
+        .get('/uploads/2026/09/deadbeefdeadbeef-large.webp')
+        .expect(404);
     });
   });
 

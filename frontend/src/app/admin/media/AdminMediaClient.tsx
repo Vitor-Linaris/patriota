@@ -13,7 +13,11 @@ import {
 
 export interface MediaItem {
   id: string;
+  /** Where to load the preview from — proxied while the file is private. */
   url: string;
+  /** The real address. What gets copied, and what an article points at. */
+  canonicalUrl?: string;
+  visibility?: "PRIVADO" | "PUBLICO";
   name: string;
   uploadedAt: string;
   size?: string;

@@ -61,11 +61,18 @@ async function bootstrap() {
   if (!existsSync(uploadsDir)) {
     mkdirSync(uploadsDir, { recursive: true });
   }
-  app.useStaticAssets(uploadsDir, {
-    prefix: '/uploads/',
-    immutable: true,
-    maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days — variants are content-addressed
-  });
+  // NOT useStaticAssets any more. /uploads is served by
+  // UploadsController, which decides per file whether the caller may
+  // have it: everything published is served to anyone, and material
+  // that has not run yet only to its owner. The static handler had no
+  // way to make that distinction — it served whatever it was pointed
+  // at, to whoever asked.
+  //
+  // The URLs and the caching headers are identical, so nothing that
+  // already points at a file notices the change.
+  //
+  // The directory is still created above: the upload pipeline writes
+  // into it, and a container started from a stale image may not have it.
 
   // First-deploy admin bootstrap — only fires on a truly empty DB.
   // See src/bootstrap-admin.ts for the triple-guard logic. Runs

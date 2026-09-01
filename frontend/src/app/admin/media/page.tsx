@@ -1,6 +1,7 @@
 import { AdminShell } from "../AdminShell";
 import AdminMediaClient, { type MediaItem } from "./AdminMediaClient";
 import { apiFetch } from "@/lib/api";
+import { mediaPreviewUrl } from "@/lib/media-preview";
 
 interface PageResult<T> {
   items: T[];
@@ -22,6 +23,8 @@ interface MediaApi {
   uploadedAt: string;
   /** Who put it there. Null for files left by staff who have gone. */
   uploadedBy: { id: string; name: string | null } | null;
+  /** PRIVADO until the file is used in something published. */
+  visibility: "PRIVADO" | "PUBLICO";
   /** Count of articles that reference this media (cover or inline). */
   articleCount: number;
   /** Count of ad slots whose imageUrl points at this media. */
@@ -49,7 +52,12 @@ function humanSize(bytes: number | null): string | undefined {
 function toMediaItem(m: MediaApi): MediaItem {
   return {
     id: m.id,
-    url: m.url,
+    // What the grid renders. A private file cannot be shown from its
+    // real address — see mediaPreviewUrl.
+    url: mediaPreviewUrl(m.url, m.visibility),
+    /** The real address: what gets copied, and what articles point at. */
+    canonicalUrl: m.url,
+    visibility: m.visibility,
     name: m.name,
     uploadedAt: dateFmt.format(new Date(m.uploadedAt)),
     size: humanSize(m.size),
