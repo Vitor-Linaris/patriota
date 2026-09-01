@@ -103,7 +103,7 @@ export function CoverImagePicker({
             {pending ? "A enviar…" : "Arraste uma imagem ou clique para escolher"}
           </p>
           <p className="text-[10px] text-gray-400">
-            JPG, PNG, WebP, GIF — até 10 MB
+            JPG, PNG, WebP, AVIF — até 10 MB · GIF animado até 11 MB
           </p>
         </div>
       )}

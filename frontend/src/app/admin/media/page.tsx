@@ -25,6 +25,8 @@ interface MediaApi {
   uploadedBy: { id: string; name: string | null } | null;
   /** PRIVADO until the file is used in something published. */
   visibility: "PRIVADO" | "PUBLICO";
+  /** Frame count on an animation, null on a still. */
+  frames: number | null;
   /** Count of articles that reference this media (cover or inline). */
   articleCount: number;
   /** Count of ad slots whose imageUrl points at this media. */
@@ -58,6 +60,7 @@ function toMediaItem(m: MediaApi): MediaItem {
     /** The real address: what gets copied, and what articles point at. */
     canonicalUrl: m.url,
     visibility: m.visibility,
+    frames: m.frames,
     name: m.name,
     uploadedAt: dateFmt.format(new Date(m.uploadedAt)),
     size: humanSize(m.size),

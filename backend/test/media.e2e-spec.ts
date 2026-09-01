@@ -168,6 +168,119 @@ describe('Media uploads (e2e)', () => {
     expect(res.body.height).toBe(200);
   });
 
+  describe('what may be uploaded', () => {
+    /** An animated GIF of `frames` frames, built by sharp. */
+    async function makeAnimatedGif(frames: number): Promise<Buffer> {
+      const w = 32;
+      const h = 32;
+      // One tall strip of `frames` pages, which is how sharp expresses
+      // an animation on the way in.
+      const strip = Buffer.concat(
+        Array.from({ length: frames }, (_, i) =>
+          Buffer.alloc(w * h * 3, (i * 40) % 255),
+        ),
+      );
+      // `pageHeight` goes INSIDE `raw`, not beside it — beside it,
+      // sharp silently treats the strip as one tall still and writes a
+      // single-frame GIF, which would make this whole test vacuous.
+      return sharp(strip, {
+        raw: { width: w, height: h * frames, channels: 3, pageHeight: h },
+      })
+        .gif({ loop: 0 })
+        .toBuffer();
+    }
+
+    it('keeps an animated GIF animated', async () => {
+      // The defect this fixes. `sharp(buffer)` without `animated: true`
+      // reads only the first frame, so every animation this project has
+      // ever been given was silently flattened to a still — no error,
+      // no warning, the uploader just lost the animation.
+      const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const gif = await makeAnimatedGif(6);
+
+      const res = await request(app.getHttpServer())
+        .post('/admin/media/upload')
+        .set(bearer(user))
+        .attach('file', gif, {
+          filename: 'anim.gif',
+          contentType: 'image/gif',
+        })
+        .expect(201);
+
+      expect(res.body.frames).toBeGreaterThan(1);
+
+      // And the file on disk really carries them — the count in the
+      // database could be right while the encoder dropped them.
+      const stored = await sharp(
+        join(uploadsDir, res.body.url.replace('http://api.test/uploads/', '')),
+        { animated: true },
+      ).metadata();
+      expect(stored.pages).toBeGreaterThan(1);
+    });
+
+    it('refuses an animation with too many frames, and says how many', async () => {
+      // Not cosmetic: re-encoding a long animation to WebP can produce
+      // something larger than it came from.
+      const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const gif = await makeAnimatedGif(320);
+
+      const res = await request(app.getHttpServer())
+        .post('/admin/media/upload')
+        .set(bearer(user))
+        .attach('file', gif, {
+          filename: 'longo.gif',
+          contentType: 'image/gif',
+        })
+        .expect(400);
+
+      expect(res.body.message).toMatch(/320 fotogramas/);
+      expect(res.body.message).toMatch(/300/);
+    });
+
+    it('judges the file by its bytes, not by what the request claims', async () => {
+      // A zip renamed .png and sent as image/png passed the old
+      // whitelist. sharp caught it a step later by accident; a video
+      // would not pass through sharp at all.
+      const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const zip = Buffer.concat([
+        Buffer.from([0x50, 0x4b, 0x03, 0x04]),
+        Buffer.alloc(256, 7),
+      ]);
+
+      const res = await request(app.getHttpServer())
+        .post('/admin/media/upload')
+        .set(bearer(user))
+        .attach('file', zip, {
+          filename: 'inocente.png',
+          contentType: 'image/png',
+        })
+        .expect(400);
+
+      expect(res.body.message).toMatch(/não suportado/i);
+    });
+
+    it('tells somebody uploading a video that it is a video', async () => {
+      // Rather than "tipo não suportado", which does not say what to do.
+      const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const mp4 = Buffer.concat([
+        Buffer.alloc(4, 0),
+        Buffer.from('ftypisom', 'latin1'),
+        Buffer.alloc(256, 0),
+      ]);
+
+      const res = await request(app.getHttpServer())
+        .post('/admin/media/upload')
+        .set(bearer(user))
+        .attach('file', mp4, {
+          filename: 'clip.mp4',
+          contentType: 'image/png',
+        })
+        .expect(400);
+
+      expect(res.body.message).toMatch(/vídeo/i);
+    });
+  });
+
   describe('the library is per person', () => {
     async function uploadAs(
       user: Awaited<ReturnType<typeof makeUser>>,

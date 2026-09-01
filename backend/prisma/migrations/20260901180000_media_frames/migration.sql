@@ -1,0 +1,11 @@
+-- Frame count on an animation, NULL on a still.
+--
+-- Needed because the stored format is WebP either way: an animated GIF
+-- and a photograph both come out as image/webp, so the mime type cannot
+-- tell the library which is which.
+--
+-- Existing rows stay NULL. Every animation uploaded before this release
+-- was flattened to a single frame anyway — the pipeline read only the
+-- first one — so "unknown" and "still" happen to be the same answer for
+-- everything already there.
+ALTER TABLE "Media" ADD COLUMN "frames" INTEGER;

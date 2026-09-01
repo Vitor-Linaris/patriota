@@ -18,6 +18,14 @@ import {
   toSkipTake,
 } from '../common/dto/pagination.dto';
 import type { Role } from '../rbac/rbac.constants';
+import { detectType } from './file-type';
+import {
+  MAX_ANIMATION_BYTES,
+  MAX_ANIMATION_FRAMES,
+  MAX_IMAGE_BYTES,
+  MAX_IMAGE_PIXELS,
+  formatBytes,
+} from './media-limits';
 
 export interface CreateMediaInput {
   url: string;
@@ -55,15 +63,6 @@ interface UploadedFile {
   mimetype: string;
   size: number;
 }
-
-const SUPPORTED_MIMES = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/gif',
-  'image/tiff',
-  'image/avif',
-]);
 
 interface SizeSpec {
   key: 'small' | 'medium' | 'large';
@@ -335,20 +334,66 @@ export class MediaService {
     if (!file?.buffer?.length) {
       throw new BadRequestException('Ficheiro vazio.');
     }
-    if (!SUPPORTED_MIMES.has(file.mimetype)) {
+
+    // Decided by the bytes, not by the Content-Type the client wrote.
+    // That header is a claim; this is the file.
+    const detected = detectType(file.buffer);
+    if (!detected) {
       throw new BadRequestException(
-        `Tipo de ficheiro não suportado: ${file.mimetype}`,
+        `Tipo de ficheiro não suportado: ${file.mimetype}. ` +
+          'Aceitamos JPG, PNG, WebP, GIF, AVIF e TIFF.',
+      );
+    }
+    if (detected.kind !== 'image') {
+      // Video arrives in a later stage and through its own endpoint.
+      // Refused here by what it IS, so a renamed .mp4 does not reach
+      // the image pipeline.
+      throw new BadRequestException(
+        `Isto é um vídeo (${detected.mime}), não uma imagem.`,
+      );
+    }
+
+    const animated = detected.animated === true;
+    const cap = animated ? MAX_ANIMATION_BYTES : MAX_IMAGE_BYTES;
+    if (file.buffer.length > cap) {
+      throw new BadRequestException(
+        `Ficheiro demasiado grande: ${formatBytes(file.buffer.length)}. ` +
+          `O limite ${animated ? 'para animações' : ''} é ${formatBytes(cap)}.`,
       );
     }
 
     // Auto-rotate based on EXIF, then read intrinsic size for metadata.
-    const rotated = sharp(file.buffer).rotate();
+    //
+    // `limitInputPixels` is set explicitly: a PNG of a few hundred
+    // kilobytes can declare 50000×50000 and cost gigabytes of memory
+    // the moment anything decodes it. The byte limit above cannot see
+    // that at all — the file really is small.
+    //
+    // `animated` decides whether sharp reads every frame or only the
+    // first. Reading only the first is what silently flattened every
+    // animated GIF this project has ever been given.
+    const readOptions: sharp.SharpOptions = {
+      limitInputPixels: MAX_IMAGE_PIXELS,
+      ...(animated ? { animated: true } : {}),
+    };
+
     let metadata: sharp.Metadata;
     try {
-      metadata = await rotated.metadata();
+      metadata = await sharp(file.buffer, readOptions).rotate().metadata();
     } catch (e) {
       throw new BadRequestException(
         `Imagem inválida: ${(e as Error).message}`,
+      );
+    }
+
+    if (animated && (metadata.pages ?? 1) > MAX_ANIMATION_FRAMES) {
+      // Re-encoding a long animation can produce something bigger than
+      // it came from, so this is not cosmetic. Said with the number,
+      // because "demasiados fotogramas" is not actionable.
+      throw new BadRequestException(
+        `A animação tem ${metadata.pages} fotogramas. ` +
+          `O limite é ${MAX_ANIMATION_FRAMES} — para algo mais longo, ` +
+          'carregue um vídeo.',
       );
     }
 
@@ -369,7 +414,7 @@ export class MediaService {
       for (const size of this.sizes) {
         const filename = `${baseId}-${size.key}.webp`;
         const outPath = join(dir, filename);
-        const buf = await sharp(file.buffer)
+        const buf = await sharp(file.buffer, readOptions)
           .rotate()
           .resize({ width: size.width, withoutEnlargement: true })
           .webp({ quality: this.quality })
@@ -410,6 +455,9 @@ export class MediaService {
         // less misleading when authors look at the tooltip.
         name: stripExtension(file.originalname) || baseId,
         mimeType: 'image/webp',
+        // Frames, so the library can tell an animation from a still
+        // without opening the file.
+        frames: animated ? (metadata.pages ?? null) : null,
         size: largeBytes,
         width: metadata.width ?? null,
         height: metadata.height ?? null,

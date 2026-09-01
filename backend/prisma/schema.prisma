@@ -114,6 +114,12 @@ model Media {
   size         Int?
   width        Int?
   height       Int?
+  /// Frame count, on an animation. NULL on a still.
+  ///
+  /// Stored so the library can mark a GIF as animated without opening
+  /// the file — the stored format is WebP either way, so the mime type
+  /// cannot answer it.
+  frames       Int?
   /// Who put this here. Written since the column existed but never read
   /// until the library became per-user — see media.service.ts.
   ///

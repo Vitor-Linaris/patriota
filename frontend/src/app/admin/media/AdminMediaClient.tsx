@@ -18,6 +18,9 @@ export interface MediaItem {
   /** The real address. What gets copied, and what an article points at. */
   canonicalUrl?: string;
   visibility?: "PRIVADO" | "PUBLICO";
+  /** Frame count on an animation. The stored format is WebP either way,
+   *  so the mime type cannot tell a GIF from a photograph. */
+  frames?: number | null;
   name: string;
   uploadedAt: string;
   size?: string;
@@ -297,8 +300,9 @@ export default function AdminMediaClient({
                     : "Arraste uma imagem ou clique para escolher"}
                 </p>
                 <p className="text-[10px] text-gray-400">
-                  JPG, PNG, WebP, GIF — até 10 MB. Processada em 3
-                  variantes WebP automaticamente.
+                  JPG, PNG, WebP, AVIF — até 10 MB. GIF animado até 11 MB
+                  e 300 fotogramas, e a animação é mantida. Processada em
+                  3 variantes WebP automaticamente.
                 </p>
               </div>
 
@@ -676,6 +680,30 @@ export default function AdminMediaClient({
                       <span className="h-2 w-2 rounded-full bg-white" />
                       {used ? count : "0"}
                     </div>
+
+                    {/* Bottom-left, out of the way of the usage badge.
+                        Both say something the thumbnail cannot: a still
+                        frame of an animation looks like a photograph,
+                        and a private file looks like any other. */}
+                    <div className="absolute bottom-2 left-2 flex gap-1">
+                      {(item.frames ?? 0) > 1 && (
+                        <span
+                          title={`Animação com ${item.frames} fotogramas`}
+                          className="rounded bg-black/60 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white"
+                        >
+                          gif
+                        </span>
+                      )}
+                      {item.visibility === "PRIVADO" && (
+                        <span
+                          title="Só você a vê. Fica pública ao ser usada num artigo publicado."
+                          className="rounded bg-amber-500/90 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white"
+                        >
+                          privada
+                        </span>
+                      )}
+                    </div>
+
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 py-2 opacity-0 transition-opacity group-hover:opacity-100">
                       <p className="truncate text-[10px] font-semibold text-white">
                         {item.name}
