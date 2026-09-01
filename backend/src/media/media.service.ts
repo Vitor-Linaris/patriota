@@ -6,8 +6,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, unlink, writeFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import sharp from 'sharp';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
@@ -16,6 +16,7 @@ import {
   PageResult,
   toSkipTake,
 } from '../common/dto/pagination.dto';
+import type { Role } from '../rbac/rbac.constants';
 
 export interface CreateMediaInput {
   url: string;
@@ -24,6 +25,27 @@ export interface CreateMediaInput {
   height?: number;
   size?: number;
   mimeType?: string;
+}
+
+/**
+ * Who is asking. The library is per-person, so every read and write
+ * needs the role as well as the id.
+ */
+export interface MediaActor {
+  id: string;
+  role: Role;
+}
+
+/**
+ * Whether this person may see past their own library.
+ *
+ * SUPER_ADMIN alone, and deliberately narrow. Somebody has to be able
+ * to clear out the files of staff who have left and to answer "where
+ * did that photo go" — but a library that everyone can rummage through
+ * is the shared library this feature exists to replace.
+ */
+export function canReachAll(actor: MediaActor): boolean {
+  return actor.role === 'SUPER_ADMIN';
 }
 
 interface UploadedFile {
@@ -327,12 +349,30 @@ export class MediaService {
     return created;
   }
 
-  async remove(id: string, userId: string) {
+  /**
+   * @param actor the caller. `role` decides whether they may reach past
+   *   their own library — the ownership check below is the only thing
+   *   stopping one journalist deleting another's photographs.
+   */
+  async remove(id: string, actor: MediaActor) {
     // Defense-in-depth: refuse to delete media that's still in use.
     // The frontend already blocks the UI but a direct API call would
     // bypass it and leave articles with 404 covers/inline images.
     const media = await this.prisma.media.findUnique({ where: { id } });
     if (!media) throw new NotFoundException('Imagem não encontrada.');
+
+    // Ownership, checked before anything else is read.
+    //
+    // Until now any holder of `media.eliminar` could delete anybody's
+    // file — an EDITOR_CHEFE tidying up could take out a journalist's
+    // unpublished photographs without ever seeing whose they were.
+    //
+    // 404 rather than 403 for somebody else's media: a 403 confirms the
+    // id exists, which is a way to enumerate a library you cannot see.
+    // Ownerless rows (staff who left) are the SUPER_ADMIN's to clear.
+    if (!canReachAll(actor) && media.uploadedById !== actor.id) {
+      throw new NotFoundException('Imagem não encontrada.');
+    }
 
     const variants = [media.url, media.urlMedium, media.urlSmall].filter(
       (u): u is string => Boolean(u),
@@ -382,8 +422,13 @@ export class MediaService {
 
     try {
       const deleted = await this.prisma.media.delete({ where: { id } });
+      // The row goes first, the files after. That order matters: if the
+      // unlink fails we are left with an orphaned file, which costs
+      // disk. The other order would leave a row pointing at nothing,
+      // which costs a broken image on a page.
+      await this.unlinkVariants(variants);
       void this.activity.record({
-        userId,
+        userId: actor.id,
         action: 'deleted',
         targetType: 'media',
         targetId: deleted.id,
@@ -395,6 +440,44 @@ export class MediaService {
         throw new NotFoundException('Imagem não encontrada.');
       }
       throw e;
+    }
+  }
+
+  /**
+   * Removes the WebP variants from disk.
+   *
+   * Until now deleting media dropped the row and left every file behind
+   * for ever. Nobody noticed because three WebP variants are small —
+   * but the library is about to take 100 MB videos, and an upload
+   * quota, at which point invisible files are somebody's quota being
+   * eaten by things they already deleted.
+   *
+   * URLs that are not ours — the paste-a-link path stores whatever
+   * address it was given — are skipped rather than guessed at. So is a
+   * path that climbs out of the uploads directory, which no URL we
+   * generate can produce but which is not worth trusting.
+   */
+  private async unlinkVariants(urls: string[]): Promise<void> {
+    for (const url of urls) {
+      if (!url.startsWith(this.publicBase)) continue;
+
+      const relative = url.slice(this.publicBase.length).replace(/^\/+/, '');
+      const target = resolve(this.uploadsDir, relative);
+      if (!target.startsWith(resolve(this.uploadsDir))) {
+        this.logger.warn(`Refusing to unlink outside uploads: ${url}`);
+        continue;
+      }
+
+      try {
+        await unlink(target);
+      } catch (e) {
+        // ENOENT is the normal case for a file already gone; anything
+        // else is worth knowing about but never worth failing the
+        // delete over — the row is already committed.
+        if ((e as { code?: string }).code !== 'ENOENT') {
+          this.logger.warn(`Could not unlink ${target}: ${(e as Error).message}`);
+        }
+      }
     }
   }
 }

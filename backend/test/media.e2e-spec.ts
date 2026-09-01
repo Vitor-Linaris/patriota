@@ -1,5 +1,5 @@
 import { INestApplication } from '@nestjs/common';
-import { mkdtempSync, rmSync, readdirSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import request from 'supertest';
@@ -131,5 +131,69 @@ describe('Media uploads (e2e)', () => {
       .expect(201);
     expect(res.body.width).toBe(200);
     expect(res.body.height).toBe(200);
+  });
+
+  describe('deleting', () => {
+    /** Uploads one image and returns its row plus the paths on disk. */
+    async function upload(user: Awaited<ReturnType<typeof makeUser>>) {
+      const png = await makePngBuffer(600, 400);
+      const res = await request(app.getHttpServer())
+        .post('/admin/media/upload')
+        .set(bearer(user))
+        .attach('file', png, { filename: 'x.png', contentType: 'image/png' })
+        .expect(201);
+
+      const paths = [res.body.url, res.body.urlMedium, res.body.urlSmall].map(
+        (u: string) =>
+          join(uploadsDir, u.replace('http://api.test/uploads/', '')),
+      );
+      return { id: res.body.id as string, paths };
+    }
+
+    it('removes the files from disk, not just the row', async () => {
+      // Deleting used to drop the row and leave all three WebP variants
+      // behind for ever. Nobody noticed because they are small — but a
+      // per-person quota is about to count them, and a video is 100 MB.
+      const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const { id, paths } = await upload(user);
+      for (const p of paths) expect(existsSync(p)).toBe(true);
+
+      await request(app.getHttpServer())
+        .delete(`/admin/media/${id}`)
+        .set(bearer(user))
+        .expect(200);
+
+      for (const p of paths) expect(existsSync(p)).toBe(false);
+    });
+
+    it('refuses to delete somebody else\'s media, and leaves the files alone', async () => {
+      const owner = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const other = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const { id, paths } = await upload(owner);
+
+      // 404, not 403: a 403 would confirm the id is real, which is a
+      // way to enumerate a library you cannot see.
+      await request(app.getHttpServer())
+        .delete(`/admin/media/${id}`)
+        .set(bearer(other))
+        .expect(404);
+
+      for (const p of paths) expect(existsSync(p)).toBe(true);
+    });
+
+    it('lets a SUPER_ADMIN delete what is not theirs', async () => {
+      // Somebody has to be able to clear out the files of staff who
+      // have left, or they are permanent.
+      const owner = await makeUser(app, { role: 'JORNALISTA' });
+      const boss = await makeUser(app, { role: 'SUPER_ADMIN' });
+      const { id, paths } = await upload(owner);
+
+      await request(app.getHttpServer())
+        .delete(`/admin/media/${id}`)
+        .set(bearer(boss))
+        .expect(200);
+
+      for (const p of paths) expect(existsSync(p)).toBe(false);
+    });
   });
 });

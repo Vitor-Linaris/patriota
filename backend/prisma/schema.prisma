@@ -97,10 +97,21 @@ model Media {
   size         Int?
   width        Int?
   height       Int?
+  /// Who put this here. Written since the column existed but never read
+  /// until the library became per-user — see media.service.ts.
+  ///
+  /// SetNull, never Cascade: deleting a member of staff must not delete
+  /// the images their published articles still point at. The row
+  /// outlives the account and falls back to the SUPER_ADMIN's view.
   uploadedById String?
+  uploadedBy   User?    @relation("MediaUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
   uploadedAt   DateTime @default(now())
 
   @@index([uploadedAt])
+  /// "my library, newest first" — the shape of every listing now that
+  /// the library is scoped to one person. Without it that is a full
+  /// table scan on every page load.
+  @@index([uploadedById, uploadedAt])
 }
 
 enum AdType {
@@ -201,6 +212,7 @@ model User {
   moderatedComments Comment[]     @relation("CommentModerator")
   suspendedReaders  Reader[]      @relation("ReaderSuspender")
   grantedPlans      Reader[]      @relation("PlanGranter")
+  media             Media[]       @relation("MediaUploader")
 }
 
 /// Up to 4 levels: categoria (depth 0) -> subcategoria -> topico ->

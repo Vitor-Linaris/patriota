@@ -115,6 +115,8 @@ export class MediaController {
   @Delete(':id')
   @RequirePermissions('media.eliminar')
   remove(@Param('id') id: string, @CurrentUser() user: AuthUser) {
-    return this.service.remove(id, user.id);
+    // The role travels with the id: the permission says "may delete
+    // media at all", and the service decides whose.
+    return this.service.remove(id, { id: user.id, role: user.role });
   }
 }
