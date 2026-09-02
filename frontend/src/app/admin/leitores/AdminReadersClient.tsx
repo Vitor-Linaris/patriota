@@ -19,6 +19,10 @@ export interface AdminReader {
   plan: "GRATIS" | "PREMIUM";
   planStatus: string | null;
   planRenewsAt: string | null;
+  /** True when planRenewsAt is the END, not the next renewal. */
+  planCancelAtPeriodEnd: boolean;
+  /** When they asked to cancel. NULL if they never did. */
+  planCanceledAt: string | null;
   planSource: "MANUAL" | "STRIPE" | null;
   planNote: string | null;
   planGrantedBy: { id: string; name: string | null } | null;
@@ -58,6 +62,28 @@ export interface SubscriptionStats {
     planRenewsAt: string | null;
     planNote: string | null;
   }[];
+  /** Cancellations inside the window, counted by the day they cancelled. */
+  cancelledRecently: number;
+  cancelledWindowDays: number;
+  /** Of those, the ones whose paid period has not run out yet. */
+  cancelledInGrace: number;
+  cancelled: {
+    id: string;
+    name: string | null;
+    email: string;
+    /** When they asked to cancel. */
+    planCanceledAt: string | null;
+    /** When access actually stops. */
+    planRenewsAt: string | null;
+    planSource: "MANUAL" | "STRIPE" | null;
+    /**
+     * Computed server-side, against the server's clock. Not derived
+     * here: rendering must not read the time, and the browser's clock
+     * can be minutes or a whole timezone out.
+     */
+    stillReading: boolean;
+    daysLeft: number | null;
+  }[];
 }
 
 export interface ReaderStats {
@@ -67,6 +93,18 @@ export interface ReaderStats {
   bannedNow: number;
   subscriptions: SubscriptionStats;
 }
+
+/**
+ * How far back the cancellations list may look.
+ *
+ * Mirrors CANCELLED_WINDOWS in readers.service.ts — the API only accepts
+ * these three, so offering a fourth here would produce a 400.
+ */
+const WINDOWS = [
+  { days: 30, label: "30d" },
+  { days: 180, label: "6 meses" },
+  { days: 365, label: "1 ano" },
+] as const;
 
 const WHEN = new Intl.DateTimeFormat("pt-PT", {
   day: "2-digit",
@@ -112,6 +150,10 @@ export default function AdminReadersClient({
     active: boolean;
     newPlans: boolean;
     expiring: boolean;
+    cancelled: boolean;
+    /** How far back the cancellations list looks: 30, 180 or 365. */
+    cancelledDays: string;
+    inGrace: boolean;
   };
   canBan: boolean;
   canGrant: boolean;
@@ -145,6 +187,11 @@ export default function AdminReadersClient({
       active: filters.active ? "true" : "",
       newPlans: filters.newPlans ? "true" : "",
       expiring: filters.expiring ? "true" : "",
+      cancelled: filters.cancelled ? "true" : "",
+      // Only meaningful alongside `cancelled`; carried separately so
+      // changing the window keeps the filter itself on.
+      cancelledDays: filters.cancelled ? filters.cancelledDays : "",
+      inGrace: filters.inGrace ? "true" : "",
       page: String(currentPage),
       ...patch,
     };
@@ -168,6 +215,9 @@ export default function AdminReadersClient({
     active: "",
     newPlans: "",
     expiring: "",
+    cancelled: "",
+    cancelledDays: "",
+    inGrace: "",
     page: "1",
   };
 
@@ -177,7 +227,9 @@ export default function AdminReadersClient({
     !filters.suspended &&
     !filters.active &&
     !filters.newPlans &&
-    !filters.expiring;
+    !filters.expiring &&
+    !filters.cancelled &&
+    !filters.inGrace;
 
   const CARDS = [
     { label: "Total", value: stats.total, tone: "text-[#0F2C6B]" },
@@ -286,6 +338,49 @@ export default function AdminReadersClient({
         >
           A expirar (30 dias)
         </Chip>
+        {/* Churn. Separate from "a expirar", which is only about gifts
+            running out — this is people who chose to leave. */}
+        <Chip
+          on={filters.cancelled}
+          onClick={() =>
+            goto({ ...CLEAR, cancelled: "true", cancelledDays: "30" })
+          }
+        >
+          Cancelaram
+        </Chip>
+        {/* Only offered once the cancellations list is on: on its own it
+            would be a third overlapping question about the same rows. */}
+        {filters.cancelled && (
+          <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-gray-100 p-0.5">
+            {WINDOWS.map((w) => (
+              <button
+                key={w.days}
+                type="button"
+                onClick={() =>
+                  goto({
+                    cancelled: "true",
+                    cancelledDays: String(w.days),
+                    page: "1",
+                  })
+                }
+                className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                  filters.cancelledDays === String(w.days)
+                    ? "bg-white text-[#0F2C6B] shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {w.label}
+              </button>
+            ))}
+          </span>
+        )}
+        {/* The ones there is still time to write to. */}
+        <Chip
+          on={filters.inGrace}
+          onClick={() => goto({ ...CLEAR, inGrace: "true" })}
+        >
+          Ainda a ler
+        </Chip>
 
         <span aria-hidden className="mx-1 h-5 w-px bg-gray-200" />
 
@@ -305,24 +400,49 @@ export default function AdminReadersClient({
         </Chip>
       </nav>
 
-      {/* The point of the expiring filter is to write to these people,
-          so hand over the addresses rather than making somebody copy
-          them out of the rows one at a time. */}
-      {filters.expiring && items.length > 0 && (
-        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-          <p className="text-sm text-amber-900">
-            <strong>{total}</strong>{" "}
-            {total === 1 ? "assinatura oferecida termina" : "assinaturas oferecidas terminam"}{" "}
-            nos próximos 30 dias.
-          </p>
-          <a
-            href={`mailto:?bcc=${items.map((r) => encodeURIComponent(r.email)).join(",")}`}
-            className="ml-auto rounded-lg bg-[#0F2C6B] px-3 py-1.5 text-xs font-bold text-white transition-colors hover:bg-[#1A3A7A]"
-          >
-            Escrever a esta página ({items.length})
-          </a>
-        </div>
-      )}
+      {/* These filters exist to write to the people in them, so hand
+          over the addresses rather than making somebody copy them out of
+          the rows one at a time. */}
+      {(filters.expiring || filters.cancelled || filters.inGrace) &&
+        items.length > 0 && (
+          <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <p className="text-sm text-amber-900">
+              {filters.expiring && (
+                <>
+                  <strong>{total}</strong>{" "}
+                  {total === 1
+                    ? "assinatura oferecida termina"
+                    : "assinaturas oferecidas terminam"}{" "}
+                  nos próximos 30 dias.
+                </>
+              )}
+              {filters.cancelled && (
+                <>
+                  <strong>{total}</strong>{" "}
+                  {total === 1 ? "cancelamento" : "cancelamentos"} em{" "}
+                  {WINDOWS.find((w) => String(w.days) === filters.cancelledDays)
+                    ?.label ?? "30d"}
+                  .
+                </>
+              )}
+              {filters.inGrace && (
+                <>
+                  <strong>{total}</strong>{" "}
+                  {total === 1
+                    ? "cancelou e ainda está a ler"
+                    : "cancelaram e ainda estão a ler"}{" "}
+                  — dá para lhes falar enquanto ainda são assinantes.
+                </>
+              )}
+            </p>
+            <a
+              href={`mailto:?bcc=${items.map((r) => encodeURIComponent(r.email)).join(",")}`}
+              className="ml-auto rounded-lg bg-[#0F2C6B] px-3 py-1.5 text-xs font-bold text-white transition-colors hover:bg-[#1A3A7A]"
+            >
+              Escrever a esta página ({items.length})
+            </a>
+          </div>
+        )}
 
       {error && (
         <p
@@ -366,6 +486,22 @@ export default function AdminReadersClient({
                         : ""}
                     </span>
                   )}
+                  {/* Cancelled but still reading. Worth its own badge:
+                      the row above says "assinante · até 2 out", which
+                      on its own reads like a renewal date and hides the
+                      one fact somebody scanning this list needs. A gift
+                      is excluded — it also never renews, but nobody
+                      cancelled it. */}
+                  {r.planActive &&
+                    r.planCancelAtPeriodEnd &&
+                    r.planSource !== "MANUAL" && (
+                      <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-700">
+                        cancelada
+                        {r.planCanceledAt
+                          ? ` · ${WHEN.format(new Date(r.planCanceledAt))}`
+                          : ""}
+                      </span>
+                    )}
                   {r.plan === "PREMIUM" && !r.planActive && (
                     <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-gray-500">
                       assinatura expirada

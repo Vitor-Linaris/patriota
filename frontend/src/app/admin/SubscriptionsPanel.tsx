@@ -7,13 +7,6 @@ const DAY_MONTH = new Intl.DateTimeFormat("pt-PT", {
   month: "short",
 });
 
-function daysUntil(iso: string): number {
-  return Math.max(
-    0,
-    Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000),
-  );
-}
-
 /**
  * How the paid product is doing, on the newsroom's landing page.
  *
@@ -78,26 +71,38 @@ export function SubscriptionsPanel({ s }: { s: SubscriptionStats }) {
           accent="text-green-700"
           href="/admin/leitores?newPlans=true"
         />
+        {/* Churn, in the slot that used to show gifts about to expire.
+            Both are "somebody is about to stop", but this one is the
+            bigger number once Stripe is live and the one nobody would
+            otherwise see: a cancellation is silent, and the person is
+            still reading, so nothing on the site changes on the day it
+            happens. */}
         <Figure
-          label={`A expirar em ${s.expiryHorizonDays} dias`}
-          value={s.expiringSoon}
-          hint="Só as oferecidas"
-          accent={s.expiringSoon > 0 ? "text-red-700" : "text-gray-400"}
-          href="/admin/leitores?expiring=true"
+          label={`Cancelaram em ${s.cancelledWindowDays} dias`}
+          value={s.cancelledRecently}
+          hint={
+            s.cancelledInGrace > 0
+              ? `${intFmt.format(s.cancelledInGrace)} ainda a ler`
+              : "Nenhum ainda a ler"
+          }
+          accent={s.cancelledRecently > 0 ? "text-red-700" : "text-gray-400"}
+          href="/admin/leitores?cancelled=true&cancelledDays=30"
         />
       </div>
 
       {/* The list is what makes the number above worth showing: an admin
-          can act on a name and a date, not on a count. */}
-      {s.expiring.length > 0 && (
+          can act on a name and a date, not on a count. Whoever cancelled
+          most recently is at the top — they are the ones there is most
+          still to do about. */}
+      {s.cancelled.length > 0 && (
         <ul className="divide-y divide-gray-100 border-t border-gray-100">
-          {s.expiring.map((r) => (
+          {s.cancelled.map((r) => (
             <li
               key={r.id}
               className="flex flex-wrap items-center gap-3 px-5 py-3 transition-colors hover:bg-[#F7F8FA]"
             >
               {/* Straight to this one reader, by e-mail — the surest
-                  handle, since two people can share a name. */}
+                    handle, since two people can share a name. */}
               <Link
                 href={`/admin/leitores?q=${encodeURIComponent(r.email)}`}
                 className="min-w-0 flex-1"
@@ -105,22 +110,27 @@ export function SubscriptionsPanel({ s }: { s: SubscriptionStats }) {
                 <span className="text-sm font-semibold text-gray-800 hover:underline">
                   {r.name ?? r.email}
                 </span>
-                {r.planNote && (
-                  <span className="ml-2 text-xs text-gray-500">
-                    {r.planNote}
-                  </span>
+                {r.planSource === "MANUAL" && (
+                  <span className="ml-2 text-xs text-gray-500">oferecida</span>
                 )}
               </Link>
-              {r.planRenewsAt && (
-                <span
-                  className={`text-xs font-semibold ${
-                    daysUntil(r.planRenewsAt) <= 7
-                      ? "text-red-600"
-                      : "text-gray-500"
-                  }`}
-                >
-                  {DAY_MONTH.format(new Date(r.planRenewsAt))} · faltam{" "}
-                  {daysUntil(r.planRenewsAt)}d
+              {/* Still inside the period they paid for — the
+                    difference between somebody who can be talked round
+                    and somebody already gone. Both values come from the
+                    server, against its clock. */}
+              {r.stillReading && r.planRenewsAt ? (
+                <span className="text-xs font-semibold text-amber-700">
+                  lê até {DAY_MONTH.format(new Date(r.planRenewsAt))}
+                  {r.daysLeft !== null ? ` · faltam ${r.daysLeft}d` : ""}
+                </span>
+              ) : (
+                <span className="text-xs font-semibold text-gray-400">
+                  já terminou
+                </span>
+              )}
+              {r.planCanceledAt && (
+                <span className="text-xs text-gray-400">
+                  cancelou {DAY_MONTH.format(new Date(r.planCanceledAt))}
                 </span>
               )}
             </li>
@@ -135,9 +145,9 @@ export function SubscriptionsPanel({ s }: { s: SubscriptionStats }) {
       {s.lapsed > 0 && (
         <p className="border-t border-gray-100 px-5 py-3 text-xs text-gray-500">
           Mais {intFmt.format(s.lapsed)}{" "}
-          {s.lapsed === 1 ? "conta marcada" : "contas marcadas"} como
-          assinante com a data já passada. Não contam acima e voltam a
-          gratuito sozinhas no próximo acesso de cada uma.
+          {s.lapsed === 1 ? "conta marcada" : "contas marcadas"} como assinante
+          com a data já passada. Não contam acima e voltam a gratuito sozinhas
+          no próximo acesso de cada uma.
         </p>
       )}
     </section>

@@ -446,6 +446,10 @@ export class ReaderAuthService {
         plan: true,
         planStatus: true,
         planRenewsAt: true,
+        // Whether that date is a renewal or the end. Without it the page
+        // cannot tell the difference and defaults to promising a
+        // renewal — wrong for everybody who has cancelled.
+        planCancelAtPeriodEnd: true,
         planSource: true,
         planStartedAt: true,
         // Never returned as-is — only as the `hasBilling` boolean below.

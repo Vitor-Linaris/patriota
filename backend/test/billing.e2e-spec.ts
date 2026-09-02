@@ -218,6 +218,139 @@ describe('Billing (e2e)', () => {
     const row = await readerRow();
     expect(row!.plan).toBe('PREMIUM');
     expect(row!.planRenewsAt!.getTime()).toBe(end * 1000);
+    // And the row remembers that it WAS cancelled. Without this the
+    // date is all there is, and the reader's own page reads it as a
+    // renewal — telling somebody who just cancelled that they will be
+    // charged again on the 2nd.
+    expect(row!.planCancelAtPeriodEnd).toBe(true);
+  });
+
+  it('reads a cancellation the way Stripe actually reports one', async () => {
+    // Taken from a real cancellation through the customer portal on this
+    // account. The shape matters: the version of the API in use expresses
+    // "stop at the end of the period" as a `cancel_at` DATE and leaves
+    // `cancel_at_period_end` false. A handler that read only the boolean
+    // would pass every test above and still tell the reader their
+    // cancelled subscription renews.
+    const periodEnd = Math.floor((Date.now() + 30 * DAY) / 1000);
+    await post(
+      evt('customer.subscription.updated', {
+        ...subscription({
+          customer: 'cus_test_1',
+          status: 'active',
+          periodEnd,
+          readerId: reader.id,
+        }),
+        cancel_at: periodEnd,
+        cancel_at_period_end: false,
+        canceled_at: Math.floor(Date.now() / 1000),
+        cancellation_details: {
+          reason: 'cancellation_requested',
+          comment: null,
+          feedback: 'too_expensive',
+        },
+      }),
+    ).expect(200);
+
+    const row = await readerRow();
+    expect(row!.planCancelAtPeriodEnd).toBe(true);
+    expect(row!.plan).toBe('PREMIUM');
+    expect(row!.planRenewsAt!.getTime()).toBe(periodEnd * 1000);
+  });
+
+  it('stops on the cancellation date when it comes before the period end', async () => {
+    // Stripe also allows cancelling on a chosen day. Honouring the
+    // period end there would keep somebody reading past the date they
+    // were told they would lose access.
+    const periodEnd = Math.floor((Date.now() + 30 * DAY) / 1000);
+    const cancelAt = Math.floor((Date.now() + 5 * DAY) / 1000);
+
+    await post(
+      evt('customer.subscription.updated', {
+        ...subscription({
+          customer: 'cus_test_1',
+          status: 'active',
+          periodEnd,
+          readerId: reader.id,
+        }),
+        cancel_at: cancelAt,
+        canceled_at: Math.floor(Date.now() / 1000),
+      }),
+    ).expect(200);
+
+    const row = await readerRow();
+    expect(row!.planRenewsAt!.getTime()).toBe(cancelAt * 1000);
+  });
+
+  it('un-cancelling clears the flag again', async () => {
+    // Stripe reports a resumed subscription by turning
+    // cancel_at_period_end back off. Writing the flag only when it is
+    // true would leave the reader permanently marked as leaving.
+    const end = Math.floor((Date.now() + 10 * DAY) / 1000);
+    const base = {
+      customer: 'cus_test_1',
+      status: 'active' as const,
+      periodEnd: end,
+      readerId: reader.id,
+    };
+
+    await post(
+      evt('customer.subscription.updated', {
+        ...subscription(base),
+        cancel_at: end,
+        canceled_at: Math.floor(Date.now() / 1000),
+      }),
+    ).expect(200);
+    expect((await readerRow())!.planCancelAtPeriodEnd).toBe(true);
+
+    await post(
+      evt('customer.subscription.updated', {
+        ...subscription(base),
+        // A different id, or the webhook is treated as a replay of the
+        // one above and skipped — which would make this test pass for
+        // the wrong reason.
+        //
+        // Resuming clears BOTH: Stripe drops the scheduled date as well
+        // as the boolean, and reading only one would leave the reader
+        // marked as leaving for ever.
+        cancel_at: null,
+        cancel_at_period_end: false,
+        canceled_at: null,
+      }, 'evt_uncancel'),
+    ).expect(200);
+
+    const row = await readerRow();
+    expect(row!.planCancelAtPeriodEnd).toBe(false);
+    expect(row!.planCanceledAt).toBeNull();
+    expect(row!.plan).toBe('PREMIUM');
+  });
+
+  it('records the day they cancelled, not the day access stops', async () => {
+    // Two different dates, often a month apart. The newsroom needs the
+    // first: churn is worth seeing while there is still time to write
+    // to the person.
+    const end = Math.floor((Date.now() + 20 * DAY) / 1000);
+    const cancelledOn = Math.floor((Date.now() - 2 * DAY) / 1000);
+
+    await post(
+      evt('customer.subscription.updated', {
+        ...subscription({
+          customer: 'cus_test_1',
+          status: 'active',
+          periodEnd: end,
+          readerId: reader.id,
+        }),
+        cancel_at_period_end: true,
+        canceled_at: cancelledOn,
+      }),
+    ).expect(200);
+
+    const row = await readerRow();
+    expect(row!.planCanceledAt!.getTime()).toBe(cancelledOn * 1000);
+    expect(row!.planRenewsAt!.getTime()).toBe(end * 1000);
+    expect(row!.planCanceledAt!.getTime()).toBeLessThan(
+      row!.planRenewsAt!.getTime(),
+    );
   });
 
   it('a deleted subscription ends the plan but keeps the customer', async () => {

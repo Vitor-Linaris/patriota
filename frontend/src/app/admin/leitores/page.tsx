@@ -8,6 +8,8 @@ import AdminReadersClient, {
 const PAGE_SIZE = 20;
 
 const PLANS = ["GRATIS", "PREMIUM"] as const;
+/** Mirrors CANCELLED_WINDOWS in the API, which rejects anything else. */
+const CANCELLED_WINDOWS: readonly string[] = ["30", "180", "365"];
 const STATUSES = [
   "PENDENTE_VERIFICACAO",
   "ATIVO",
@@ -27,6 +29,9 @@ export default async function AdminReadersPage({
     active?: string;
     newPlans?: string;
     expiring?: string;
+    cancelled?: string;
+    cancelledDays?: string;
+    inGrace?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -46,6 +51,14 @@ export default async function AdminReadersPage({
   const active = flag(sp.active);
   const newPlans = flag(sp.newPlans);
   const expiring = flag(sp.expiring);
+  const cancelled = flag(sp.cancelled);
+  const inGrace = flag(sp.inGrace);
+  // The API only accepts these three; anything else would be a 400, so
+  // an unrecognised value falls back to the default rather than
+  // rendering an empty page for a stale bookmark.
+  const cancelledDays = CANCELLED_WINDOWS.includes(sp.cancelledDays ?? "")
+    ? sp.cancelledDays!
+    : "30";
 
   const params = new URLSearchParams({
     page: String(currentPage),
@@ -58,6 +71,11 @@ export default async function AdminReadersPage({
   if (active) params.set("active", active);
   if (newPlans) params.set("newPlans", newPlans);
   if (expiring) params.set("expiring", expiring);
+  if (cancelled) {
+    params.set("cancelled", cancelled);
+    params.set("cancelledDays", cancelledDays);
+  }
+  if (inGrace) params.set("inGrace", inGrace);
 
   const [listRes, statsRes, meRes] = await Promise.all([
     apiFetch(`/admin/readers?${params.toString()}`),
@@ -107,6 +125,9 @@ export default async function AdminReadersPage({
           active: active === "true",
           newPlans: newPlans === "true",
           expiring: expiring === "true",
+          cancelled: cancelled === "true",
+          cancelledDays,
+          inGrace: inGrace === "true",
         }}
         canBan={isSuper || perms.has("leitores.suspender")}
         canGrant={isSuper || perms.has("leitores.oferecer_assinatura")}

@@ -45,12 +45,34 @@ export default async function AssinaturaPage({
   if (!FEATURES.readerArea) notFound();
   await requireReader("/conta/assinatura");
 
+  // Re-read the subscription from Stripe BEFORE showing it.
+  //
+  // A webhook only reports what changes from the moment it is wired up.
+  // Anything before that — a cancellation from last week, seen through a
+  // column added this week — stays invisible until the subscription next
+  // changes, which for a cancelled one is when the period ends. Without
+  // this, the very page somebody opens to check they cancelled would go
+  // on telling them it renews, for a month.
+  //
+  // Awaited rather than fired and forgotten: the point is for the read
+  // below to see the corrected row. It never throws and is one Stripe
+  // call on a page nobody opens often.
+  await readerApiFetch("/reader/billing/sync", { method: "POST" });
+
   const res = await readerApiFetch("/reader/me");
   if (!res || !res.ok) notFound();
   const me = (await res.json()) as ReaderMe;
 
   const ends = me.planRenewsAt ? new Date(me.planRenewsAt) : null;
   const gifted = me.planSource === "MANUAL";
+  /**
+   * Cancelled, and living out the period already paid for.
+   *
+   * A gift is excluded even though it also never renews: "cancelada"
+   * would be wrong for something nobody cancelled, and it already says
+   * "Termina" below.
+   */
+  const cancelled = me.planCancelAtPeriodEnd && !gifted;
   const note = me.planStatus ? (STATUS_NOTE[me.planStatus] ?? "") : "";
 
   return (
@@ -88,15 +110,31 @@ export default async function AssinaturaPage({
                 oferecida
               </span>
             )}
+            {me.planActive && cancelled && (
+              <span className="ml-2 align-middle text-[12px] font-bold uppercase tracking-wide text-slate-500">
+                cancelada
+              </span>
+            )}
           </h2>
 
           {me.planActive ? (
             <p className="mt-2 text-[15px] leading-relaxed text-slate-700">
               {ends ? (
-                <>
-                  {gifted ? "Termina" : "Renova"} a{" "}
-                  <strong>{LONG_DATE.format(ends)}</strong>.
-                </>
+                cancelled ? (
+                  // The three things somebody who just cancelled needs
+                  // to read, in order: it worked, you keep what you
+                  // paid for, and here is the day it stops.
+                  <>
+                    Cancelada. Tem acesso até{" "}
+                    <strong>{LONG_DATE.format(ends)}</strong> e não será
+                    cobrado outra vez.
+                  </>
+                ) : (
+                  <>
+                    {gifted ? "Termina" : "Renova"} a{" "}
+                    <strong>{LONG_DATE.format(ends)}</strong>.
+                  </>
+                )
               ) : (
                 "Sem data de fim."
               )}
@@ -139,9 +177,22 @@ export default async function AssinaturaPage({
               {me.hasBilling ? (
                 <>
                   <p className="mt-1 text-[14px] leading-relaxed text-slate-600">
-                    Cancelar, trocar de cartão ou transferir faturas — tudo
-                    nas páginas seguras do Stripe. Se cancelar, continua a
-                    ler até ao fim do período já pago.
+                    {cancelled ? (
+                      // Offering to cancel something already cancelled
+                      // reads as if the cancellation had not worked.
+                      // What they can still do is change their mind.
+                      <>
+                        Mudou de ideias? Pode retomar a assinatura, trocar
+                        de cartão ou transferir faturas — tudo nas páginas
+                        seguras do Stripe.
+                      </>
+                    ) : (
+                      <>
+                        Cancelar, trocar de cartão ou transferir faturas —
+                        tudo nas páginas seguras do Stripe. Se cancelar,
+                        continua a ler até ao fim do período já pago.
+                      </>
+                    )}
                   </p>
                   <div className="mt-4">
                     <ManageBillingButton className="rounded-[10px] bg-patriota-pure px-5 py-2.5 text-[14px] font-bold text-white transition hover:brightness-110 disabled:opacity-60">

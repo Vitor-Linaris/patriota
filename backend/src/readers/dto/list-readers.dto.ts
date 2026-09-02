@@ -60,4 +60,32 @@ export class ListReadersQueryDto extends PageQueryDto {
   @IsOptional()
   @IsIn(['true', 'false'])
   expiring?: string;
+
+  /**
+   * Who cancelled inside the window — the churn list.
+   *
+   * By the day they cancelled, not the day their access stops: those are
+   * different dates, and it is the first one the newsroom can still act
+   * on.
+   */
+  @IsOptional()
+  @IsIn(['true', 'false'])
+  cancelled?: string;
+
+  /**
+   * How far back `cancelled` looks: 30 days, 6 months or a year.
+   *
+   * A closed set rather than any number — it is a scan over a column an
+   * anonymous-ish query could otherwise point at the whole table. An
+   * unrecognised value falls back to 30 rather than failing, so a stale
+   * bookmark still shows something sensible.
+   */
+  @IsOptional()
+  @IsIn(['30', '180', '365'])
+  cancelledDays?: string;
+
+  /** Cancelled but still reading — the paid period has not run out. */
+  @IsOptional()
+  @IsIn(['true', 'false'])
+  inGrace?: string;
 }

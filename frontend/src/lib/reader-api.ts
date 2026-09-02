@@ -37,6 +37,15 @@ export interface ReaderMe {
   planStatus: string | null;
   /** When the current entitlement ends. NULL means no end date. */
   planRenewsAt: string | null;
+  /**
+   * Whether `planRenewsAt` is the END rather than the next renewal.
+   *
+   * True after a cancellation (Stripe keeps the subscription `active`
+   * to the end of the paid period) and on a gift, which never renews.
+   * Without this the page can only guess, and guessing "renews" tells
+   * somebody who has just cancelled the opposite of what they did.
+   */
+  planCancelAtPeriodEnd: boolean;
   planSource: "MANUAL" | "STRIPE" | null;
   planStartedAt: string | null;
   /** There is a Stripe customer behind this account, so the portal opens. */

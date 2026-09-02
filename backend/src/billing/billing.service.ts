@@ -140,6 +140,52 @@ export class BillingService {
     return { url: session.url };
   }
 
+  /**
+   * Re-reads one reader's subscription from Stripe and writes it down.
+   *
+   * Exists because a webhook only tells you about changes from now on,
+   * and this column was added after subscriptions already existed. A
+   * reader who cancelled last week is sitting on a row that says the
+   * subscription renews, and Stripe will not mention it again until the
+   * period actually ends — a month of showing somebody the opposite of
+   * what they asked for.
+   *
+   * Called from the reader's own subscription page, which is the one
+   * place the answer is being looked at, and only when the row has a
+   * subscription id and has not been synced since the column existed.
+   * Cheap, bounded, and self-healing: after the first visit the webhook
+   * keeps it right.
+   *
+   * Never throws. Stripe being slow or down must not take out the page —
+   * the stale answer is bad, a 500 is worse.
+   */
+  async resyncFromStripe(readerId: string): Promise<boolean> {
+    if (!this.stripe.enabled) return false;
+
+    const row = await this.prisma.reader.findUnique({
+      where: { id: readerId },
+      select: { stripeSubscriptionId: true },
+    });
+    if (!row?.stripeSubscriptionId) return false;
+
+    try {
+      const sub = await this.stripe.stripe.subscriptions.retrieve(
+        row.stripeSubscriptionId,
+      );
+      await this.prisma.reader.update({
+        where: { id: readerId },
+        data: this.planFor(sub),
+      });
+      this.logger.log(`Resynced reader ${readerId} from Stripe.`);
+      return true;
+    } catch (e) {
+      this.logger.warn(
+        `Could not resync reader ${readerId}: ${(e as Error).message}`,
+      );
+      return false;
+    }
+  }
+
   // ─────────────────────────────── webhooks ───────────────────────────
 
   /**
@@ -258,7 +304,7 @@ export class BillingService {
    * a paying subscriber becomes an angry ex-subscriber.
    */
   private planFor(sub: Stripe.Subscription) {
-    const periodEnd = subscriptionPeriodEnd(sub);
+    const periodEnd = entitledUntil(sub);
 
     if (DEAD.has(sub.status)) return { ...lapsedPlanData(), planStatus: sub.status };
 
@@ -275,6 +321,33 @@ export class BillingService {
       planStatus: sub.status,
       planRenewsAt: periodEnd,
       planSource: 'STRIPE' as const,
+      // Whether this period is the last one.
+      //
+      // The status alone never says so — Stripe leaves a cancelled
+      // subscription `active` until the period runs out — and neither
+      // does `cancel_at_period_end` alone. Verified against a real
+      // cancellation on this account: the portal set
+      //
+      //     cancel_at:            2 Oct   (the scheduled end)
+      //     canceled_at:          2 Sep   (when they asked)
+      //     cancel_at_period_end: false   ← still false
+      //
+      // Newer Stripe versions express "stop at the end of the period" as
+      // a `cancel_at` date rather than the old boolean, and the boolean
+      // is left alone. Reading only the boolean would have shipped a fix
+      // that still showed "Renova a 2 de outubro" to somebody who had
+      // just cancelled — the exact bug, passing its own tests.
+      //
+      // Both are accepted: either one means it ends.
+      planCancelAtPeriodEnd:
+        sub.cancel_at_period_end === true || sub.cancel_at !== null,
+      // When they asked, not when access stops. Null when they have not
+      // (or when they un-cancelled, which Stripe reports by clearing
+      // both fields — so this must be written every time, not only when
+      // it is set).
+      planCanceledAt: sub.canceled_at
+        ? new Date(sub.canceled_at * 1000)
+        : null,
       // A paid subscription is nobody's gift.
       planGrantedById: null,
       planNote: null,
@@ -365,6 +438,29 @@ export class BillingService {
  * survives an account being upgraded to a newer API version, which is
  * the sort of thing that happens without a deploy.
  */
+/**
+ * The day access actually stops.
+ *
+ * The end of the paid period, except when a cancellation is scheduled
+ * for sooner — then it is that. `cancel_at` is normally the same instant
+ * as the period end (that is what "cancel at period end" produces), but
+ * Stripe also allows cancelling on a chosen date, and honouring the
+ * period end there would keep somebody reading past the day they were
+ * told they would stop.
+ *
+ * The earlier of the two, never the later: erring towards giving access
+ * away is the cheaper mistake, but only until the date somebody was
+ * actually promised.
+ */
+export function entitledUntil(sub: Stripe.Subscription): Date | null {
+  const periodEnd = subscriptionPeriodEnd(sub);
+  const cancelAt = sub.cancel_at ? new Date(sub.cancel_at * 1000) : null;
+
+  if (periodEnd === null) return cancelAt;
+  if (cancelAt === null) return periodEnd;
+  return cancelAt.getTime() < periodEnd.getTime() ? cancelAt : periodEnd;
+}
+
 export function subscriptionPeriodEnd(sub: Stripe.Subscription): Date | null {
   const flat = (sub as unknown as { current_period_end?: number })
     .current_period_end;
