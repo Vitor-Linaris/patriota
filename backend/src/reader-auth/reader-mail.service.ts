@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { MailerService } from '../mailer/mailer.service';
+import type { ReaderAuthProvider } from '../../generated/prisma/enums';
 import {
   registrationAttemptTemplate,
   resetPasswordTemplate,
+  socialAccountNoticeTemplate,
   verifyEmailTemplate,
   type TemplateContext,
 } from '../mailer/templates/reader.templates';
@@ -39,14 +41,27 @@ export class ReaderMailService {
     to: string,
     name: string | null,
     token: string,
-    firstPassword = false,
   ): Promise<void> {
-    const rendered = resetPasswordTemplate(await this.context(), {
-      name,
-      token,
-      firstPassword,
-    });
+    const rendered = resetPasswordTemplate(await this.context(), { name, token });
     await this.mailer.send({ to, ...rendered, tag: 'reader-reset' });
+  }
+
+  /**
+   * A reset was requested for an account that never had a password —
+   * signed up through Google/Facebook. No token, no link back to this
+   * site: there is nothing here to reset, so the mail says that plainly
+   * and points them at the provider that actually holds their password.
+   */
+  async sendSocialAccountNotice(
+    to: string,
+    name: string | null,
+    providers: ReaderAuthProvider[],
+  ): Promise<void> {
+    const rendered = socialAccountNoticeTemplate(await this.context(), {
+      name,
+      providers,
+    });
+    await this.mailer.send({ to, ...rendered, tag: 'reader-social-notice' });
   }
 
   /**
@@ -57,10 +72,12 @@ export class ReaderMailService {
     to: string,
     name: string | null,
     hasPassword: boolean,
+    providers: ReaderAuthProvider[],
   ): Promise<void> {
     const rendered = registrationAttemptTemplate(await this.context(), {
       name,
       hasPassword,
+      providers,
     });
     await this.mailer.send({ to, ...rendered, tag: 'reader-exists' });
   }

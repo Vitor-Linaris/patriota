@@ -48,6 +48,7 @@ export class ReaderAuthController {
         dto.email,
         result.name,
         result.hasPassword,
+        result.providers,
       );
     } else if (result.verificationToken) {
       await this.mail.sendVerification(
@@ -98,12 +99,13 @@ export class ReaderAuthController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async forgotPassword(@Body() dto: EmailOnlyDto): Promise<void> {
     const issued = await this.auth.forgotPassword(dto.email);
-    if (issued) {
-      await this.mail.sendPasswordReset(
+    if (issued?.kind === 'reset') {
+      await this.mail.sendPasswordReset(dto.email, issued.name, issued.token);
+    } else if (issued?.kind === 'social') {
+      await this.mail.sendSocialAccountNotice(
         dto.email,
         issued.name,
-        issued.token,
-        issued.firstPassword,
+        issued.providers,
       );
     }
     // 204 whether or not an account exists.

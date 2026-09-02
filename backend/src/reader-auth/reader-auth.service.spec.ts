@@ -116,6 +116,7 @@ describe('ReaderAuthService', () => {
         id: 'r1',
         status: 'ATIVO',
         password: 'hashed',
+        identities: [],
       });
 
       const result = await service.register({
@@ -130,16 +131,17 @@ describe('ReaderAuthService', () => {
       expect(prisma.reader.create).not.toHaveBeenCalled();
     });
 
-    it('reports whether the existing account already has a password', async () => {
+    it('reports whether the existing account already has a password, and which provider', async () => {
       // The bug this closes: a reader who signed up through Google has
       // `password: null`. registrationAttemptTemplate needs to know
       // that, or it sends "esqueceu-se da password?" to somebody who
-      // never had one — and the reset link it offers used to be a dead
-      // end for exactly this account (see forgotPassword() below).
+      // never had one — and needs the provider name to say "continue a
+      // entrar por Google" rather than something generic.
       prisma.reader.findUnique.mockResolvedValueOnce({
         id: 'r1',
         status: 'ATIVO',
         password: null,
+        identities: [{ provider: 'GOOGLE' }],
       });
 
       const result = await service.register({
@@ -149,6 +151,7 @@ describe('ReaderAuthService', () => {
 
       expect(result.alreadyRegistered).toBe(true);
       expect(result.hasPassword).toBe(false);
+      expect(result.providers).toEqual(['GOOGLE']);
     });
 
     it('stores only the hash of the verification token', async () => {
@@ -336,47 +339,53 @@ describe('ReaderAuthService', () => {
   });
 
   describe('forgotPassword()', () => {
-    it('issues a token for a social-only account, not just a password one', async () => {
-      // The dead end this closes: a reader who signed up through
-      // Google/Facebook has password: null. This used to be excluded —
-      // "there is nothing to reset" — but registrationAttemptTemplate
-      // points EXACTLY this endpoint at them when they try to register
-      // a second time, promising a working link. resetPassword() has
-      // never cared whether a password existed before; it only writes.
-      prisma.reader.findUnique.mockResolvedValueOnce({
-        id: 'r1',
-        password: null,
-        status: 'ATIVO',
-        suspendedUntil: null,
-        name: 'Leitor Social',
-      });
-      prisma.emailToken.create.mockResolvedValueOnce({});
-
-      const result = await service.forgotPassword('social@test.local');
-
-      expect(result).not.toBeNull();
-      expect(result!.firstPassword).toBe(true);
-      expect(prisma.emailToken.create).toHaveBeenCalled();
-    });
-
-    it('still marks a normal reset as not-first-password', async () => {
+    it('issues a real reset token for an account that has a password', async () => {
       prisma.reader.findUnique.mockResolvedValueOnce({
         id: 'r1',
         password: 'already-hashed',
         status: 'ATIVO',
         suspendedUntil: null,
         name: 'Leitor',
+        identities: [],
       });
       prisma.emailToken.create.mockResolvedValueOnce({});
 
       const result = await service.forgotPassword('normal@test.local');
 
-      expect(result!.firstPassword).toBe(false);
+      expect(result).toEqual(
+        expect.objectContaining({ kind: 'reset', name: 'Leitor' }),
+      );
+      expect(prisma.emailToken.create).toHaveBeenCalled();
+    });
+
+    it('issues no token at all for a social-only account — nothing to reset', async () => {
+      // The dead end this closes, and the shape it closes with: a
+      // reader who signed up through Google/Facebook has password:
+      // null. There is no password on this site for them to have
+      // forgotten, so no token is minted and no reset link is sent —
+      // only a notice naming the provider they actually log in with.
+      prisma.reader.findUnique.mockResolvedValueOnce({
+        id: 'r1',
+        password: null,
+        status: 'ATIVO',
+        suspendedUntil: null,
+        name: 'Leitor Social',
+        identities: [{ provider: 'GOOGLE' }],
+      });
+
+      const result = await service.forgotPassword('social@test.local');
+
+      expect(result).toEqual({
+        kind: 'social',
+        name: 'Leitor Social',
+        providers: ['GOOGLE'],
+      });
+      expect(prisma.emailToken.create).not.toHaveBeenCalled();
     });
 
     it('is still null for an address with no account at all', async () => {
-      // The non-enumeration rule still holds — only "has a password"
-      // stopped gating the response, not "exists".
+      // The non-enumeration rule still holds — only the CONTENT of the
+      // mail depends on the account's shape, never whether one exists.
       prisma.reader.findUnique.mockResolvedValueOnce(null);
 
       const result = await service.forgotPassword('ninguem@test.local');
@@ -392,6 +401,7 @@ describe('ReaderAuthService', () => {
         status: 'SUSPENSO',
         suspendedUntil: new Date(Date.now() + 86_400_000),
         name: null,
+        identities: [],
       });
 
       const result = await service.forgotPassword('suspenso@test.local');
