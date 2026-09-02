@@ -39,8 +39,13 @@ export class ReaderMailService {
     to: string,
     name: string | null,
     token: string,
+    firstPassword = false,
   ): Promise<void> {
-    const rendered = resetPasswordTemplate(await this.context(), { name, token });
+    const rendered = resetPasswordTemplate(await this.context(), {
+      name,
+      token,
+      firstPassword,
+    });
     await this.mailer.send({ to, ...rendered, tag: 'reader-reset' });
   }
 
@@ -48,8 +53,15 @@ export class ReaderMailService {
    * The counterpart to registration always answering 202: the API tells a
    * stranger nothing, but the address owner is told something was tried.
    */
-  async sendRegistrationAttempt(to: string, name: string | null): Promise<void> {
-    const rendered = registrationAttemptTemplate(await this.context(), { name });
+  async sendRegistrationAttempt(
+    to: string,
+    name: string | null,
+    hasPassword: boolean,
+  ): Promise<void> {
+    const rendered = registrationAttemptTemplate(await this.context(), {
+      name,
+      hasPassword,
+    });
     await this.mailer.send({ to, ...rendered, tag: 'reader-exists' });
   }
 }

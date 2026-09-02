@@ -132,8 +132,13 @@ export class OAuthService {
         this.logger.warn(
           `Refused auto-link of ${profile.provider} identity to reader ${existingReader.id}`,
         );
+        // "…e associe a rede social nas definições" used to be the
+        // second half of this message. There is no such setting — no
+        // route, no page, nothing links an identity onto an
+        // already-signed-in reader. Promising it sent whoever hit this
+        // refusal looking for a button that has never existed.
         throw new ConflictException(
-          'Já existe uma conta com este e-mail. Inicie sessão com a sua palavra-passe e associe a rede social nas definições.',
+          'Já existe uma conta com este e-mail. Inicie sessão com a sua palavra-passe.',
         );
       }
 
