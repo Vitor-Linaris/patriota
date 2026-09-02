@@ -79,10 +79,16 @@ function DrawerAccount({ onNavigate }: { onNavigate: () => void }) {
 
   return (
     <div className="px-2 py-3">
+      {/* group + hover:text-white on the row: patriota-pure is a
+          saturated mid-blue, and the dark/muted text this row uses
+          normally measures under 3:1 against it on hover — well below
+          the 4.5:1 WCAG floor. White clears 5:1; the sub-line and
+          chevron pick it up too via group-hover so nothing is left
+          half-legible. */}
       <Link
         href="/conta"
         onClick={onNavigate}
-        className="flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-patriota-pure"
+        className="group flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-patriota-pure hover:text-white"
       >
         <span
           aria-hidden
@@ -91,14 +97,18 @@ function DrawerAccount({ onNavigate }: { onNavigate: () => void }) {
           {initials}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[15px] font-semibold text-slate-800">
+          <span className="block truncate text-[15px] font-semibold text-slate-800 group-hover:text-white">
             {reader.name}
           </span>
-          <span className="flex items-center gap-1 text-[12px] text-slate-400">
+          <span className="flex items-center gap-1 text-[12px] text-slate-400 group-hover:text-white/75">
             <FiUser size={11} aria-hidden />A minha conta
           </span>
         </span>
-        <FiChevronRight size={16} className="shrink-0 text-slate-300" aria-hidden />
+        <FiChevronRight
+          size={16}
+          className="shrink-0 text-slate-300 group-hover:text-white/75"
+          aria-hidden
+        />
       </Link>
       {/*
         POST, not a link: a GET logout is fired by link prefetch and by
@@ -109,7 +119,7 @@ function DrawerAccount({ onNavigate }: { onNavigate: () => void }) {
         <button
           type="submit"
           onClick={onNavigate}
-          className="mt-0.5 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[14px] text-slate-500 hover:bg-patriota-pure hover:text-slate-700"
+          className="mt-0.5 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[14px] text-slate-500 hover:bg-patriota-pure hover:text-white"
         >
           <span className="flex h-9 w-9 shrink-0 items-center justify-center">
             <FiLogOut size={15} aria-hidden />
@@ -175,7 +185,10 @@ function SectionRow({
         href={href}
         onClick={onNavigate}
         style={{ paddingLeft: 12 + indent }}
-        className={`flex items-center justify-between gap-3 rounded-lg py-2.5 pr-3 ${labelSize} ${labelWeight} text-slate-800 transition-colors hover:bg-patriota-pure hover:text-patriota-dark`}
+        // hover:text-white, not the dark navy used elsewhere: dark
+        // text on patriota-pure's saturated mid-blue measures under
+        // 3:1 contrast, well below the 4.5:1 WCAG floor.
+        className={`flex items-center justify-between gap-3 rounded-lg py-2.5 pr-3 ${labelSize} ${labelWeight} text-slate-800 transition-colors hover:bg-patriota-pure hover:text-white`}
       >
         <span>{category.label}</span>
         {count > 0 && (
@@ -189,12 +202,17 @@ function SectionRow({
 
   return (
     <>
-      <div className="flex items-center rounded-lg transition-colors hover:bg-patriota-pure">
+      {/* group + group-hover:text-white below, not hover:text-patriota-dark
+          on each child: same 3:1-against-patriota-pure contrast problem
+          as the leaf row above, and grouping means hovering the button
+          (not just the link) also turns the label white — the whole
+          row reads as one hover target either way. */}
+      <div className="group flex items-center rounded-lg transition-colors hover:bg-patriota-pure">
         <Link
           href={href}
           onClick={onNavigate}
           style={{ paddingLeft: 12 + indent }}
-          className={`flex-1 py-2.5 pr-3 ${labelSize} ${labelWeight} text-slate-800 hover:text-patriota-dark`}
+          className={`flex-1 py-2.5 pr-3 ${labelSize} ${labelWeight} text-slate-800 group-hover:text-white`}
         >
           {category.label}
         </Link>
@@ -207,7 +225,7 @@ function SectionRow({
               ? `Fechar subsecções de ${category.label}`
               : `Ver subsecções de ${category.label}`
           }
-          className="flex h-10 w-10 shrink-0 items-center justify-center text-slate-400 hover:text-patriota-dark"
+          className="flex h-10 w-10 shrink-0 items-center justify-center text-slate-400 group-hover:text-white"
         >
           <span
             aria-hidden
@@ -225,7 +243,10 @@ function SectionRow({
               href={href}
               onClick={onNavigate}
               style={{ paddingLeft: 24 + indent }}
-              className="block rounded-lg py-2 pr-3 text-[13px] font-bold text-patriota-medium hover:bg-patriota-pure"
+              // hover:text-white: text-patriota-medium against
+              // patriota-pure is two similar-toned blues, under 2:1
+              // contrast — nearly invisible on hover, not just dim.
+              className="block rounded-lg py-2 pr-3 text-[13px] font-bold text-patriota-medium hover:bg-patriota-pure hover:text-white"
             >
               Ver tudo em {category.label} →
             </Link>

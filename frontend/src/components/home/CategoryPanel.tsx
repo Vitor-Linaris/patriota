@@ -30,11 +30,16 @@ export function CategoryPanel({ category }: { category: CategoryDef }) {
           <li key={child.slug}>
             <Link
               href={`/categoria/${child.slug}`}
-              className="flex items-baseline justify-between gap-3 rounded-md px-2 py-1.5 text-[14px] text-slate-700 transition hover:bg-patriota-pure hover:text-patriota-dark"
+              // White on hover, not the dark navy text used everywhere
+              // else: patriota-pure is a saturated mid-blue, and dark
+              // text on it measures under 3:1 contrast — well below the
+              // 4.5:1 WCAG floor, and it reads as genuinely hard to
+              // read, not just a style choice. White clears 5:1.
+              className="group flex items-baseline justify-between gap-3 rounded-md px-2 py-1.5 text-[14px] text-slate-700 transition hover:bg-patriota-pure hover:text-white"
             >
               <span className="font-medium">{child.label}</span>
               {child.articleCountTotal > 0 && (
-                <span className="text-[11px] text-slate-400">
+                <span className="text-[11px] text-slate-400 group-hover:text-white/75">
                   {child.articleCountTotal}
                 </span>
               )}
