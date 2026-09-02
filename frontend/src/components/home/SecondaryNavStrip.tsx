@@ -247,11 +247,27 @@ export function SecondaryNavStrip({ items }: { items: CategoryDef[] }) {
         <div
           ref={viewportRef}
           className="scrollbar-hide relative flex-1 overflow-x-auto"
-          style={{ WebkitOverflowScrolling: "touch" }}
+          style={{
+            WebkitOverflowScrolling: "touch",
+            // Fades the last link into the dots instead of the dots'
+            // solid background hard-cutting it mid-word — the dots sit
+            // absolutely on top of this viewport, not in normal flow,
+            // so without a fade the text was simply invisible behind
+            // them rather than actually clipped.
+            maskImage:
+              pageCount > 1
+                ? `linear-gradient(to right, black 0%, black calc(100% - ${DOTS_RESERVE}px), transparent 100%)`
+                : undefined,
+            WebkitMaskImage:
+              pageCount > 1
+                ? `linear-gradient(to right, black 0%, black calc(100% - ${DOTS_RESERVE}px), transparent 100%)`
+                : undefined,
+          }}
         >
           <div
             ref={trackRef}
             className="flex items-center gap-6 whitespace-nowrap text-[12px] font-medium text-[#667085]"
+            style={{ paddingRight: pageCount > 1 ? DOTS_RESERVE : 0 }}
           >
             {items.map((c) => (
               <Link
@@ -268,47 +284,37 @@ export function SecondaryNavStrip({ items }: { items: CategoryDef[] }) {
         </div>
 
         {pageCount > 1 && (
-          // Absolute, so the paging maths above never has to account for
-          // its own indicator. The space it sits in is already reserved
-          // by DOTS_RESERVE.
+          // Same dot-indicator language as <BreakingNews>'s ticker —
+          // duplicated rather than shared, since the two live in
+          // unrelated components with their own background/timing and
+          // sharing one would just couple them for no benefit.
+          //
+          // Absolute, so the paging maths above never has to account
+          // for its own indicator; the mask + padding-right above are
+          // what actually keep the track's text out from under it.
           <div
-            className="absolute inset-y-0 right-0 flex items-center gap-1 bg-[#f0f2f7] pl-2"
+            className="absolute inset-y-0 right-0 flex shrink-0 items-center gap-1.5"
             role="tablist"
             aria-label="Páginas de rubricas"
           >
-            {pageOffsets.map((offset, i) => (
-              // The button is a fixed 24×24 hit area; only the pill
-              // inside it changes. The dot used to BE the button at 6×6
-              // px — too small to hit, and growing it on hover reflowed
-              // the row and slid it out from under the pointer, so the
-              // click landed on nothing. The outer box never changes
-              // size now, so nothing moves while you aim at it.
-              //
-              // justify-end pins every pill to the RIGHT of its box, so
-              // the active one grows leftwards. Centred, the last pill
-              // grew outwards into the grid's right edge — the row sits
-              // flush against it — and read as the bar bursting its
-              // container. Right-anchored, the row's right edge is the
-              // same x in every state.
-              <button
-                key={`${i}-${offset}`}
-                type="button"
-                role="tab"
-                aria-selected={i === active}
-                aria-label={`Mostrar rubricas, página ${i + 1} de ${pageCount}`}
-                onClick={() => setActive(i)}
-                className="group/dot flex h-6 w-6 items-center justify-end"
-              >
-                <span
-                  aria-hidden
-                  className={`block h-1.5 rounded-full transition-all duration-300 ${
-                    i === active
-                      ? "w-5 bg-patriota-medium"
-                      : "w-1.5 bg-slate-300 group-hover/dot:bg-slate-500"
+            {pageOffsets.map((offset, i) => {
+              const isActive = i === active;
+              return (
+                <button
+                  key={`${i}-${offset}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  aria-label={`Mostrar rubricas, página ${i + 1} de ${pageCount}`}
+                  onClick={() => setActive(i)}
+                  className={`rounded-full transition-all duration-300 ${
+                    isActive
+                      ? "h-2 w-6 bg-patriota-medium"
+                      : "h-2 w-2 bg-slate-300 hover:bg-slate-400"
                   }`}
                 />
-              </button>
-            ))}
+              );
+            })}
           </div>
         )}
       </Container>
