@@ -16,6 +16,25 @@ export interface GeralSettings {
   maintenanceMode: boolean;
 }
 
+/**
+ * What is actually sending, reported by the API.
+ *
+ * Read-only here. The provider and its key are environment
+ * configuration, never Setting rows: GET /admin/settings hands that
+ * whole blob to anybody with `configuracoes.aceder`, so a key kept
+ * there is a key shared with the whole newsroom. A dropdown that could
+ * switch provider from the browser would also let somebody take e-mail
+ * down with no way to put it back from the same screen.
+ */
+export interface MailerStatus {
+  /** "log" | "brevo" | "resend" | "smtp". */
+  driver: string;
+  /** Whether the selected driver has the credentials it needs. */
+  configured: boolean;
+  /** True when nothing actually leaves the building. */
+  isLog: boolean;
+}
+
 export interface EmailSettings {
   smtpHost: string;
   smtpPort: string;
@@ -217,10 +236,20 @@ function SaveBar({
   );
 }
 
+/** Provider names as a person would say them. */
+const PROVIDER_NAMES: Record<string, string> = {
+  brevo: "Brevo",
+  resend: "Resend",
+  smtp: "SMTP",
+  log: "registo da aplicação",
+};
+
 export default function AdminSettingsClient({
   initial,
+  mailer,
 }: {
   initial: SettingsBundle;
+  mailer: MailerStatus;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -244,7 +273,6 @@ export default function AdminSettingsClient({
   const [smtpPort, setSmtpPort] = useState(initial.email.smtpPort);
   const [smtpUser, setSmtpUser] = useState(initial.email.smtpUser);
   // SMTP password is never sent from the server. Keep it local & opaque.
-  const [smtpPass, setSmtpPass] = useState("");
   const [fromName, setFromName] = useState(initial.email.fromName);
   const [fromEmail, setFromEmail] = useState(initial.email.fromEmail);
   const [emailComments, setEmailComments] = useState(
@@ -505,47 +533,123 @@ export default function AdminSettingsClient({
                 Configurações de E-mail
               </h2>
               <p className="mb-5 text-xs text-gray-400">
-                SMTP para envio de notificações e newsletters.
+                Quem envia, e como aparece no campo “De:”.
               </p>
-              <div className="mb-5 flex items-start gap-3 rounded-xl border-l-4 border-amber-400 bg-amber-50 p-4">
-                <span className="text-lg text-amber-500">⚠</span>
-                <div className="text-sm text-amber-900">
-                  <p className="mb-1 font-bold uppercase tracking-wider text-amber-700">
-                    Funcionalidade futura
+              {/* What is actually sending. Replaces a banner claiming
+                  e-mail "ainda não está activo" — untrue since the
+                  mailer was built: verificações de conta, reposições de
+                  palavra-passe e resumos de categoria saem todos por
+                  aqui. A settings page that describes the system wrongly
+                  is worse than one with a gap in it. */}
+              <div
+                className={`mb-5 flex items-start gap-3 rounded-xl border-l-4 p-4 ${
+                  mailer.isLog
+                    ? "border-amber-400 bg-amber-50"
+                    : mailer.configured
+                      ? "border-green-500 bg-green-50"
+                      : "border-red-500 bg-red-50"
+                }`}
+              >
+                <span
+                  className={`text-lg ${
+                    mailer.isLog
+                      ? "text-amber-500"
+                      : mailer.configured
+                        ? "text-green-600"
+                        : "text-red-500"
+                  }`}
+                >
+                  {mailer.isLog ? "⚠" : mailer.configured ? "✓" : "✕"}
+                </span>
+                <div
+                  className={`text-sm ${
+                    mailer.isLog
+                      ? "text-amber-900"
+                      : mailer.configured
+                        ? "text-green-900"
+                        : "text-red-900"
+                  }`}
+                >
+                  <p
+                    className={`mb-1 font-bold uppercase tracking-wider ${
+                      mailer.isLog
+                        ? "text-amber-700"
+                        : mailer.configured
+                          ? "text-green-700"
+                          : "text-red-700"
+                    }`}
+                  >
+                    {mailer.isLog
+                      ? "Nada está a ser enviado"
+                      : mailer.configured
+                        ? `A enviar por ${PROVIDER_NAMES[mailer.driver] ?? mailer.driver}`
+                        : `${PROVIDER_NAMES[mailer.driver] ?? mailer.driver} sem credenciais`}
                   </p>
                   <p className="leading-relaxed">
-                    O envio de e-mails via SMTP <strong>ainda não está
-                    activo</strong>. Os campos abaixo são guardados na base
-                    de dados para futura integração, mas o sistema não envia
-                    nenhum e-mail no momento (convites, notificações,
-                    newsletters). Esta funcionalidade será implementada numa
-                    fase posterior.
+                    {mailer.isLog ? (
+                      <>
+                        O sistema está em modo <code>log</code>: as mensagens
+                        são escritas no registo da API em vez de saírem. É o
+                        que se quer em desenvolvimento. Para enviar a sério,
+                        ponha <code>MAIL_DRIVER=brevo</code> e a{" "}
+                        <code>BREVO_API_KEY</code> no ambiente do servidor.
+                      </>
+                    ) : mailer.configured ? (
+                      <>
+                        Verificações de conta, reposições de palavra-passe e
+                        resumos de categoria saem por aqui. O fornecedor e a
+                        chave são configurados no ambiente do servidor, não
+                        nesta página — que é lida por toda a gente com acesso
+                        às configurações.
+                      </>
+                    ) : (
+                      <>
+                        O fornecedor escolhido não tem a chave configurada no
+                        ambiente, por isso nenhum e-mail sai. Preencha-a no
+                        servidor e reinicie a API.
+                      </>
+                    )}
                   </p>
                 </div>
               </div>
-              <Field label="Servidor SMTP" hint="Hostname do servidor de envio.">
-                <Input value={smtpHost} onChange={setSmtpHost} mono placeholder="smtp.exemplo.com" />
-              </Field>
-              <Field label="Porta SMTP">
-                <div className="flex gap-2">
-                  {["25", "465", "587", "2525"].map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => setSmtpPort(p)}
-                      className={`rounded-lg border px-4 py-2 text-sm font-bold transition-all ${smtpPort === p ? "border-[#0F2C6B] bg-[#0F2C6B] text-white" : "border-gray-200 text-gray-500 hover:border-gray-400"}`}
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </div>
-              </Field>
-              <Field label="Utilizador SMTP">
-                <Input value={smtpUser} onChange={setSmtpUser} mono />
-              </Field>
-              <Field label="Palavra-passe SMTP">
-                <Input value={smtpPass} onChange={setSmtpPass} mono />
-              </Field>
+              {/* Only for the SMTP driver. On Brevo or Resend the mail
+                  leaves over HTTPS, and a hostname and port here would
+                  be three fields that do nothing — which is exactly what
+                  the password box below them used to be. */}
+              {mailer.driver === "smtp" && (
+                <>
+                  <Field label="Servidor SMTP" hint="Hostname do servidor de envio.">
+                    <Input value={smtpHost} onChange={setSmtpHost} mono placeholder="smtp.exemplo.com" />
+                  </Field>
+                  <Field label="Porta SMTP">
+                    <div className="flex gap-2">
+                      {["25", "465", "587", "2525"].map((p) => (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => setSmtpPort(p)}
+                          className={`rounded-lg border px-4 py-2 text-sm font-bold transition-all ${smtpPort === p ? "border-[#0F2C6B] bg-[#0F2C6B] text-white" : "border-gray-200 text-gray-500 hover:border-gray-400"}`}
+                        >
+                          {p}
+                        </button>
+                      ))}
+                    </div>
+                  </Field>
+                  <Field label="Utilizador SMTP">
+                    <Input value={smtpUser} onChange={setSmtpUser} mono />
+                  </Field>
+                  {/* The password used to be a box here. It was never
+                      sent anywhere — typing one and saving discarded it
+                      in silence — and had it been saved it would have
+                      put a credential into a blob everyone with access
+                      to this page can read. It lives in SMTP_PASSWORD. */}
+                  <p className="mb-5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs leading-relaxed text-gray-600">
+                    A palavra-passe SMTP fica em <code>SMTP_PASSWORD</code>, no
+                    ambiente do servidor — nunca aqui, porque esta página é
+                    lida por toda a gente com acesso às configurações.
+                  </p>
+                </>
+              )}
               <Field label="Nome do remetente" hint="Aparece no campo 'De:' dos e-mails.">
                 <Input value={fromName} onChange={setFromName} />
               </Field>

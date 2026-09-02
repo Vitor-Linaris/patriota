@@ -197,6 +197,12 @@ export class ReaderNotificationsService {
             slug: true,
             title: true,
             summary: true,
+            // The opening of the piece, cut to ~200 words in the
+            // template. A reader deciding whether to click needs more
+            // than the one-line summary — that is what the summary is
+            // FOR elsewhere (cards, search), not what makes somebody
+            // open an e-mail.
+            content: true,
             publishedAt: true,
             category: { select: { slug: true, name: true } },
           },
@@ -225,6 +231,7 @@ export class ReaderNotificationsService {
         slug: r.article.slug,
         title: r.article.title,
         summary: r.article.summary,
+        content: r.article.content,
         categoryName: r.article.category.name,
         categorySlug: r.article.category.slug,
       }));

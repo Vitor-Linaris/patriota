@@ -6,8 +6,35 @@ export interface DigestArticle {
   slug: string;
   title: string;
   summary: string;
+  /** Raw HTML body — cut down to an excerpt in this file, never sent whole. */
+  content: string;
   categoryName: string;
   categorySlug: string;
+}
+
+/** How much of the article a reader gets before the button takes over. */
+const EXCERPT_WORDS = 50;
+
+/**
+ * The opening of the article, as plain text, cut on a word boundary.
+ *
+ * Tags are stripped rather than parsed — this is a digest e-mail, not
+ * the paywall preview in paywall.ts, which keeps whole HTML blocks so a
+ * reader can keep reading inline on the site. Here the excerpt always
+ * ends in a button, so the shape of the remaining markup does not
+ * matter — only the words do.
+ */
+function excerptOf(html: string, maxWords = EXCERPT_WORDS): string {
+  const words = html
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean);
+
+  if (words.length <= maxWords) return words.join(' ');
+  return words.slice(0, maxWords).join(' ') + '…';
 }
 
 /**
@@ -43,25 +70,30 @@ export function digestTemplate(
   const bodyHtml = [...groups.entries()]
     .map(([category, articles]) => {
       const items = articles
-        .map(
-          (a) => `
+        .map((a) => {
+          const url = `${ctx.siteUrl}/artigo/${encodeURIComponent(a.slug)}`;
+          return `
         <tr>
-          <td style="padding:0 0 16px;">
-            <a href="${ctx.siteUrl}/artigo/${encodeURIComponent(a.slug)}"
+          <td style="padding:0 0 22px;">
+            <a href="${url}"
                style="color:#0a1629;text-decoration:none;font-size:16px;
                       font-weight:700;line-height:1.4;">
               ${escapeHtml(a.title)}
             </a>
-            ${
-              a.summary
-                ? `<div style="margin-top:5px;font-size:14px;line-height:1.6;color:#64748b;">
-                     ${escapeHtml(a.summary.slice(0, 160))}${a.summary.length > 160 ? '…' : ''}
-                   </div>`
-                : ''
-            }
+            <div style="margin-top:6px;font-size:14px;line-height:1.65;color:#334155;">
+              ${escapeHtml(excerptOf(a.content))}
+            </div>
+            <div style="margin-top:12px;">
+              <a href="${url}"
+                 style="display:inline-block;background:#2a467e;color:#ffffff;
+                        text-decoration:none;font-weight:700;font-size:13px;
+                        padding:10px 20px;border-radius:8px;">
+                Ler artigo completo
+              </a>
+            </div>
           </td>
-        </tr>`,
-        )
+        </tr>`;
+        })
         .join('');
 
       return `
@@ -122,10 +154,12 @@ export function digestTemplate(
       '',
       ...[...groups.entries()].flatMap(([category, articles]) => [
         category.toUpperCase(),
-        ...articles.map(
-          (a) => `  ${a.title}\n  ${ctx.siteUrl}/artigo/${a.slug}`,
-        ),
-        '',
+        ...articles.flatMap((a) => [
+          `  ${a.title}`,
+          `  ${excerptOf(a.content)}`,
+          `  Ler artigo completo: ${ctx.siteUrl}/artigo/${a.slug}`,
+          '',
+        ]),
       ]),
       `Gerir preferências: ${ctx.siteUrl}/conta/categorias`,
       `Cancelar todos os e-mails: ${unsubBase}`,
