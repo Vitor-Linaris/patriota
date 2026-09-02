@@ -50,6 +50,13 @@ export async function createMediaAction(payload: CreateMediaPayload) {
  */
 export async function uploadMediaFileAction(
   formData: FormData,
+  /**
+   * PUBLICIDADE keeps the file out of the newsroom library. Defaults to
+   * the library, which is both the common case and the safe one: a file
+   * wrongly IN the library can be seen and moved, one wrongly outside
+   * it is invisible to everybody.
+   */
+  purpose: "EDITORIAL" | "PUBLICIDADE" = "EDITORIAL",
 ): Promise<
   | { ok: true; media: UploadedMedia }
   | { ok: false; error: string }
@@ -68,7 +75,10 @@ export async function uploadMediaFileAction(
   const out = new FormData();
   out.append("file", file, file.name);
 
-  const res = await fetch(`${apiBaseUrl()}/admin/media/upload`, {
+  const url = new URL(`${apiBaseUrl()}/admin/media/upload`);
+  if (purpose !== "EDITORIAL") url.searchParams.set("purpose", purpose);
+
+  const res = await fetch(url, {
     method: "POST",
     body: out,
     cache: "no-store",

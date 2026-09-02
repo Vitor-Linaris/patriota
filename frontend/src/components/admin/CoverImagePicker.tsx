@@ -3,6 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { uploadMediaFileAction } from "@/app/admin/media/actions";
 import { imageVariant } from "@/lib/images";
+import { adminMediaUrl } from "@/lib/media-preview";
 import { validateImageUpload } from "@/lib/upload-limits";
 import { MediaLibraryModal } from "./MediaLibraryModal";
 
@@ -19,9 +20,26 @@ import { MediaLibraryModal } from "./MediaLibraryModal";
 export function CoverImagePicker({
   value,
   onChange,
+  purpose = "EDITORIAL",
+  onDelete,
 }: {
   value: string;
   onChange: (url: string) => void;
+  /**
+   * What the upload is for. PUBLICIDADE keeps the file out of the
+   * newsroom library — a banner belongs to one ad slot and is of no use
+   * to anybody writing.
+   */
+  purpose?: "EDITORIAL" | "PUBLICIDADE";
+  /**
+   * What the ✕ does, when the caller wants more than "forget this URL".
+   *
+   * The advertising screen passes a handler that deletes the file for
+   * good, behind a confirmation. Everywhere else the ✕ just clears the
+   * field, which is right for an article: the photograph is shared and
+   * removing it from this cover must not touch anybody else's.
+   */
+  onDelete?: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [pending, startTransition] = useTransition();
@@ -42,7 +60,7 @@ export function CoverImagePicker({
     const fd = new FormData();
     fd.append("file", file);
     startTransition(async () => {
-      const res = await uploadMediaFileAction(fd);
+      const res = await uploadMediaFileAction(fd, purpose);
       if (!res.ok) {
         setError(res.error);
         return;
@@ -57,9 +75,13 @@ export function CoverImagePicker({
     handleFiles(e.dataTransfer.files?.[0]);
   };
 
-  // Show the medium variant for the inline preview (no need for full
-  // resolution in a tiny editor card).
-  const previewUrl = imageVariant(value, "medium") ?? value;
+  // The medium variant, for a small card — and through the admin
+  // proxy, because a cover that was just uploaded is private until the
+  // article is published, and an <img> pointed at the API carries no
+  // session. Without this the editor shows a broken image for exactly
+  // as long as the article is unpublished, which is all of the time
+  // anybody is looking at it.
+  const previewUrl = adminMediaUrl(imageVariant(value, "medium") ?? value);
 
   return (
     <div className="space-y-3">
@@ -76,9 +98,9 @@ export function CoverImagePicker({
           />
           <button
             type="button"
-            onClick={() => onChange("")}
+            onClick={() => (onDelete ? onDelete() : onChange(""))}
             className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-xs text-white hover:bg-black/80"
-            aria-label="Remover imagem de capa"
+            aria-label={onDelete ? "Eliminar imagem" : "Remover imagem de capa"}
           >
             ✕
           </button>
@@ -103,7 +125,7 @@ export function CoverImagePicker({
             {pending ? "A enviar…" : "Arraste uma imagem ou clique para escolher"}
           </p>
           <p className="text-[10px] text-gray-400">
-            JPG, PNG, WebP, GIF — até 10 MB
+            JPG, PNG, WebP, AVIF — até 10 MB · GIF animado até 11 MB
           </p>
         </div>
       )}

@@ -9,6 +9,7 @@ import {
   uploadAvatarAction,
 } from "./actions";
 import { validateImageUpload } from "@/lib/upload-limits";
+import { adminMediaUrl } from "@/lib/media-preview";
 
 interface ProfileData {
   name: string;
@@ -171,8 +172,13 @@ export default function AdminProfileClient({ initial, initialNotifs }: Props) {
   // Single avatar file — no small/medium/large variants. Same URL
   // for sidebar (80px) and main card (64px); the WebP is sized to
   // fit a 512px square at upload, well within budget for both.
-  const sidebarAvatar = draft.avatarUrl;
-  const mainAvatar = draft.avatarUrl;
+  // Through the admin proxy, both of them. An avatar has no media
+  // row at all — it is written straight to /uploads/avatars — and the
+  // serving route requires a staff session for those, which an <img>
+  // pointed at the API cannot present. Nobody had set an avatar yet,
+  // so this was broken without anyone having seen it.
+  const sidebarAvatar = adminMediaUrl(draft.avatarUrl);
+  const mainAvatar = adminMediaUrl(draft.avatarUrl);
 
   const pwStrength =
     pw.next.length === 0

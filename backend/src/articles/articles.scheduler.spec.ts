@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { ArticlesScheduler } from './articles.scheduler';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
+import { MediaService } from '../media/media.service';
 
 describe('ArticlesScheduler', () => {
   let scheduler: ArticlesScheduler;
@@ -24,6 +25,13 @@ describe('ArticlesScheduler', () => {
         ArticlesScheduler,
         { provide: PrismaService, useValue: prisma },
         { provide: ActivityLogService, useValue: activity },
+        // Publishing an article publishes the images it uses. A double
+        // rather than the real thing: these tests are about article
+        // state, and the promotion has its own coverage.
+        {
+          provide: MediaService,
+          useValue: { promoteForPublication: jest.fn().mockResolvedValue(0) },
+        },
       ],
     }).compile();
     scheduler = moduleRef.get(ArticlesScheduler);

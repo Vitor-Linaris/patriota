@@ -1,13 +1,17 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
   Post,
 } from '@nestjs/common';
 import { AdsService } from './ads.service';
+import { MediaService } from '../media/media.service';
 import { Public } from '../auth/public.decorator';
+import { CurrentUser } from '../auth/current-user.decorator';
+import type { AuthUser } from '../auth/auth.service';
 import { RequirePermissions } from '../auth/permissions.decorator';
 import { AdType } from '../../generated/prisma/enums';
 import {
@@ -50,7 +54,10 @@ class UpdateAdDto {
 
 @Controller()
 export class AdsController {
-  constructor(private readonly service: AdsService) {}
+  constructor(
+    private readonly service: AdsService,
+    private readonly media: MediaService,
+  ) {}
 
   @Get('admin/ads')
   list() {
@@ -61,6 +68,19 @@ export class AdsController {
   @RequirePermissions('configuracoes.editar')
   update(@Param('id') id: string, @Body() dto: UpdateAdDto) {
     return this.service.update(id, dto);
+  }
+
+  /**
+   * Clears the slot's image, and deletes the file for good when it is
+   * safe to — see MediaService.removeAdImage for what "safe" rules out.
+   *
+   * Its own permission, not `configuracoes.editar`: swapping a banner
+   * is everyday work, and this cannot be undone.
+   */
+  @Delete('admin/ads/:id/image')
+  @RequirePermissions('publicidade.eliminar_imagem')
+  removeImage(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.media.removeAdImage(id, { id: user.id, role: user.role });
   }
 
   @Post('admin/ads/seed')

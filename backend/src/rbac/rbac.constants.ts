@@ -132,6 +132,28 @@ export const MODULES: ModuleDef[] = [
       { key: 'configuracoes.permissoes', label: 'Gerir permissões', description: 'Editar a matriz RBAC' },
     ],
   },
+  {
+    key: 'publicidade',
+    label: 'Publicidade',
+    permissions: [
+      // Deliberately the only permission here, rather than a full
+      // ver/editar/eliminar set. Seeing and editing an ad already runs
+      // on `configuracoes.editar`, and moving them would silently
+      // remove advertising from anybody whose permission matrix was
+      // customised — the guard requires ALL listed permissions, so
+      // there is no way to accept either one.
+      //
+      // A permission nothing checks is worse than none: it shows up in
+      // the matrix and does nothing, which tells the administrator
+      // something untrue.
+      //
+      // This one is genuinely new, and separate because it is a
+      // different kind of act. Swapping a banner is everyday work;
+      // deleting the file off the disk cannot be undone, so somebody
+      // without this asks somebody who has it.
+      { key: 'publicidade.eliminar_imagem', label: 'Eliminar imagem de publicidade', description: 'Apagar de vez o ficheiro de um banner — não é possível recuperar' },
+    ],
+  },
 ];
 
 export const ALL_PERMISSIONS: string[] = MODULES.flatMap((m) =>

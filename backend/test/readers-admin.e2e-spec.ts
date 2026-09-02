@@ -615,8 +615,17 @@ describe('Readers admin (e2e)', () => {
       });
 
       const res = await me(reader).expect(200);
-      expect(res.body.plan).toBe('PREMIUM');
       expect(res.body.planActive).toBe(false);
+
+      // NOT asserting `plan === 'PREMIUM'` here, though the column does
+      // still say so at the instant the request arrives. The guard tidies
+      // a lapsed plan away as fire-and-forget, so whether the raw column
+      // has already been rewritten by the time getProfile reads it is a
+      // race — one this test used to lose only under a full-suite run.
+      //
+      // Both outcomes are correct, and the only thing a reader is ever
+      // shown is planActive. That is what gets asserted.
+      expect(['PREMIUM', 'GRATIS']).toContain(res.body.plan);
     });
 
     it('carries the end date, the source and the status', async () => {

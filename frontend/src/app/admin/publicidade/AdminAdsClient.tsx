@@ -1,10 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { AdProvider, useAds, type Ad, type AdType } from "@/contexts/AdContext";
 import { CoverImagePicker } from "@/components/admin/CoverImagePicker";
 import { Toggle } from "@/components/admin/Toggle";
 import { parseAdSize } from "@/lib/ads";
+import { deleteAdImageAction } from "./actions";
+import { adminMediaUrl } from "@/lib/media-preview";
 
 const pageGroups = ["Homepage", "Artigo", "Categoria"];
 
@@ -46,7 +49,11 @@ function PreviewPanel({ ad }: { ad: Ad }) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={ad.imageUrl}
+        // Through the admin proxy. An ad's image is private until the
+        // ad is enabled, and this panel is what somebody looks at while
+        // deciding to enable it — so without this it is a broken box at
+        // exactly the moment it matters.
+        src={adminMediaUrl(ad.imageUrl) ?? ""}
         alt={ad.altText || "Preview"}
         style={aspectStyle}
         className="w-full rounded-lg border border-gray-200 bg-gray-50 object-contain"
@@ -65,13 +72,55 @@ function PreviewPanel({ ad }: { ad: Ad }) {
   );
 }
 
-function AdsInner() {
+function AdsInner({ canDeleteImage }: { canDeleteImage: boolean }) {
   const { ads, updateAd } = useAds();
+  const router = useRouter();
   const [editing, setEditing] = useState<Ad | null>(null);
   const [editTab, setEditTab] = useState<"image" | "html" | "settings">("image");
   const [draft, setDraft] = useState<Partial<Ad>>({});
   const [saved, setSaved] = useState(false);
   const [filterPage, setFilterPage] = useState<string>("Todos");
+  /** The slot whose banner is about to be deleted for good, or null. */
+  const [confirmDelete, setConfirmDelete] = useState<Ad | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteNote, setDeleteNote] = useState<string | null>(null);
+
+  /**
+   * Deletes the banner and reports what became of the FILE.
+   *
+   * The slot is always cleared — that is what the person asked for —
+   * but the server declines to delete the file itself when it is a
+   * library photograph an article may use, or when another slot still
+   * shows it. Saying so plainly beats a silent "done" that did less
+   * than the confirmation promised.
+   */
+  const runDelete = async (ad: Ad) => {
+    setDeleting(true);
+    setDeleteNote(null);
+    const res = await deleteAdImageAction(ad.id);
+    setDeleting(false);
+    if (!res.ok) {
+      setDeleteNote(res.error);
+      return;
+    }
+    setConfirmDelete(null);
+    setDraft((p) => ({ ...p, imageUrl: "" }));
+    // Empty string, not null: the UI type is `string | undefined`, and
+    // the context maps a falsy value to null on the way to the API.
+    updateAd(ad.id, { imageUrl: "" });
+    if (!res.fileDeleted) {
+      setDeleteNote(
+        res.reason === "biblioteca"
+          ? "O espaço ficou vazio. O ficheiro não foi apagado porque veio da biblioteca e pode estar num artigo."
+          : res.reason === "em_artigo"
+            ? "O espaço ficou vazio. O ficheiro não foi apagado porque há um artigo que o usa."
+            : res.reason === "noutro_espaco"
+              ? "O espaço ficou vazio. O ficheiro não foi apagado porque outro espaço ainda o mostra."
+              : "O espaço ficou vazio. O endereço era externo, não havia ficheiro nosso para apagar.",
+      );
+    }
+    router.refresh();
+  };
 
   const openEdit = (ad: Ad) => {
     setEditing(ad);
@@ -191,6 +240,8 @@ function AdsInner() {
                       </label>
                       <CoverImagePicker
                         value={draft.imageUrl ?? ""}
+                        // Keeps the banner out of the newsroom library.
+                        purpose="PUBLICIDADE"
                         onChange={(url) =>
                           setDraft((p) => ({
                             ...p,
@@ -198,7 +249,25 @@ function AdsInner() {
                             type: "image" as AdType,
                           }))
                         }
+                        // The ✕ deletes for good here, rather than just
+                        // clearing the field — but only for somebody
+                        // holding the permission, and only after the
+                        // confirmation below. Without it, the ✕ keeps
+                        // its ordinary meaning.
+                        onDelete={
+                          canDeleteImage && editing
+                            ? () => {
+                                setDeleteNote(null);
+                                setConfirmDelete(editing);
+                              }
+                            : undefined
+                        }
                       />
+                      {deleteNote && (
+                        <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                          {deleteNote}
+                        </p>
+                      )}
                       <p className="mt-2 text-xs text-gray-500">
                         Recomendado:{" "}
                         <span className="font-mono font-semibold text-gray-700">
@@ -632,18 +701,83 @@ function AdsInner() {
           </p>
         </div>
       </div>
+
+      {/* Permanent deletion, behind a confirmation that says plainly
+          what it does. There is no undo and no bin to fish it out of —
+          the file leaves the disk — so the wording is deliberately
+          blunt rather than the usual "tem a certeza?". */}
+      {confirmDelete && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+          onClick={() => !deleting && setConfirmDelete(null)}
+        >
+          <div
+            className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="border-b border-gray-100 px-6 py-4">
+              <h3 className="text-lg font-black text-[#0F2C6B]">
+                Eliminar a imagem permanentemente?
+              </h3>
+              <p className="mt-0.5 text-xs text-gray-400">
+                {confirmDelete.name}
+              </p>
+            </div>
+            <div className="space-y-3 px-6 py-5">
+              <p className="text-sm leading-relaxed text-gray-600">
+                O ficheiro é apagado do servidor e{" "}
+                <strong className="font-bold text-gray-800">
+                  não há forma de o recuperar
+                </strong>
+                . O espaço fica vazio até lhe dar outra imagem.
+              </p>
+              <p className="text-xs leading-relaxed text-gray-500">
+                Se a imagem tiver vindo da biblioteca, ou se outro espaço
+                ainda a mostrar, o espaço é esvaziado à mesma mas o
+                ficheiro é mantido — dizemos-lhe qual foi o caso.
+              </p>
+              {deleteNote && (
+                <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                  {deleteNote}
+                </p>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-gray-100 px-6 py-4">
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => setConfirmDelete(null)}
+                className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-bold text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => void runDelete(confirmDelete)}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleting ? "A eliminar…" : "Eliminar permanentemente"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
 
 export default function AdminAdsClient({
   initialAds,
+  canDeleteImage,
 }: {
   initialAds: Ad[];
+  /** Whether this person holds publicidade.eliminar_imagem. */
+  canDeleteImage: boolean;
 }) {
   return (
     <AdProvider initialAds={initialAds}>
-      <AdsInner />
+      <AdsInner canDeleteImage={canDeleteImage} />
     </AdProvider>
   );
 }

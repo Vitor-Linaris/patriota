@@ -11,6 +11,7 @@ import TextAlign from "@tiptap/extension-text-align";
 // separately triggers a "Duplicate extension names" warning.
 import { uploadMediaFileAction } from "@/app/admin/media/actions";
 import { validateImageUpload } from "@/lib/upload-limits";
+import { adminMediaUrl } from "@/lib/media-preview";
 import {
   MediaLibraryModal,
   type MediaItem,
@@ -33,7 +34,42 @@ interface Props {
  *   1. Upload from disk → POST /admin/media/upload → insert large URL
  *   2. Pick from the existing Media library
  * Both end up as `<img src="…-large.webp">` in the saved HTML.
+ *
+ * Those saved URLs are the real ones, and stay that way — they are what
+ * a reader's browser will fetch once the article is out. But inside the
+ * editor they cannot be displayed as-is: media is private until the
+ * article is published, and an <img> pointed at the API sends no
+ * session, so every image the writer inserts would be a broken box for
+ * the entire time they are writing.
+ *
+ * PreviewImage below fixes that in the one place it can be done without
+ * risk. See the note on it.
  */
+
+/**
+ * The Image node, drawn through the admin proxy.
+ *
+ * The important part is what this does NOT touch. `renderHTML` is the
+ * serializer — `editor.getHTML()` goes through it, so rewriting the src
+ * there would put proxy addresses into the saved article, and a reader
+ * would get 401 on every picture. This overrides `addNodeView` instead,
+ * which draws the editing surface and nothing else: the document keeps
+ * the real URL, getHTML() still emits the real URL, and only the pixels
+ * on screen come from somewhere the browser is allowed to fetch.
+ */
+const PreviewImage = Image.extend({
+  addNodeView() {
+    return ({ node, HTMLAttributes }) => {
+      const img = document.createElement("img");
+      for (const [key, value] of Object.entries(HTMLAttributes)) {
+        if (value != null) img.setAttribute(key, String(value));
+      }
+      const src = node.attrs.src as string | null;
+      if (src) img.setAttribute("src", adminMediaUrl(src) ?? src);
+      return { dom: img };
+    };
+  },
+});
 export function RichTextEditor({
   initialValue = "",
   onChange,
@@ -61,7 +97,7 @@ export function RichTextEditor({
           HTMLAttributes: { rel: "noopener nofollow", target: "_blank" },
         },
       }),
-      Image.configure({
+      PreviewImage.configure({
         HTMLAttributes: { class: "rounded-lg" },
       }),
       TextAlign.configure({ types: ["heading", "paragraph"] }),

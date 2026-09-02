@@ -4,7 +4,12 @@ ARG NODE_VERSION=22-alpine
 FROM node:${NODE_VERSION} AS base
 WORKDIR /usr/src/app
 # vips is required by sharp's prebuilt binary on Alpine.
-RUN apk add --no-cache libc6-compat openssl vips \
+#
+# ffmpeg is for video, and only for INSPECTING it: ffprobe reads the
+# duration, resolution and codec, and one frame comes out as a
+# thumbnail. Nothing is transcoded — a real conversion takes minutes and
+# does not belong inside an HTTP request. Costs about 80 MB in the image.
+RUN apk add --no-cache libc6-compat openssl vips ffmpeg \
     && mkdir -p /usr/src/app/uploads
 
 # ---------- deps ----------
