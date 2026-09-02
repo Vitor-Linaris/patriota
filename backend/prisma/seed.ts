@@ -146,6 +146,16 @@ async function main() {
     { slug: 'desporto', name: 'Desporto', description: 'Futebol, modalidades e cobertura olímpica.', icon: '◎', color: '#dc2626', order: 10, children: ['Futebol', 'Modalidades', 'Olimpíadas'] },
     { slug: 'multimedia', name: 'Multimédia', description: 'Reportagens em vídeo, podcasts e galerias.', icon: '▶', color: '#7c2d12', order: 11, children: ['Vídeo', 'Podcast', 'Fotorreportagem'] },
     { slug: 'opiniao', name: 'Opinião', description: 'Análise, colunas e editoriais.', icon: '◌', color: '#4b5563', order: 12, children: ['Editorial', 'Convidados', 'Colunistas'] },
+    { slug: 'ambiente', name: 'Ambiente', description: 'Clima, energia e conservação.', icon: '◈', color: '#15803d', order: 13, children: ['Alterações Climáticas', 'Energia', 'Biodiversidade'] },
+    { slug: 'ciencia', name: 'Ciência', description: 'Investigação científica e descobertas.', icon: '◎', color: '#6d28d9', order: 14, children: ['Espaço', 'Medicina', 'Investigação'] },
+    { slug: 'educacao', name: 'Educação', description: 'Ensino básico, secundário e superior.', icon: '◇', color: '#0369a1', order: 15, children: ['Ensino Superior', 'Escolas', 'Bolsas e Apoios'] },
+    { slug: 'justica', name: 'Justiça', description: 'Tribunais, legislação e processos judiciais.', icon: '◉', color: '#4338ca', order: 16, children: ['Tribunais', 'Legislação', 'Casos Mediáticos'] },
+    { slug: 'motores', name: 'Motores', description: 'Automóveis, motociclismo e mobilidade.', icon: '▣', color: '#b91c1c', order: 17, children: ['Automóveis', 'Motociclismo', 'Mobilidade Elétrica'] },
+    { slug: 'viagens', name: 'Viagens', description: 'Turismo, destinos e roteiros.', icon: '◑', color: '#0d9488', order: 18, children: ['Destinos Nacionais', 'Destinos Internacionais', 'Dicas de Viagem'] },
+    { slug: 'gastronomia', name: 'Gastronomia', description: 'Restaurantes, receitas e vinhos.', icon: '◈', color: '#c2410c', order: 19, children: ['Receitas', 'Restaurantes', 'Vinhos'] },
+    { slug: 'moda', name: 'Moda & Estilo', description: 'Tendências, moda portuguesa e lifestyle.', icon: '◎', color: '#be185d', order: 20, children: ['Tendências', 'Moda Portuguesa'] },
+    { slug: 'religiao', name: 'Religião', description: 'Igreja, fé e comunidades religiosas.', icon: '◌', color: '#854d0e', order: 21, children: ['Igreja Católica', 'Outras Confissões'] },
+    { slug: 'autarquias', name: 'Autarquias', description: 'Câmaras municipais e poder local.', icon: '◆', color: '#166534', order: 22, children: ['Câmaras Municipais', 'Freguesias', 'Orçamentos Participativos'] },
   ];
 
   /** Matches CategoriesService's slugify + parent-suffix disambiguation. */
