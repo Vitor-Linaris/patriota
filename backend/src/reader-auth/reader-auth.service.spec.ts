@@ -112,7 +112,11 @@ describe('ReaderAuthService', () => {
     });
 
     it('does not reveal that an address is taken', async () => {
-      prisma.reader.findUnique.mockResolvedValueOnce({ id: 'r1', status: 'ATIVO' });
+      prisma.reader.findUnique.mockResolvedValueOnce({
+        id: 'r1',
+        status: 'ATIVO',
+        password: 'hashed',
+      });
 
       const result = await service.register({
         email: 'taken@test.local',
@@ -124,6 +128,27 @@ describe('ReaderAuthService', () => {
       expect(result.alreadyRegistered).toBe(true);
       expect(result.verificationToken).toBeNull();
       expect(prisma.reader.create).not.toHaveBeenCalled();
+    });
+
+    it('reports whether the existing account already has a password', async () => {
+      // The bug this closes: a reader who signed up through Google has
+      // `password: null`. registrationAttemptTemplate needs to know
+      // that, or it sends "esqueceu-se da password?" to somebody who
+      // never had one — and the reset link it offers used to be a dead
+      // end for exactly this account (see forgotPassword() below).
+      prisma.reader.findUnique.mockResolvedValueOnce({
+        id: 'r1',
+        status: 'ATIVO',
+        password: null,
+      });
+
+      const result = await service.register({
+        email: 'social@test.local',
+        password: 'password123',
+      });
+
+      expect(result.alreadyRegistered).toBe(true);
+      expect(result.hasPassword).toBe(false);
     });
 
     it('stores only the hash of the verification token', async () => {
@@ -307,6 +332,71 @@ describe('ReaderAuthService', () => {
       expect(prisma.emailToken.findUnique.mock.calls[0][0].where.tokenHash).toBe(
         createHash('sha256').update('the-raw-token').digest('hex'),
       );
+    });
+  });
+
+  describe('forgotPassword()', () => {
+    it('issues a token for a social-only account, not just a password one', async () => {
+      // The dead end this closes: a reader who signed up through
+      // Google/Facebook has password: null. This used to be excluded —
+      // "there is nothing to reset" — but registrationAttemptTemplate
+      // points EXACTLY this endpoint at them when they try to register
+      // a second time, promising a working link. resetPassword() has
+      // never cared whether a password existed before; it only writes.
+      prisma.reader.findUnique.mockResolvedValueOnce({
+        id: 'r1',
+        password: null,
+        status: 'ATIVO',
+        suspendedUntil: null,
+        name: 'Leitor Social',
+      });
+      prisma.emailToken.create.mockResolvedValueOnce({});
+
+      const result = await service.forgotPassword('social@test.local');
+
+      expect(result).not.toBeNull();
+      expect(result!.firstPassword).toBe(true);
+      expect(prisma.emailToken.create).toHaveBeenCalled();
+    });
+
+    it('still marks a normal reset as not-first-password', async () => {
+      prisma.reader.findUnique.mockResolvedValueOnce({
+        id: 'r1',
+        password: 'already-hashed',
+        status: 'ATIVO',
+        suspendedUntil: null,
+        name: 'Leitor',
+      });
+      prisma.emailToken.create.mockResolvedValueOnce({});
+
+      const result = await service.forgotPassword('normal@test.local');
+
+      expect(result!.firstPassword).toBe(false);
+    });
+
+    it('is still null for an address with no account at all', async () => {
+      // The non-enumeration rule still holds — only "has a password"
+      // stopped gating the response, not "exists".
+      prisma.reader.findUnique.mockResolvedValueOnce(null);
+
+      const result = await service.forgotPassword('ninguem@test.local');
+
+      expect(result).toBeNull();
+      expect(prisma.emailToken.create).not.toHaveBeenCalled();
+    });
+
+    it('is still null for a suspended or anonymised reader', async () => {
+      prisma.reader.findUnique.mockResolvedValueOnce({
+        id: 'r1',
+        password: null,
+        status: 'SUSPENSO',
+        suspendedUntil: new Date(Date.now() + 86_400_000),
+        name: null,
+      });
+
+      const result = await service.forgotPassword('suspenso@test.local');
+
+      expect(result).toBeNull();
     });
   });
 

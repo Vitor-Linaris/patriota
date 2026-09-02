@@ -127,11 +127,18 @@ export class ReaderAuthService {
     alreadyRegistered: boolean;
     /** Name on the account, so the caller can address the mail properly. */
     name: string | null;
+    /**
+     * Whether the EXISTING account already has a password. Only
+     * meaningful when `alreadyRegistered` is true — it decides whether
+     * `registrationAttemptTemplate` can say "esqueceu-se?" (they do) or
+     * has to say "esta conta é só de rede social" (they never had one).
+     */
+    hasPassword: boolean;
   }> {
     const email = this.normaliseEmail(input.email);
     const existing = await this.prisma.reader.findUnique({
       where: { email },
-      select: { id: true, status: true, name: true },
+      select: { id: true, status: true, name: true, password: true },
     });
 
     if (existing) {
@@ -141,6 +148,7 @@ export class ReaderAuthService {
         verificationToken: null,
         alreadyRegistered: true,
         name: existing.name,
+        hasPassword: existing.password !== null,
       };
     }
 
@@ -161,6 +169,10 @@ export class ReaderAuthService {
       verificationToken: token.raw,
       alreadyRegistered: false,
       name: input.name?.trim() || null,
+      // Meaningless on this branch — nothing reads it when
+      // alreadyRegistered is false. True because this new account was
+      // just given one.
+      hasPassword: true,
     };
   }
 
@@ -328,10 +340,27 @@ export class ReaderAuthService {
 
   // ────────────────────────── password recovery ──────────────────────────
 
-  /** Null when there is no account, or when it is social-only. */
+  /**
+   * Null when there is no account to act on.
+   *
+   * A social-only reader (signed up through Google/Facebook, `password`
+   * still null) is deliberately NOT excluded any more. This used to
+   * refuse them — "there is no password to reset" — and that refusal
+   * was the dead end: `registrationAttemptTemplate` points a reader who
+   * tries to register a second time at this exact endpoint, so a
+   * social-only reader who wanted a password too got a mail promising
+   * "repor a palavra-passe", clicked it, and nothing happened. No error,
+   * no mail, nothing — the account they already had, unreachable by any
+   * self-service path.
+   *
+   * The token this issues is not a *reset*; for such a reader it is a
+   * first password, set through the exact same one-time link. Nothing
+   * about `resetPassword()` cares whether a password existed before —
+   * it only ever overwrites.
+   */
   async forgotPassword(
     rawEmail: string,
-  ): Promise<{ token: string; name: string | null } | null> {
+  ): Promise<{ token: string; name: string | null; firstPassword: boolean } | null> {
     const email = this.normaliseEmail(rawEmail);
     const reader = await this.prisma.reader.findUnique({
       where: { email },
@@ -343,16 +372,15 @@ export class ReaderAuthService {
         name: true,
       },
     });
-    if (
-      !reader ||
-      !reader.password ||
-      isSuspended(reader) ||
-      reader.status === 'ANONIMIZADO'
-    ) {
+    if (!reader || isSuspended(reader) || reader.status === 'ANONIMIZADO') {
       return null;
     }
     const token = await this.issueEmailToken(reader.id, 'REPOR_PASSWORD');
-    return { token: token.raw, name: reader.name };
+    return {
+      token: token.raw,
+      name: reader.name,
+      firstPassword: reader.password === null,
+    };
   }
 
   async resetPassword(raw: string, nextPassword: string): Promise<void> {

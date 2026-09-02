@@ -44,7 +44,11 @@ export class ReaderAuthController {
     // whole point. The address owner learns something either way; a
     // stranger probing for accounts learns nothing.
     if (result.alreadyRegistered) {
-      await this.mail.sendRegistrationAttempt(dto.email, result.name);
+      await this.mail.sendRegistrationAttempt(
+        dto.email,
+        result.name,
+        result.hasPassword,
+      );
     } else if (result.verificationToken) {
       await this.mail.sendVerification(
         dto.email,
@@ -95,7 +99,12 @@ export class ReaderAuthController {
   async forgotPassword(@Body() dto: EmailOnlyDto): Promise<void> {
     const issued = await this.auth.forgotPassword(dto.email);
     if (issued) {
-      await this.mail.sendPasswordReset(dto.email, issued.name, issued.token);
+      await this.mail.sendPasswordReset(
+        dto.email,
+        issued.name,
+        issued.token,
+        issued.firstPassword,
+      );
     }
     // 204 whether or not an account exists.
   }
