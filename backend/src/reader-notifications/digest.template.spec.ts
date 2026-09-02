@@ -7,6 +7,7 @@ function article(over: Partial<DigestArticle> = {}): DigestArticle {
     slug: 'artigo',
     title: 'Título',
     summary: 'Resumo',
+    content: '<p>Corpo do artigo de teste.</p>',
     categoryName: 'Política',
     categorySlug: 'politica',
     ...over,
@@ -91,6 +92,53 @@ describe('digestTemplate', () => {
     expect(mail.html).toContain('Cancelar todos os e-mails');
     expect(mail.html).toContain('categoria=politica');
     expect(mail.html).toContain('t=the-token');
+  });
+
+  it('cuts the body at 50 words and adds a button to read the rest', () => {
+    const longBody = `<p>${Array.from({ length: 200 }, (_, i) => `palavra${i}`).join(' ')}</p>`;
+    const mail = digestTemplate(CTX, {
+      name: null,
+      articles: [article({ slug: 'longo', content: longBody })],
+      unsubscribeToken: 'tok',
+    });
+
+    // The 50th word is in; the 51st never reaches the e-mail at all —
+    // not hidden by CSS, not present and cut client-side. The button is
+    // the only way to read the rest.
+    expect(mail.html).toContain('palavra49');
+    expect(mail.html).not.toContain('palavra50');
+    expect(mail.html).toContain('Ler artigo completo');
+    expect(mail.text).toContain('palavra49');
+    expect(mail.text).not.toContain('palavra50');
+    expect(mail.text).toContain('Ler artigo completo: https://opatriota.pt/artigo/longo');
+  });
+
+  it('does not truncate a body shorter than the cut', () => {
+    const mail = digestTemplate(CTX, {
+      name: null,
+      articles: [article({ content: '<p>Um parágrafo curto.</p>' })],
+      unsubscribeToken: 'tok',
+    });
+
+    expect(mail.html).toContain('Um parágrafo curto.');
+    expect(mail.html).not.toContain('…');
+  });
+
+  it('strips markup from the excerpt rather than sending raw tags', () => {
+    const mail = digestTemplate(CTX, {
+      name: null,
+      articles: [
+        article({
+          content: '<p>Primeiro <strong>parágrafo</strong>.</p><p>Segundo.</p>',
+        }),
+      ],
+      unsubscribeToken: 'tok',
+    });
+
+    expect(mail.html).toContain('Primeiro parágrafo . Segundo.');
+    // Only the excerpt has to be markup-free — the footer legitimately
+    // uses <strong> for the category name, which is unrelated.
+    expect(mail.html).not.toMatch(/Primeiro[^<]*<strong>/);
   });
 
   it('always ships a plain-text part with working links', () => {
