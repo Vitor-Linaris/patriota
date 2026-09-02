@@ -9,7 +9,7 @@ import type { CategoryDef } from "@/lib/categories";
 /** Long enough to read a bar of links before it moves under you. */
 const ROTATE_MS = 12_000;
 /**
- * Width always kept clear at the right for the dot indicator.
+ * Width kept clear at the right for the dot indicator (`sm:` and up).
  *
  * Reserved unconditionally, and the dots are taken out of the flow, so
  * the width the paging maths runs against NEVER depends on how many dots
@@ -20,6 +20,15 @@ const ROTATE_MS = 12_000;
  * dot scroll by 10px instead of a full page.
  */
 const DOTS_RESERVE = 72;
+/**
+ * Below `sm:` the dots are hidden entirely (there's no room, and a
+ * phone reader drags with a finger, not a pointer) — just a sliver of
+ * fade at the edge to say "there's more", not a whole tap-target zone.
+ * Matches the `hidden sm:flex` on the dots below; keep the two in sync.
+ */
+const MOBILE_EDGE_RESERVE = 28;
+/** Tailwind's `sm:` breakpoint — the switch between the two reserves above. */
+const SM_BREAKPOINT_QUERY = "(min-width: 640px)";
 /** Grace period so the pointer can cross from a link into its panel. */
 const CLOSE_DELAY_MS = 160;
 const PANEL_MAX_WIDTH = 640;
@@ -70,6 +79,15 @@ export function SecondaryNavStrip({ items }: { items: CategoryDef[] }) {
   const trackRef = useRef<HTMLDivElement>(null);
   /** x-offset of the first link on each page. */
   const [pageOffsets, setPageOffsets] = useState<number[]>([0]);
+  /**
+   * DOTS_RESERVE or MOBILE_EDGE_RESERVE, whichever the viewport matches
+   * right now. Computed once in `measure()` and reused everywhere else
+   * (the track's padding, the mask width, the maxOffset clamp below) —
+   * three places quietly disagreeing on this number is exactly what
+   * made the last page overshoot the real scrollable end and bounce
+   * back (see the maxOffset comment below).
+   */
+  const [reserve, setReserve] = useState(DOTS_RESERVE);
   const [active, setActive] = useState(0);
   const [hovered, setHovered] = useState(false);
   const [panel, setPanel] = useState<PanelState | null>(null);
@@ -87,39 +105,87 @@ export function SecondaryNavStrip({ items }: { items: CategoryDef[] }) {
     if (!viewport || !track) return;
 
     const measure = () => {
-      const width = viewport.clientWidth - DOTS_RESERVE;
+      const r = window.matchMedia(SM_BREAKPOINT_QUERY).matches
+        ? DOTS_RESERVE
+        : MOBILE_EDGE_RESERVE;
+      setReserve(r);
+
+      // The reserved strip at the right (dots or just the fade sliver)
+      // sits fixed on top of the viewport at every scroll position, so
+      // a page's usable reading width is always clientWidth minus it —
+      // this is ONLY for deciding where a page break falls, never for
+      // how far the strip can actually scroll (that's maxOffset below).
+      const pageWidth = viewport.clientWidth - r;
       const links = Array.from(track.children) as HTMLElement[];
-      if (links.length === 0 || width <= 0) {
-        setPageOffsets([0]);
+      if (links.length === 0 || pageWidth <= 0) {
+        setPageOffsets((prev) => (prev.length === 1 && prev[0] === 0 ? prev : [0]));
         return;
       }
 
+      // The last link carries a `paddingRight: reserve` of its own
+      // (JSX, below) once there's a next page — real space after it, so
+      // the last page's content never ends up hidden under the dots
+      // with nothing left to scroll past. It has to be padding on that
+      // link's OWN box specifically: `padding-right` on the track,
+      // `margin-right` on the last link, and a trailing spacer element
+      // were all tried first, and in this flex-with-`gap` layout
+      // Chromium's scrollable-overflow calculation silently excludes
+      // all three from how far it will actually let you scroll — only
+      // a box's own padding reliably counts.
+      //
+      // But that also means `lastLink.offsetWidth` already has this
+      // padding baked in once it's applied, which would double-count
+      // it below — the page-break loop would see the last link as
+      // `reserve` px wider than its text and could open a bogus final
+      // page holding nothing but that padding, and `maxOffset` would
+      // overshoot by `reserve` and land past where the browser will
+      // really scroll (the last page's dot bouncing straight back,
+      // which is exactly what shipped before this was caught). Reading
+      // the padding straight off the DOM and subtracting it back out
+      // gives the true, un-padded text edge to measure from — stable
+      // whether or not the padding happens to be applied this render.
+      const lastLink = links[links.length - 1];
+      const lastLinkPad =
+        parseFloat(getComputedStyle(lastLink).paddingRight) || 0;
+
       const starts = [0];
       let pageStart = 0;
-      for (const link of links) {
-        const right = link.offsetLeft + link.offsetWidth;
+      links.forEach((link, i) => {
+        const pad = i === links.length - 1 ? lastLinkPad : 0;
+        const right = link.offsetLeft + link.offsetWidth - pad;
         // `offsetLeft > pageStart` keeps a link that is itself wider than
         // the bar from opening a page at the offset the current page
         // already starts at — a duplicate start renders a dot that
         // scrolls to where you already are.
-        if (right - pageStart > width && link.offsetLeft > pageStart) {
+        if (right - pageStart > pageWidth && link.offsetLeft > pageStart) {
           pageStart = link.offsetLeft;
           starts.push(pageStart);
         }
-      }
+      });
 
-      // Never scroll past the end. Without this, a last page holding one
-      // short name ("Energia") parks it at the left edge with the rest of
-      // the bar empty; clamped, the final page ends flush with the last
-      // link and the bar always looks full. Consecutive duplicates are
-      // dropped, since a page clamped onto the previous one is a dot that
-      // goes nowhere.
-      const maxOffset = Math.max(0, track.scrollWidth - width);
+      // Never scroll past what the browser will actually scroll to.
+      // `contentEdge` is the un-padded text edge (see above); adding
+      // `reserve` back via `- pageWidth` (which is `clientWidth -
+      // reserve`) reconstructs exactly how far the real, padded box
+      // will let the strip scroll — `contentEdge - pageWidth ==
+      // (contentEdge + reserve) - clientWidth`.
+      const contentEdge = lastLink.offsetLeft + lastLink.offsetWidth - lastLinkPad;
+      const maxOffset = Math.max(0, contentEdge - pageWidth);
       const clamped = starts
         .map((s) => Math.min(s, maxOffset))
         .filter((s, i, all) => i === 0 || s !== all[i - 1]);
 
-      setPageOffsets(clamped);
+      // Skip the state update entirely when nothing actually changed.
+      // Without this, a resize the padding itself caused would still
+      // produce a NEW array with the SAME values every time — and a
+      // new array reference is still a change as far as the effect
+      // below is concerned, so it would keep re-triggering scrollTo
+      // forever even once the numbers had stabilised.
+      setPageOffsets((prev) =>
+        prev.length === clamped.length && prev.every((v, i) => v === clamped[i])
+          ? prev
+          : clamped,
+      );
       // A wider viewport can leave fewer pages than the one we're on.
       setActive((i) => Math.min(i, clamped.length - 1));
     };
@@ -134,17 +200,37 @@ export function SecondaryNavStrip({ items }: { items: CategoryDef[] }) {
   }, [items]);
 
   const pageCount = pageOffsets.length;
+  /**
+   * +1 or -1. A ref, not state: it drives which way the NEXT tick steps
+   * but is never itself rendered, so it doesn't need to trigger a
+   * re-render when it flips.
+   */
+  const rotateDirection = useRef(1);
 
   // Auto-advance, frozen while the pointer is anywhere on the strip or
   // in an open panel. Not a timed pause: a reader hovering a section to
   // read its subsections keeps it still for as long as they want, and
   // gets no surprise jump the moment some countdown runs out.
+  //
+  // Bounces at the ends rather than wrapping `% pageCount` back to page
+  // 1. With only a couple of pages a wrap is a short hop and barely
+  // registers, but this strip now pages through a dozen-plus rubrics —
+  // wrapping from the last page meant a full-width scroll slammed all
+  // the way back to the start, which read as the carousel glitching
+  // rather than advancing. Reversing direction at each end keeps every
+  // step the same size as the ones before it.
   useEffect(() => {
     if (pageCount <= 1 || hovered) return;
-    const timer = setInterval(
-      () => setActive((i) => (i + 1) % pageCount),
-      ROTATE_MS,
-    );
+    const timer = setInterval(() => {
+      setActive((i) => {
+        let next = i + rotateDirection.current;
+        if (next < 0 || next >= pageCount) {
+          rotateDirection.current *= -1;
+          next = i + rotateDirection.current;
+        }
+        return next;
+      });
+    }, ROTATE_MS);
     return () => clearInterval(timer);
   }, [pageCount, hovered]);
 
@@ -256,26 +342,42 @@ export function SecondaryNavStrip({ items }: { items: CategoryDef[] }) {
             // them rather than actually clipped.
             maskImage:
               pageCount > 1
-                ? `linear-gradient(to right, black 0%, black calc(100% - ${DOTS_RESERVE}px), transparent 100%)`
+                ? `linear-gradient(to right, black 0%, black calc(100% - ${reserve}px), transparent 100%)`
                 : undefined,
             WebkitMaskImage:
               pageCount > 1
-                ? `linear-gradient(to right, black 0%, black calc(100% - ${DOTS_RESERVE}px), transparent 100%)`
+                ? `linear-gradient(to right, black 0%, black calc(100% - ${reserve}px), transparent 100%)`
                 : undefined,
           }}
         >
           <div
             ref={trackRef}
             className="flex items-center gap-6 whitespace-nowrap text-[12px] font-medium text-[#667085]"
-            style={{ paddingRight: pageCount > 1 ? DOTS_RESERVE : 0 }}
           >
-            {items.map((c) => (
+            {items.map((c, i) => (
               <Link
                 key={c.slug}
                 href={`/categoria/${c.slug}`}
                 onMouseEnter={(e) => openPanel(c, e.currentTarget)}
                 onFocus={(e) => openPanel(c, e.currentTarget)}
                 className="shrink-0 transition hover:text-slate-900"
+                // `paddingRight` on the LAST link's own box — not on
+                // the track, not `marginRight`, not a trailing spacer
+                // element, all three tried and all three silently
+                // clamped `reserve` px short of the intended target.
+                // In this flex-with-`gap` layout, Chromium's scrollable
+                // overflow only reliably counts a box's OWN padding —
+                // padding on an ancestor, a sibling's box, or a child's
+                // margin all landed outside whatever it measures, so
+                // asking to scroll into that space just got refused.
+                // Padding inside the last link's own border box is
+                // unambiguously part of ITS box, so it's the one place
+                // this actually works.
+                style={
+                  pageCount > 1 && i === items.length - 1
+                    ? { paddingRight: reserve }
+                    : undefined
+                }
               >
                 {c.label}
               </Link>
@@ -290,10 +392,17 @@ export function SecondaryNavStrip({ items }: { items: CategoryDef[] }) {
           // sharing one would just couple them for no benefit.
           //
           // Absolute, so the paging maths above never has to account
-          // for its own indicator; the mask + padding-right above are
-          // what actually keep the track's text out from under it.
+          // for its own indicator; the mask + the last link's own
+          // padding (above) are what actually keep the track's text
+          // out from under it.
+          //
+          // `hidden sm:flex`: below `sm:` there's no pointer to click a
+          // dot with and not enough width to fit them without crowding
+          // the fade — a phone reader pages this by dragging, and the
+          // fade sliver (MOBILE_EDGE_RESERVE, above) is what tells them
+          // there's more to pull into view.
           <div
-            className="absolute inset-y-0 right-0 flex shrink-0 items-center gap-1.5"
+            className="absolute inset-y-0 right-0 hidden shrink-0 items-center gap-1.5 sm:flex"
             role="tablist"
             aria-label="Páginas de rubricas"
           >
