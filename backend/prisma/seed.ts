@@ -520,9 +520,14 @@ async function main() {
         const r = Math.random();
         const status =
           r < 0.8 ? 'PUBLICADO' : r < 0.9 ? 'RASCUNHO' : 'AGENDADO';
+        // Dated three days back and older. These are filler without
+        // photography, and `getHomepageBundle` picks the single most
+        // recent published article as the hero — left at "now" they won
+        // that slot and the front page opened on an empty grey box.
+        // The ten photo pieces further down own the recent window.
         const publishedAt =
           status === 'PUBLICADO'
-            ? new Date(Date.now() - i * 3 * 3600_000)
+            ? new Date(Date.now() - (72 + i * 3) * 3600_000)
             : null;
         const rich = RICH_DETAILS[slug];
         await prisma.article.upsert({
@@ -584,6 +589,228 @@ async function main() {
         },
       });
     }
+  }
+
+  // ── Featured demo articles, WITH photography ─────────────────────
+  //
+  // Deliberately outside the `existingArticles < 30` guard above: that
+  // guard exists so re-running the seed does not keep piling on filler,
+  // but these ten are keyed by slug and upserted, so they land exactly
+  // once no matter how many articles already exist. They are what an
+  // empty-looking demo actually needs — every one of them is published,
+  // recent, and carries a cover photo.
+  //
+  // The images are committed under frontend/public/demo/ rather than
+  // hotlinked or uploaded: served same-origin (so no next.config
+  // remotePatterns and no Media visibility rules to satisfy), present on
+  // any machine that has the repo, and needing no outbound internet on
+  // the server that shows them.
+  //
+  // One per category created above, so no section in the menu opens onto
+  // an empty page during the presentation.
+  const PHOTO_ARTICLES: {
+    slug: string;
+    category: string;
+    title: string;
+    summary: string;
+    content: string;
+    hoursAgo: number;
+  }[] = [
+    {
+      slug: 'renovaveis-batem-recorde-com-71-por-cento-da-eletricidade',
+      category: 'ambiente',
+      title: 'Renováveis batem recorde e garantem 71% da eletricidade em 2025',
+      summary:
+        'A produção eólica e solar ultrapassou pela primeira vez a marca dos dois terços do consumo nacional, segundo dados da REN.',
+      content:
+        '<p>Portugal fechou 2025 com <strong>71% da eletricidade consumida</strong> a ter origem em fontes renováveis, o valor mais alto alguma vez registado.</p>' +
+        '<p>O crescimento é explicado sobretudo pela entrada em serviço de novos parques solares no Alentejo e pelo reforço da capacidade eólica no Norte.</p>' +
+        '<p>A REN sublinha que a estabilidade da rede foi mantida em todos os meses do ano, apesar da maior intermitência associada a estas fontes.</p>',
+      hoursAgo: 2,
+    },
+    {
+      slug: 'telescopio-com-tecnologia-portuguesa-mapeia-materia-escura',
+      category: 'ciencia',
+      title: 'Telescópio com tecnologia portuguesa ajuda a mapear a matéria escura',
+      summary:
+        'Investigadores nacionais integram o consórcio internacional que assinou a observação mais detalhada de sempre da Via Láctea.',
+      content:
+        '<p>Uma equipa portuguesa participou no desenvolvimento do espectrógrafo que permitiu obter o mapa mais detalhado de sempre da distribuição de <strong>matéria escura</strong> na nossa galáxia.</p>' +
+        '<p>Os resultados foram publicados esta semana e envolvem instituições de sete países europeus.</p>' +
+        '<p>Segundo os autores, os dados vão permitir testar modelos cosmológicos que até aqui só existiam em simulação.</p>',
+      hoursAgo: 5,
+    },
+    {
+      slug: 'ensino-superior-recebe-numero-recorde-de-candidatos',
+      category: 'educacao',
+      title: 'Ensino superior recebe número recorde de candidatos na primeira fase',
+      summary:
+        'Mais de 65 mil estudantes concorreram ao concurso nacional de acesso, com engenharia e saúde a liderar a procura.',
+      content:
+        '<p>O concurso nacional de acesso ao ensino superior registou este ano o <strong>maior número de candidatos de sempre</strong>.</p>' +
+        '<p>Os cursos de engenharia informática, medicina e enfermagem concentram mais de um quinto das primeiras opções.</p>' +
+        '<p>As instituições do interior mantêm vagas por preencher, apesar dos incentivos criados nos últimos três anos.</p>',
+      hoursAgo: 9,
+    },
+    {
+      slug: 'relacao-fixa-jurisprudencia-sobre-arrendamento-urbano',
+      category: 'justica',
+      title: 'Tribunal da Relação fixa jurisprudência sobre arrendamento urbano',
+      summary:
+        'A decisão uniformiza o entendimento sobre atualização de rendas em contratos anteriores a 1990 e afeta milhares de processos.',
+      content:
+        '<p>O Tribunal da Relação fixou esta semana jurisprudência sobre a atualização de rendas em <strong>contratos anteriores a 1990</strong>.</p>' +
+        '<p>A decisão põe fim a anos de interpretações divergentes entre comarcas e deverá refletir-se em milhares de processos pendentes.</p>' +
+        '<p>Associações de proprietários e de inquilinos já reagiram, com leituras opostas sobre o alcance do acórdão.</p>',
+      hoursAgo: 14,
+    },
+    {
+      slug: 'carros-eletricos-ja-sao-um-em-cada-quatro-vendidos',
+      category: 'motores',
+      title: 'Carros elétricos já são um em cada quatro vendidos em Portugal',
+      summary:
+        'O mercado nacional acompanha a média europeia, mas a rede de carregamento continua concentrada no litoral.',
+      content:
+        '<p>Um em cada quatro automóveis novos vendidos em Portugal é <strong>totalmente elétrico</strong>, segundo os dados mais recentes da ACAP.</p>' +
+        '<p>O crescimento é mais acentuado nas frotas empresariais, onde o benefício fiscal é mais relevante.</p>' +
+        '<p>O principal travão continua a ser a rede de carregamento rápido, ainda muito concentrada nos distritos do litoral.</p>',
+      hoursAgo: 20,
+    },
+    {
+      slug: 'porto-eleito-melhor-destino-europeu-de-city-break',
+      category: 'viagens',
+      title: 'Porto eleito melhor destino europeu de city break pelo terceiro ano',
+      summary:
+        'A cidade voltou a superar Praga e Budapeste na votação anual, com destaque para a gastronomia e a relação qualidade-preço.',
+      content:
+        '<p>O Porto foi novamente distinguido como <strong>melhor destino europeu de city break</strong>, somando o terceiro ano consecutivo no topo.</p>' +
+        '<p>O júri destacou a oferta gastronómica, a facilidade de circulação a pé e a relação qualidade-preço do alojamento.</p>' +
+        '<p>O setor alerta, porém, para a pressão turística no centro histórico e para o impacto no arrendamento residencial.</p>',
+      hoursAgo: 27,
+    },
+    {
+      slug: 'vinhos-do-douro-conquistam-tres-medalhas-de-ouro',
+      category: 'gastronomia',
+      title: 'Vinhos do Douro conquistam três medalhas de ouro em concurso internacional',
+      summary:
+        'A colheita de 2024 foi premiada em Bruxelas e consolida o crescimento das exportações para os mercados asiáticos.',
+      content:
+        '<p>Três vinhos do Douro foram distinguidos com <strong>medalha de ouro</strong> num dos concursos internacionais mais concorridos do setor.</p>' +
+        '<p>A colheita de 2024 beneficiou de um verão menos quente do que os anteriores, com efeitos visíveis na acidez e no equilíbrio dos vinhos.</p>' +
+        '<p>As exportações para a Ásia cresceram 18% no último ano e representam já um quinto do total.</p>',
+      hoursAgo: 34,
+    },
+    {
+      slug: 'moda-portuguesa-cresce-12-por-cento-nas-exportacoes',
+      category: 'moda',
+      title: 'Moda portuguesa cresce 12% nas exportações para o mercado europeu',
+      summary:
+        'O têxtil do Vale do Ave lidera a recuperação, impulsionado por encomendas de marcas que aproximaram a produção da Europa.',
+      content:
+        '<p>As exportações de vestuário e calçado cresceram <strong>12% no último ano</strong>, com o mercado europeu a absorver a maior parte do aumento.</p>' +
+        '<p>O setor beneficia da decisão de várias marcas internacionais de aproximar a produção dos mercados de destino.</p>' +
+        '<p>A falta de mão de obra qualificada é apontada pelos industriais como o principal risco para os próximos anos.</p>',
+      hoursAgo: 41,
+    },
+    {
+      slug: 'santuario-de-fatima-apresenta-plano-de-acessibilidade',
+      category: 'religiao',
+      title: 'Santuário de Fátima apresenta novo plano de acessibilidade',
+      summary:
+        'As obras vão decorrer fora do período das grandes peregrinações e incluem percursos adaptados em todo o recinto.',
+      content:
+        '<p>O Santuário de Fátima apresentou um plano de <strong>acessibilidade universal</strong> que abrange todo o recinto.</p>' +
+        '<p>A intervenção inclui percursos adaptados, sinalética acessível e novos lugares reservados na capelinha das aparições.</p>' +
+        '<p>Os trabalhos vão decorrer fora do período das grandes peregrinações de maio e outubro.</p>',
+      hoursAgo: 50,
+    },
+    {
+      slug: 'orcamentos-participativos-com-verba-recorde-nas-autarquias',
+      category: 'autarquias',
+      title: 'Câmaras aprovam orçamentos participativos com verba recorde',
+      summary:
+        'Mais de 150 municípios vão submeter a votação dos moradores um total superior a 60 milhões de euros.',
+      content:
+        '<p>Mais de 150 câmaras municipais aprovaram <strong>orçamentos participativos</strong> para o próximo ano, num total superior a 60 milhões de euros.</p>' +
+        '<p>A mobilidade suave e os espaços verdes concentram a maioria das propostas submetidas pelos moradores.</p>' +
+        '<p>A taxa de execução dos projetos vencedores continua, no entanto, abaixo dos 60% na maioria dos municípios.</p>',
+      hoursAgo: 62,
+    },
+  ];
+
+  const photoAuthors = await prisma.user.findMany({
+    where: { role: { in: ['EDITOR', 'EDITOR_CHEFE', 'JORNALISTA'] } },
+  });
+  for (const [i, a] of PHOTO_ARTICLES.entries()) {
+    const cat = await prisma.category.findUnique({ where: { slug: a.category } });
+    if (!cat) continue;
+    const cover = `/demo/artigos/${a.category}.jpg`;
+    const author = photoAuthors[i % photoAuthors.length];
+    await prisma.article.upsert({
+      where: { slug: a.slug },
+      // Kept in sync on re-run: the cover is the whole point of these
+      // rows, so a seed that left an older imageless version in place
+      // would defeat the exercise.
+      update: {
+        title: a.title,
+        summary: a.summary,
+        content: a.content,
+        coverImageUrl: cover,
+        status: 'PUBLICADO',
+        categoryId: cat.id,
+      },
+      create: {
+        slug: a.slug,
+        title: a.title,
+        summary: a.summary,
+        content: a.content,
+        coverImageUrl: cover,
+        status: 'PUBLICADO',
+        categoryId: cat.id,
+        authorId: author?.id ?? user.id,
+        readMinutes: 3 + (i % 5),
+        views: 800 + i * 137,
+        publishedAt: new Date(Date.now() - a.hoursAgo * 3600_000),
+        essentials: [],
+      },
+    });
+  }
+
+  // ── Advertising slots, filled with sized banners ──────────────────
+  //
+  // Each banner was cropped to the exact size the slot advertises
+  // (AdsService.DEFAULT_ADS), so nothing is letterboxed or upscaled.
+  // `ensureDefaults()` on the API creates the rows and deliberately
+  // never touches type/imageUrl, so filling them here is safe and is
+  // not undone on the next boot.
+  const AD_BANNERS: { id: string; alt: string }[] = [
+    { id: 'homepage-leaderboard', alt: 'Banco Atlântico — crédito habitação' },
+    { id: 'homepage-mid', alt: 'Vinhos do Douro — colheita de 2024' },
+    { id: 'homepage-sidebar', alt: 'Universidade Nova — candidaturas abertas' },
+    { id: 'homepage-prefooter', alt: 'TAP Portugal — Lisboa para São Paulo' },
+    { id: 'article-leaderboard', alt: 'EDP Renováveis — energia do Atlântico' },
+    { id: 'article-incontent', alt: 'Livraria Bertrand — os livros do mês' },
+    { id: 'article-sidebar', alt: 'Seguros Fidelidade' },
+    { id: 'article-prefooter', alt: 'Turismo da Madeira' },
+    { id: 'category-leaderboard', alt: 'Continente — campanha de poupança' },
+    { id: 'category-sidebar', alt: 'Café Delta' },
+    { id: 'category-prefooter', alt: 'Auto Elétrico PT — test drive' },
+  ];
+  for (const b of AD_BANNERS) {
+    // updateMany, not update: the row only exists after the API has run
+    // ensureDefaults() at least once, and a seed on a fresh database
+    // must not explode just because the API has not booted yet.
+    await prisma.ad.updateMany({
+      where: { id: b.id },
+      data: {
+        type: 'IMAGE',
+        enabled: true,
+        imageUrl: `/demo/publicidade/${b.id}.jpg`,
+        altText: b.alt,
+        linkUrl: 'https://exemplo.pt',
+        linkTarget: '_blank',
+      },
+    });
   }
 
   // ── Newsletter subscribers (sample) ───────────────────────────────
