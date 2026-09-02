@@ -908,6 +908,129 @@ describe('Articles (e2e)', () => {
         .expect(200);
       expect(after.body.status).toBe('RASCUNHO');
     });
+  });
+
+  /**
+   * The bug this closes: `status` inside a plain create/update body used
+   * to skip `artigos.publicar` entirely. A JORNALISTA — `artigos.criar`
+   * and `editar_proprios`, never `publicar` — could self-publish by
+   * adding one field to the request the UI never sends, no review, no
+   * approval. Neither route checked it; only the dedicated
+   * `POST .../publish` button did.
+   */
+  describe('publishing or scheduling through a plain PATCH/POST needs artigos.publicar', () => {
+    it('refuses PATCH …/:id with status: PUBLICADO from someone who cannot publish', async () => {
+      const jornalista = await makeUser(app, { role: 'JORNALISTA' });
+      const draft = await request(app.getHttpServer())
+        .post('/admin/articles')
+        .set(bearer(jornalista))
+        .send({ title: 'Auto-publicação', summary: 's', content: '<p>a</p>', categoryId })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .patch(`/admin/articles/${draft.body.id}`)
+        .set(bearer(jornalista))
+        .send({ status: 'PUBLICADO' })
+        .expect(403);
+
+      // Refused, not silently downgraded — still exactly what it was.
+      const after = await request(app.getHttpServer())
+        .get(`/admin/articles/${draft.body.id}`)
+        .set(bearer(jornalista))
+        .expect(200);
+      expect(after.body.status).toBe('RASCUNHO');
+      expect(after.body.publishedAt).toBeNull();
+    });
+
+    it('refuses PATCH …/:id with status: AGENDADO too — a near-future schedule is a delayed self-publish', async () => {
+      const jornalista = await makeUser(app, { role: 'JORNALISTA' });
+      const draft = await request(app.getHttpServer())
+        .post('/admin/articles')
+        .set(bearer(jornalista))
+        .send({ title: 'Agendamento indevido', summary: 's', content: '<p>a</p>', categoryId })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .patch(`/admin/articles/${draft.body.id}`)
+        .set(bearer(jornalista))
+        .send({ status: 'AGENDADO', scheduledAt: new Date(Date.now() + 60_000).toISOString() })
+        .expect(403);
+    });
+
+    it('refuses POST /admin/articles with status: PUBLICADO in the body', async () => {
+      const jornalista = await makeUser(app, { role: 'JORNALISTA' });
+
+      const res = await request(app.getHttpServer())
+        .post('/admin/articles')
+        .set(bearer(jornalista))
+        .send({
+          title: 'Nasce já publicado',
+          summary: 's',
+          content: '<p>a</p>',
+          categoryId,
+          status: 'PUBLICADO',
+        })
+        .expect(403);
+
+      // And nothing was created at all — not created-then-rejected.
+      const list = await request(app.getHttpServer())
+        .get('/admin/articles')
+        .set(bearer(jornalista))
+        .query({ q: 'Nasce já publicado' })
+        .expect(200);
+      expect(list.body.total).toBe(0);
+      void res;
+    });
+
+    it('still lets someone who CAN publish create straight into PUBLICADO', async () => {
+      // The gate is the permission, not the shape of the request — an
+      // EDITOR_CHEFE bootstrapping content (an import script, a seed)
+      // has always been allowed to do this and still is.
+      const editor = await makeUser(app, { role: 'EDITOR_CHEFE' });
+
+      const res = await request(app.getHttpServer())
+        .post('/admin/articles')
+        .set(bearer(editor))
+        .send({
+          title: 'Publicado directamente por quem pode',
+          summary: 's',
+          content: '<p>a</p>',
+          categoryId,
+          status: 'PUBLICADO',
+        })
+        .expect(201);
+
+      expect(res.body.status).toBe('PUBLICADO');
+      // The bug this whole block exists for: this used to stay NULL,
+      // which meant the piece sorted as eternally "newest" and every
+      // reader following the category was never told it existed — the
+      // notification cron only looks at publishedAt.
+      expect(res.body.publishedAt).not.toBeNull();
+
+      const publicRes = await request(app.getHttpServer())
+        .get(`/public/articles/by-slug/${res.body.slug}`)
+        .expect(200);
+      expect(publicRes.body.title).toBe('Publicado directamente por quem pode');
+    });
+
+    it('refuses an editar_proprios PATCH to PUBLICADO on the author’s own article', async () => {
+      // editar_proprios is "may edit my own drafts", not "may publish
+      // them" — the two are different permissions on purpose, and this
+      // is the path that most resembles the real exploit: editing your
+      // own piece and adding one field.
+      const jornalista = await makeUser(app, { role: 'JORNALISTA' });
+      const draft = await request(app.getHttpServer())
+        .post('/admin/articles')
+        .set(bearer(jornalista))
+        .send({ title: 'Meu rascunho', summary: 's', content: '<p>a</p>', categoryId })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .patch(`/admin/articles/${draft.body.id}`)
+        .set(bearer(jornalista))
+        .send({ title: 'Meu rascunho, agora publicado', status: 'PUBLICADO' })
+        .expect(403);
+    });
 
     it('creates a draft from the minimum the editor can offer', async () => {
       // Autosave fires as soon as there is a 2-char title and a

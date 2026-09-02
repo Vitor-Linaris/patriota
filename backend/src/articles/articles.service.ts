@@ -187,6 +187,32 @@ export class ArticlesService {
     throw new ForbiddenException('Sem permissão para editar este artigo.');
   }
 
+  /**
+   * Guards the one thing `create()` and `update()` must NOT be able to
+   * do on their own: put a row into PUBLICADO or AGENDADO.
+   *
+   * Until now neither checked this. `POST /admin/articles` with
+   * `status: "PUBLICADO"` in the body, or `PATCH .../:id` with the same
+   * field, skipped every consequence `publish()` exists to apply —
+   * `artigos.publicar` was never asked for, so a JORNALISTA holding only
+   * `artigos.criar`/`editar_proprios` could self-publish by sending one
+   * extra field, no review, no approval. AGENDADO is included for the
+   * same reason: a scheduledAt one minute out is a delayed self-publish,
+   * not a different action.
+   *
+   * Every OTHER status (RASCUNHO, EM_REVISAO, ARQUIVADO) is unaffected —
+   * this only fires for the two that end with the piece live or a timer
+   * away from it.
+   */
+  private async assertMayPublish(user: ActingUser) {
+    if (user.role === 'SUPER_ADMIN') return;
+    const perms = await this.rbac.getPermissionsForRole(user.role);
+    if (perms.includes('artigos.publicar')) return;
+    throw new ForbiddenException(
+      'Sem permissão para publicar ou agendar. Use "Submeter para revisão".',
+    );
+  }
+
   // ── admin ──────────────────────────────────────────────────────────
   /**
    * Returns total counts by status across the ENTIRE article corpus,
@@ -274,6 +300,10 @@ export class ArticlesService {
 
   async create(dto: CreateArticleDto, user: ActingUser) {
     await this.ensureCategory(dto.categoryId);
+    const status = (dto.status as ArticleStatus) ?? 'RASCUNHO';
+    if (status === 'PUBLICADO' || status === 'AGENDADO') {
+      await this.assertMayPublish(user);
+    }
     const slug = dto.slug ?? slugify(dto.title);
     try {
       const created = await this.prisma.article.create({
@@ -282,7 +312,13 @@ export class ArticlesService {
           slug,
           summary: dto.summary ?? '',
           content: dto.content ?? '',
-          status: (dto.status as ArticleStatus) ?? 'RASCUNHO',
+          status,
+          // A row created straight into PUBLICADO is as published as one
+          // that got there via publish() — same date, or it sorts as
+          // newest-first forever and every reader who follows this
+          // category never hears about it (the notification cron only
+          // looks at publishedAt).
+          publishedAt: status === 'PUBLICADO' ? new Date() : null,
           exclusive: dto.exclusive ?? false,
           readMinutes: dto.readMinutes ?? 3,
           tags: dto.tags ?? [],
@@ -297,9 +333,18 @@ export class ArticlesService {
           authorId: user.id,
         },
       });
+      // Same reasoning as publish(): a cover or inline image that is
+      // still PRIVADO 404s to the reader who opens this the moment it
+      // goes live. Awaited so that never happens, even for a second.
+      if (status === 'PUBLICADO') {
+        await this.media.promoteForPublication(
+          created.coverImageUrl,
+          created.content,
+        );
+      }
       void this.activity.record({
         userId: user.id,
-        action: 'submitted',
+        action: status === 'PUBLICADO' ? 'published' : 'submitted',
         targetType: 'article',
         targetId: created.id,
         targetLabel: created.title,
@@ -316,8 +361,20 @@ export class ArticlesService {
   async update(id: string, dto: UpdateArticleDto, user: ActingUser) {
     const existing = await this.loadOrThrow(id);
     await this.assertCanEdit(existing, user);
+    if (dto.status === 'PUBLICADO' || dto.status === 'AGENDADO') {
+      await this.assertMayPublish(user);
+    }
     const data: Record<string, unknown> = { ...dto };
     if (dto.scheduledAt) data.scheduledAt = new Date(dto.scheduledAt);
+    // Matches publish(): the date is what makes the piece sort as new
+    // and what the notification cron reads to tell readers about it. A
+    // PATCH that ends with the article live has to set it exactly like
+    // the dedicated publish button does, whatever else is in the body.
+    //
+    // Always refreshed, even if the row was already PUBLICADO — the
+    // same "re-publishing accepts the edit" reasoning publish() uses
+    // for its own re-publish case.
+    if (dto.status === 'PUBLICADO') data.publishedAt = new Date();
     if (dto.slug === undefined && dto.title) {
       // keep existing slug if not explicitly changed
       delete data.slug;
