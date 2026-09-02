@@ -933,7 +933,6 @@ Documentadas honestamente para evitar surpresas:
 | Uploads | Em volume local; perde-se em hosts efémeros. Ver roadmap #1 |
 | Importação | Não há importer de artigos de outras plataformas |
 | Multi-idioma | Só PT-PT |
-| Publicação | `PATCH /admin/articles/:id` aceita `status` sem verificar `artigos.publicar` — um JORNALISTA consegue auto-publicar-se. Bug pré-existente, por corrigir |
 
 ### Resolvido na área de leitores (branch `feat/area-leitores`)
 
@@ -944,6 +943,12 @@ Estas linhas estavam na tabela acima e deixaram de se aplicar:
 | Email | Sai a sério. `MailerModule` com drivers `log` / `resend` / `smtp`, escolhidos por `MAIL_DRIVER`. Verificação de conta, reposição de palavra-passe e digests de categoria |
 | Comentários | Modelo, moderação em `/admin/comentarios`, thread renderizada no servidor, texto simples (sem XSS), contador desnormalizado |
 | Contas de leitor | Registo, login, favoritos, histórico e notificações, com isolamento total do staff — chave de assinatura distinta, claim `typ`, tabela distinta, propriedade distinta no request |
+
+### Resolvido no publicar
+
+| Área | Estado |
+| --- | --- |
+| Publicação | `POST /admin/articles` e `PATCH /admin/articles/:id` recusam `status: PUBLICADO`/`AGENDADO` sem `artigos.publicar` — um JORNALISTA já não consegue auto-publicar-se acrescentando um campo ao pedido. Criar directamente como `PUBLICADO` (por quem pode) passa a preencher `publishedAt` e a promover as imagens, tal como o botão "Publicar" |
 
 ### Resolvido nas assinaturas e na média por utilizador
 
