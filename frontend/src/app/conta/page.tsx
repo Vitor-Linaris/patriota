@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Container } from "@/components/Container";
 import { TopBar } from "@/components/home/TopBar";
 import { SiteHeader } from "@/components/home/SiteHeader";
+import { SecondaryNav } from "@/components/home/SecondaryNav";
 import { SiteFooter } from "@/components/home/SiteFooter";
 import { FEATURES } from "@/lib/features";
 import { requireReader } from "@/lib/reader-api";
@@ -69,6 +70,7 @@ export default async function ContaDashboardPage() {
     <div className="flex flex-1 flex-col bg-white text-slate-900">
       <TopBar />
       <SiteHeader />
+      <SecondaryNav />
 
       <main className="bg-slate-50 py-10">
         <Container>
