@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SettingsService } from '../settings/settings.service';
+import { BrevoMailDriver } from './drivers/brevo.driver';
 import { LogMailDriver } from './drivers/log.driver';
 import { ResendMailDriver } from './drivers/resend.driver';
 import { SmtpMailDriver } from './drivers/smtp.driver';
@@ -23,6 +24,7 @@ export class MailerService {
     private readonly config: ConfigService,
     private readonly settings: SettingsService,
     private readonly log: LogMailDriver,
+    private readonly brevo: BrevoMailDriver,
     private readonly resend: ResendMailDriver,
     private readonly smtp: SmtpMailDriver,
   ) {}
@@ -33,6 +35,8 @@ export class MailerService {
    */
   private get driver(): MailDriver {
     switch (this.config.get<string>('MAIL_DRIVER')) {
+      case 'brevo':
+        return this.brevo;
       case 'resend':
         return this.resend;
       case 'smtp':
@@ -112,6 +116,48 @@ export class MailerService {
 
   async sendOrThrow(message: MailMessage): Promise<MailResult> {
     return this.driver.send(message, await this.sender());
+  }
+
+  /**
+   * What is actually sending, for the settings screen to report.
+   *
+   * Read-only, and deliberately so. The provider and its key live in the
+   * environment, never in a Setting row — GET /admin/settings hands that
+   * whole JSON blob to anybody with `configuracoes.aceder`, so a key
+   * kept there is a key shared with the entire newsroom. A dropdown that
+   * could switch provider from the browser would also let somebody take
+   * e-mail down with no way to put it back from the same screen.
+   *
+   * No secret crosses this boundary: only which driver is selected and
+   * whether it has what it needs.
+   */
+  status(): {
+    driver: string;
+    configured: boolean;
+    /** True when nothing actually leaves the building. */
+    isLog: boolean;
+  } {
+    const driver = this.driver;
+    let configured = true;
+
+    switch (driver.id) {
+      case 'brevo':
+        configured = Boolean(this.config.get<string>('BREVO_API_KEY'));
+        break;
+      case 'resend':
+        configured = Boolean(this.config.get<string>('RESEND_API_KEY'));
+        break;
+      case 'smtp':
+        // The host comes from the Setting row and is checked when the
+        // transporter is built; the password is the part that can only
+        // come from the environment.
+        configured = Boolean(this.config.get<string>('SMTP_PASSWORD'));
+        break;
+      default:
+        configured = true; // the log driver always works
+    }
+
+    return { driver: driver.id, configured, isLog: driver.id === 'log' };
   }
 
   /** Whether a toggle in /admin/configuracoes › Email allows this class of mail. */

@@ -9,6 +9,7 @@ import {
 import { SettingsService, VALID_SECTIONS, type SectionName } from './settings.service';
 import { RequirePermissions } from '../auth/permissions.decorator';
 import { Public } from '../auth/public.decorator';
+import { MailerService } from '../mailer/mailer.service';
 
 /**
  * Sections safe to expose unauthenticated. Currently only `redes`
@@ -20,7 +21,10 @@ const PUBLIC_SECTIONS: SectionName[] = ['redes', 'geral'];
 
 @Controller()
 export class SettingsController {
-  constructor(private readonly service: SettingsService) {}
+  constructor(
+    private readonly service: SettingsService,
+    private readonly mailerService: MailerService,
+  ) {}
 
   @Public()
   @Get('public/settings/:section')
@@ -35,6 +39,21 @@ export class SettingsController {
   @RequirePermissions('configuracoes.aceder')
   getAll() {
     return this.service.getAll();
+  }
+
+  /**
+   * Which mail provider is actually sending, and whether it is ready.
+   *
+   * Declared BEFORE 'admin/settings/:section' or it would be swallowed
+   * as a section named "mailer" and rejected as invalid.
+   *
+   * Read-only on purpose: the provider and its key are environment
+   * configuration, never Setting rows. See MailerService.status().
+   */
+  @Get('admin/settings/mailer')
+  @RequirePermissions('configuracoes.aceder')
+  mailer() {
+    return this.mailerService.status();
   }
 
   @Get('admin/settings/:section')

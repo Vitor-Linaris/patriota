@@ -1,5 +1,6 @@
 import { AdminShell } from "../AdminShell";
 import AdminSettingsClient, {
+  type MailerStatus,
   type SettingsBundle,
 } from "./AdminSettingsClient";
 import { apiFetch } from "@/lib/api";
@@ -74,13 +75,22 @@ function mergeWithDefaults(remote: Partial<SettingsBundle>): SettingsBundle {
 }
 
 export default async function Page() {
-  const res = await apiFetch("/admin/settings");
+  const [res, mailerRes] = await Promise.all([
+    apiFetch("/admin/settings"),
+    // Which provider is actually sending. Read-only: the provider and
+    // its key are environment configuration, never Setting rows — that
+    // JSON blob goes to everybody with configuracoes.aceder.
+    apiFetch("/admin/settings/mailer"),
+  ]);
   const data = res.ok
     ? ((await res.json()) as Partial<SettingsBundle>)
     : {};
+  const mailer = mailerRes.ok
+    ? ((await mailerRes.json()) as MailerStatus)
+    : { driver: "log", configured: true, isLog: true };
   return (
     <AdminShell active="/admin/configuracoes">
-      <AdminSettingsClient initial={mergeWithDefaults(data)} />
+      <AdminSettingsClient initial={mergeWithDefaults(data)} mailer={mailer} />
     </AdminShell>
   );
 }
