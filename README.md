@@ -18,18 +18,19 @@ frontend, PostgreSQL, Redis e processamento de imagem com `sharp`.
 4. [Pré-requisitos](#pré-requisitos)
 5. [Instalação local (Docker)](#instalação-local-docker)
 6. [Configuração — variáveis de ambiente](#configuração--variáveis-de-ambiente)
-7. [Comandos do dia-a-dia](#comandos-do-dia-a-dia)
-8. [Estrutura de pastas](#estrutura-de-pastas)
-9. [Funcionalidades implementadas](#funcionalidades-implementadas)
-10. [Papéis e permissões (RBAC)](#papéis-e-permissões-rbac)
-11. [Migrations Prisma](#migrations-prisma)
-12. [Testes](#testes)
-13. [Deploy em produção](#deploy-em-produção)
-14. [Backups](#backups)
-15. [Roadmap & melhorias recomendadas](#roadmap--melhorias-recomendadas)
-16. [Limitações conhecidas](#limitações-conhecidas)
-17. [Troubleshooting](#troubleshooting)
-18. [Suporte](#suporte)
+7. [Configurar o Stripe (passo a passo)](#configurar-o-stripe-passo-a-passo)
+8. [Comandos do dia-a-dia](#comandos-do-dia-a-dia)
+9. [Estrutura de pastas](#estrutura-de-pastas)
+10. [Funcionalidades implementadas](#funcionalidades-implementadas)
+11. [Papéis e permissões (RBAC)](#papéis-e-permissões-rbac)
+12. [Migrations Prisma](#migrations-prisma)
+13. [Testes](#testes)
+14. [Deploy em produção](#deploy-em-produção)
+15. [Backups](#backups)
+16. [Roadmap & melhorias recomendadas](#roadmap--melhorias-recomendadas)
+17. [Limitações conhecidas](#limitações-conhecidas)
+18. [Troubleshooting](#troubleshooting)
+19. [Suporte](#suporte)
 
 ---
 
@@ -201,6 +202,15 @@ Email/password do seed (definidos em `backend/.env`). Por defeito:
 | `UPLOADS_PUBLIC_BASE_URL` | ✓ em prod | URL público que serve `/uploads` (CDN recomendado) |
 | `IMAGE_QUALITY`           |   | Default 80, controla compressão WebP |
 | `IMAGE_SIZE_SMALL/MEDIUM/LARGE` |   | Larguras das 3 variantes (400/800/1600) |
+| `FEATURE_READER_AREA`     |   | Interruptor do lado do servidor para a área de leitores. Sem prefixo `NEXT_PUBLIC_` de propósito — toda a rota de leitores devolve 404 enquanto não for `true` |
+| `READER_JWT_SECRET`       | ✓ se a área de leitores estiver ligada | **Mínimo 32 chars, TEM de ser diferente de `JWT_SECRET`** — o boot recusa arrancar se forem iguais |
+| `FEATURE_PAYWALL`         |   | Decide se "Conteúdo Exclusivo" retém mesmo o texto. `false` por omissão |
+| `STRIPE_SECRET_KEY`       |   | **A presença desta chave É o interruptor** das assinaturas pagas — sem ela o checkout devolve 503 e o webhook responde 200 a dizer que ignorou. Não há flag à parte. Ver [guia do Stripe](#configurar-o-stripe-passo-a-passo) abaixo |
+| `STRIPE_WEBHOOK_SECRET`   | ✓ se `STRIPE_SECRET_KEY` estiver definida | Assina os eventos recebidos do Stripe |
+| `STRIPE_PRICE_ID`         | ✓ se `STRIPE_SECRET_KEY` estiver definida | Id do preço recorrente no catálogo do Stripe |
+| `GOOGLE_CLIENT_ID/SECRET` |   | Login social de leitores via Google. Deixe em branco para desligar |
+| `FACEBOOK_APP_ID/SECRET`  |   | Login social de leitores via Facebook. Deixe em branco para desligar |
+| `MAIL_DRIVER`             |   | `log` (default, escreve no log da app), `resend` ou `smtp` |
 
 ### `frontend/.env`
 
@@ -209,7 +219,127 @@ Email/password do seed (definidos em `backend/.env`). Por defeito:
 | `PORT`                    | Porto do Next (3005) |
 | `NEXT_PUBLIC_API_URL`     | URL **público** do API (usado pelo browser) |
 | `INTERNAL_API_URL`        | URL **interno** do API (Server Components a chamar SSR) |
-| `NEXT_PUBLIC_FEATURE_*`   | Feature flags da UI pública (comments, audio reader, etc.) — todas off por defeito |
+| `NEXT_PUBLIC_FEATURE_READER_AREA` | Mostra/esconde `/conta/*`. O backend tem a sua própria `FEATURE_READER_AREA` — as duas têm de estar ligadas |
+| `NEXT_PUBLIC_FEATURE_BILLING`     | Mostra "Assinar agora" em vez da página "em preparação". Só faz sentido ligada se o backend também tiver `STRIPE_SECRET_KEY` configurada |
+| `NEXT_PUBLIC_FEATURE_*`   | Restantes feature flags da UI pública (comments, audio reader, etc.) |
+
+> Nota importante para quem mexe nestas variáveis com os containers já a
+> correr: **`docker compose restart` não relê o `.env`** — o ambiente do
+> container é fixado no momento em que é criado. Depois de editar o
+> `.env`, use `docker compose up -d <serviço>`, que recria o container
+> com os valores novos.
+
+---
+
+## Configurar o Stripe (passo a passo)
+
+As assinaturas pagas usam o Stripe. Sem `STRIPE_SECRET_KEY` no
+`backend/.env`, o site funciona normalmente e ninguém é cobrado — o
+botão de assinar simplesmente não aparece (ou mostra a página "em
+preparação", consoante `NEXT_PUBLIC_FEATURE_BILLING`).
+
+### 1. Modo de teste
+
+No [dashboard do Stripe](https://dashboard.stripe.com), confirme que o
+interruptor **"Modo de teste"** está ligado (canto superior). Faça tudo
+o que se segue em modo de teste primeiro — usa cartões falsos, zero
+dinheiro real.
+
+### 2. Criar o produto e o preço
+
+Menu lateral → **Catálogo de produtos** → **Adicionar produto**. Dê-lhe
+um nome (ex: "Assinatura Premium") e um **preço recorrente** (mensal ou
+anual). Depois de gravar, copie o **id do preço** — começa por
+`price_...` (não confundir com o id do produto, que começa por
+`prod_...`). Isto vai para `STRIPE_PRICE_ID`.
+
+### 3. Apanhar a chave secreta
+
+Menu lateral → **Desenvolvedores** → **Chaves de API** → copie a
+**Chave secreta** (`sk_test_...` em modo de teste, `sk_live_...` em
+produção). Isto vai para `STRIPE_SECRET_KEY`.
+
+### 4. Criar o webhook
+
+**Em produção**, com um domínio público:
+
+Ainda em **Desenvolvedores** → **Webhooks** → **Adicionar endpoint** (o
+ecrã pode aparecer como "Criar destino de eventos", consoante a versão
+da interface):
+- **URL**: `https://<o-seu-domínio>/public/stripe/webhook`
+- **Eventos a escutar** — adicione exactamente estes quatro:
+  - `checkout.session.completed`
+  - `customer.subscription.created`
+  - `customer.subscription.updated`
+  - `customer.subscription.deleted`
+
+Depois de criado, abra o webhook e copie o **Signing secret**
+(`whsec_...`). Isto vai para `STRIPE_WEBHOOK_SECRET`.
+
+**Em desenvolvimento local**, o Stripe não consegue alcançar
+`localhost` para lhe entregar eventos — o ecrã acima não serve. Use o
+**Stripe CLI** em vez disso:
+
+```bash
+# instalar (uma vez só)
+winget install --id Stripe.StripeCli -e
+
+# autenticar (abre o browser para autorizar a sua conta Stripe)
+stripe login
+
+# encaminhar eventos para a API local — deixe esta janela aberta
+# enquanto estiver a testar
+stripe listen --forward-to localhost:8585/public/stripe/webhook
+```
+
+O `stripe listen` imprime um `whsec_...` novo **de cada vez que
+arranca** — copie-o para `STRIPE_WEBHOOK_SECRET` sempre que reiniciar o
+comando. O script [`scripts/stripe-dev.ps1`](scripts/stripe-dev.ps1)
+(Windows) faz isto automaticamente: abre o `stripe listen` numa janela
+própria, apanha o secret novo, actualiza o `backend/.env` e recria o
+container da API — bastando correr:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\stripe-dev.ps1
+```
+
+### 5. Preencher os `.env` e reiniciar
+
+No `backend/.env`:
+
+```bash
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_PRICE_ID=price_...
+FEATURE_PAYWALL=true
+```
+
+No `frontend/.env`:
+
+```bash
+NEXT_PUBLIC_FEATURE_BILLING=true
+```
+
+Depois:
+
+```bash
+docker compose up -d api web
+```
+
+(lembre-se: `restart` não chega, tem de ser `up -d` para reler o `.env`)
+
+### 6. Testar
+
+Cartão de teste `4242 4242 4242 4242`, qualquer data futura, qualquer
+CVC. Percorra o ciclo completo: assinar → ler um artigo exclusivo →
+gerir/cancelar assinatura → confirmar que continua a ler até ao fim do
+período pago. Tudo sem dinheiro real.
+
+### 7. Passar para produção
+
+Repita os passos 1–4 com o interruptor **"Modo de teste" desligado** no
+Stripe (chaves `sk_live_...`, novo webhook apontando para o domínio
+real) e troque os três valores no `.env` de produção.
 
 ---
 
@@ -335,21 +465,30 @@ patriota/
 ## Funcionalidades implementadas
 
 ### Backoffice (`/admin`)
-- **Dashboard** — stats globais (artigos publicados, visitas hoje/semana/mês, utilizadores), feed de actividade
-- **Artigos** — CRUD completo, workflow EM_REVISAO → AGENDADO → PUBLICADO → ARQUIVADO, editor Tiptap, agendamento com cron
-- **Categorias** — CRUD + sub-tópicos
+- **Dashboard** — stats globais (artigos publicados, visitas hoje/semana/mês, utilizadores), painel de assinaturas (activas, novas no período, a expirar em 30 dias — cada número liga à lista filtrada), feed de actividade
+- **Artigos** — CRUD completo, workflow EM_REVISAO → AGENDADO → PUBLICADO → ARQUIVADO, editor Tiptap com autosave, agendamento com cron, interruptor "Conteúdo Exclusivo" (paywall)
+- **Categorias** — hierárquicas (4 níveis: categoria → subcategoria → tópico → subtópico), arrastar-e-largar para reordenar e mudar de pai
 - **Utilizadores** — convite, papéis, reset de password (apenas Super/Editor-Chefe), suspensão
-- **Mídia** — upload drag-and-drop, biblioteca com pesquisa, detecção de uso em artigos e publicidade, bloqueio de eliminação se em uso
-- **Publicidade** — 11 slots IAB-standard (Billboard 970×250, MPU 300×250, Leaderboard 728×90, etc.), modo Imagem ou Código HTML/iframe
+- **Leitores** — página própria (`/admin/leitores`) com pesquisa e filtro por plano/estado, banimento por 15 dias, 30 dias ou definitivo (expira sozinho, sem cron), oferta manual de assinatura com data de fim
+- **Mídia** — **biblioteca por pessoa**: cada jornalista/editor vê só o que carregou; só o SUPER_ADMIN vê a de toda a gente (`?scope=todas`). Ficheiros nascem **privados** e tornam-se públicos automaticamente quando usados num artigo publicado ou anúncio activo — o endereço nunca muda. Imagem (até 10 MB, GIF animado até 15 MB/300 frames, mantendo a animação) e vídeo (MP4/H.264 ou WebM, até 100 MB / 5 min / 1080p, com miniatura automática por `ffprobe`). Quota de 2 GB por utilizador. Tipo do ficheiro decidido pelos bytes, não pelo cabeçalho enviado
+- **Publicidade** — 11 slots IAB-standard (Billboard 970×250, MPU 300×250, Leaderboard 728×90, etc.), modo Imagem ou Código HTML/iframe. As imagens de banners ficam **fora** da biblioteca de Mídia (não gastam a quota de ninguém) e têm eliminação **permanente e imediata** própria, com confirmação e permissão dedicada (`publicidade.eliminar_imagem`)
 - **Newsletter** — listagem de subscritores, exportação CSV e XLSX
-- **Configurações** — geral, email (futuro), SEO, redes sociais (aparecem no footer), segurança, newsletter
+- **Configurações** — geral, email, SEO, redes sociais (aparecem no footer), segurança, newsletter
 - **Perfil** — alterar nome/bio/telefone, upload de avatar (privado), trocar password, preferências de notificação
-- **Permissões** — editor da matriz RBAC
+- **Permissões** — editor da matriz RBAC (equipa) + matriz de planos GRATIS/PREMIUM (leitores)
+
+### Área de leitores e assinaturas (`/conta`)
+- Registo, login (email/password + Google/Facebook), verificação de email, recuperação de password
+- Paywall: artigo marcado "Conteúdo Exclusivo" mostra um resumo a quem não é assinante — **o resto do texto nunca chega ao browser**, cortado no servidor. JSON-LD com `isAccessibleForFree` para não ser penalizado como *cloaking*
+- Assinatura via **Stripe** (checkout + portal do cliente) ou oferecida manualmente por um administrador
+- `/conta/assinatura` — estado do plano, data de renovação, gerir/cancelar
+- Comentários (limite de 280 caracteres), favoritos, seguir categorias com notificação por email
+- Leitor banido é bloqueado no login e sabe até quando
 
 ### Site público
 - Homepage com hero + side stack + últimas notícias + investigação + sidebar
 - Páginas de artigo com caixas estruturadas (Essencial, Contexto, Citação destacada)
-- Páginas de categoria com paginação
+- Páginas de categoria com paginação e afunilamento hierárquico (abrir "Portugal" mostra também o Funchal)
 - Página de pesquisa (`/pesquisa?q=`) + modal de pesquisa global (⌘K)
 - Modal de newsletter (subscribe + unsubscribe com confirmação)
 - 12 páginas institucionais (Termos, Privacidade, Cookies, ERC, Estatuto, Equipa, Política Correções, Transparência, Redacção, Publicidade, Assinatura, Imprensa)
@@ -723,13 +862,12 @@ horas de pico.
 (Next 16 tem suporte nativo). Aumenta cliques quando o artigo é partilhado
 em redes sociais.
 
-#### 8. Auth de leitores (paywall / subscrição)
+#### 8. ~~Auth de leitores (paywall / subscrição)~~ — implementado
 
-Hoje a página `/p/assinatura` é só placeholder. Quando entrar em monetização,
-considerar:
-- **Stripe Billing** — assinaturas recorrentes
-- Modelo `Reader` separado de `User` (admin staff)
-- Middleware que detecta artigos `premium` e bloqueia conteúdo a não-subscritores
+Área de leitores completa (`/conta`), paywall com Stripe Billing, modelo
+`Reader` separado de `User`, e o corte de conteúdo aplicado no servidor.
+Ver [Funcionalidades implementadas](#funcionalidades-implementadas) e
+[Configurar o Stripe](#configurar-o-stripe-passo-a-passo).
 
 #### 9. Analytics
 
@@ -790,7 +928,6 @@ Documentadas honestamente para evitar surpresas:
 | Sessões (staff) | JWT sem refresh-token; "terminar sessões" não funciona. Os leitores NÃO têm este problema: `Reader.tokenVersion` revoga todas as sessões |
 | Whitelist de IPs | Campo nas settings é cosmético |
 | reCAPTCHA | Idem |
-| Paywall | `Article.premium` é gravado e `applyPaywall` está reservado, mas nada bloqueia conteúdo ainda — falta o billing |
 | Login social | Código pronto; inerte até haver credenciais Google/Meta. O App Review da Meta demora dias |
 | Pesquisa | ILIKE simples; sem ranking |
 | Uploads | Em volume local; perde-se em hosts efémeros. Ver roadmap #1 |
@@ -807,6 +944,16 @@ Estas linhas estavam na tabela acima e deixaram de se aplicar:
 | Email | Sai a sério. `MailerModule` com drivers `log` / `resend` / `smtp`, escolhidos por `MAIL_DRIVER`. Verificação de conta, reposição de palavra-passe e digests de categoria |
 | Comentários | Modelo, moderação em `/admin/comentarios`, thread renderizada no servidor, texto simples (sem XSS), contador desnormalizado |
 | Contas de leitor | Registo, login, favoritos, histórico e notificações, com isolamento total do staff — chave de assinatura distinta, claim `typ`, tabela distinta, propriedade distinta no request |
+
+### Resolvido nas assinaturas e na média por utilizador
+
+| Área | Estado |
+| --- | --- |
+| Paywall | `Article.exclusive` bloqueia o conteúdo a sério — cortado no servidor, nunca chega ao browser de quem não é assinante |
+| Billing | Stripe: checkout, portal do cliente, webhooks idempotentes. Ver [Configurar o Stripe](#configurar-o-stripe-passo-a-passo) |
+| Moderação de leitores | Banimento por 15/30 dias ou definitivo, expira por data sem precisar de cron |
+| Biblioteca de mídia | Deixou de ser partilhada — cada pessoa vê só o que carregou. Ficheiros privados até serem publicados, quota de 2 GB, vídeo com miniatura |
+| Publicidade | Imagens de banners saíram da biblioteca de Mídia, com eliminação permanente própria |
 
 ---
 
