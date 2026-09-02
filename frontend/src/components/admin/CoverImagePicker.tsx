@@ -20,9 +20,26 @@ import { MediaLibraryModal } from "./MediaLibraryModal";
 export function CoverImagePicker({
   value,
   onChange,
+  purpose = "EDITORIAL",
+  onDelete,
 }: {
   value: string;
   onChange: (url: string) => void;
+  /**
+   * What the upload is for. PUBLICIDADE keeps the file out of the
+   * newsroom library — a banner belongs to one ad slot and is of no use
+   * to anybody writing.
+   */
+  purpose?: "EDITORIAL" | "PUBLICIDADE";
+  /**
+   * What the ✕ does, when the caller wants more than "forget this URL".
+   *
+   * The advertising screen passes a handler that deletes the file for
+   * good, behind a confirmation. Everywhere else the ✕ just clears the
+   * field, which is right for an article: the photograph is shared and
+   * removing it from this cover must not touch anybody else's.
+   */
+  onDelete?: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [pending, startTransition] = useTransition();
@@ -43,7 +60,7 @@ export function CoverImagePicker({
     const fd = new FormData();
     fd.append("file", file);
     startTransition(async () => {
-      const res = await uploadMediaFileAction(fd);
+      const res = await uploadMediaFileAction(fd, purpose);
       if (!res.ok) {
         setError(res.error);
         return;
@@ -81,9 +98,9 @@ export function CoverImagePicker({
           />
           <button
             type="button"
-            onClick={() => onChange("")}
+            onClick={() => (onDelete ? onDelete() : onChange(""))}
             className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-xs text-white hover:bg-black/80"
-            aria-label="Remover imagem de capa"
+            aria-label={onDelete ? "Eliminar imagem" : "Remover imagem de capa"}
           >
             ✕
           </button>

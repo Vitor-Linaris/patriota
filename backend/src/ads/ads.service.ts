@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { MediaService } from '../media/media.service';
 import { AdType } from '../../generated/prisma/enums';
 
 /**
@@ -37,7 +38,10 @@ interface UpdateAdInput {
 
 @Injectable()
 export class AdsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly media: MediaService,
+  ) {}
 
   /**
    * Ensures every slot in DEFAULT_ADS exists. Safe to call on every
@@ -76,10 +80,25 @@ export class AdsService {
 
   async update(id: string, input: UpdateAdInput) {
     try {
-      return await this.prisma.ad.update({
+      const updated = await this.prisma.ad.update({
         where: { id },
         data: { ...input, updatedAt: new Date() },
       });
+
+      // Make the banner publicly fetchable once the slot is live.
+      //
+      // This was missing entirely. Ad images were reaching readers only
+      // because the serving route's last-resort repair noticed they
+      // were live and fixed them one at a time — a safety net doing the
+      // main job, with a warning logged for every banner on the site.
+      //
+      // Checked against the row that came back rather than the input:
+      // enabling a slot that already had an image has to promote it,
+      // and so does setting an image on a slot that is already on.
+      if (updated.enabled && updated.imageUrl) {
+        await this.media.promoteForPublication(updated.imageUrl);
+      }
+      return updated;
     } catch (e) {
       if ((e as { code?: string }).code === 'P2025') {
         throw new NotFoundException('Slot não encontrado.');

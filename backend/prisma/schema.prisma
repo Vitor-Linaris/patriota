@@ -110,6 +110,20 @@ enum MediaKind {
   VIDEO
 }
 
+/// What a file is FOR, which decides whose problem it is.
+///
+/// EDITORIAL is the newsroom library: photographs for articles, kept so
+/// they can be reused, and deleted only when nothing points at them.
+///
+/// PUBLICIDADE is a banner. It belongs to one ad slot, is replaced when
+/// the campaign changes, and is of no use to anybody writing. It stays
+/// out of the library entirely and is deleted outright from the ad
+/// screen — a different rule from EDITORIAL, deliberately.
+enum MediaPurpose {
+  EDITORIAL
+  PUBLICIDADE
+}
+
 model Media {
   id           String   @id @default(cuid())
   // Canonical URL — points to the "large" WebP variant for uploads,
@@ -157,6 +171,14 @@ model Media {
 
   visibility   MediaVisibility @default(PRIVADO)
 
+  /// Editorial library, or an ad banner. See MediaPurpose.
+  ///
+  /// Default EDITORIAL so every existing row, and anything uploaded by
+  /// a path that does not know about this column, lands in the library
+  /// — the safe direction. A file wrongly IN the library is visible and
+  /// fixable; one wrongly outside it is invisible to everyone.
+  purpose      MediaPurpose    @default(EDITORIAL)
+
   kind         MediaKind       @default(IMAGEM)
   /// Length in seconds, on a video. NULL on an image.
   durationSeconds Int?
@@ -182,6 +204,8 @@ model Media {
   /// The quota sums bytesOnDisk per owner on every upload. Covering
   /// both columns lets Postgres answer it from the index alone.
   @@index([uploadedById, bytesOnDisk])
+  /// Every library listing filters on purpose as well as owner now.
+  @@index([purpose, uploadedById, uploadedAt])
 }
 
 enum AdType {

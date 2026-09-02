@@ -18,6 +18,7 @@ import {
   toSkipTake,
 } from '../common/dto/pagination.dto';
 import type { Role } from '../rbac/rbac.constants';
+import type { MediaPurpose } from '../../generated/prisma/enums';
 import { detectType } from './file-type';
 import { MediaAccessService } from './media-access.service';
 import {
@@ -188,6 +189,11 @@ export class MediaService {
         : {}),
       // What the article editor's picker asks for. See the DTO.
       ...(query.kind ? { kind: query.kind } : {}),
+      // The library is the newsroom's. An ad banner belongs to one
+      // slot, is replaced when the campaign changes, and is managed
+      // entirely from the advertising screen — it has no business
+      // here, and the deletion rules the two need are opposites.
+      purpose: 'EDITORIAL' as const,
     };
     const [items, total] = await Promise.all([
       this.prisma.media.findMany({
@@ -359,7 +365,11 @@ export class MediaService {
    * get blown up to 1600 — variants smaller than the target keep their
    * intrinsic size.
    */
-  async uploadFile(file: UploadedFile, userId: string) {
+  async uploadFile(
+    file: UploadedFile,
+    userId: string,
+    purpose: MediaPurpose = 'EDITORIAL',
+  ) {
     if (!file?.buffer?.length) {
       throw new BadRequestException('Ficheiro vazio.');
     }
@@ -536,6 +546,9 @@ export class MediaService {
         // column says the same; written here so the intent is visible
         // at the one place a file comes into existence.
         visibility: 'PRIVADO',
+        // Library, or ad banner. A banner never appears in the library
+        // and is deleted outright from the ad screen — see the enum.
+        purpose,
       },
     });
     this.logger.log(
@@ -800,7 +813,13 @@ export class MediaService {
     remaining: number;
   }> {
     const agg = await this.prisma.media.aggregate({
-      where: { uploadedById: userId },
+      // EDITORIAL only, matching the library it is shown beside.
+      //
+      // A banner is the newspaper's, not the person's who happened to
+      // upload it, and it is deleted from the ad screen rather than
+      // here. Counting it would leave somebody with an allowance eaten
+      // by files they cannot see and have no way to remove.
+      where: { uploadedById: userId, purpose: 'EDITORIAL' },
       _sum: { bytesOnDisk: true },
     });
     const used = agg._sum.bytesOnDisk ?? 0;
@@ -871,6 +890,106 @@ export class MediaService {
    * path that climbs out of the uploads directory, which no URL we
    * generate can produce but which is not worth trusting.
    */
+  /**
+   * Deletes an ad banner outright — row, files, and the reference from
+   * the slot that pointed at it.
+   *
+   * The opposite rule to `remove()`, and that is the point. The library
+   * refuses while anything still uses a file, because a photograph is
+   * shared and somebody else's article may depend on it. A banner is
+   * not shared: it belongs to one slot, the slot is right there, and
+   * "in use by the ad you are looking at" is not a reason to keep it —
+   * it is the reason you are deleting it.
+   *
+   * Two things it will NOT delete, both real:
+   *
+   *  1. An EDITORIAL file. The ad screen offers "da biblioteca", so the
+   *     image in a slot may be a photograph a published article also
+   *     uses. Deleting that from here would break a live page. The slot
+   *     is cleared and the file left alone.
+   *  2. A file some article references anyway. Belt and braces with the
+   *     purpose check above: a banner that was also dropped into an
+   *     article body would otherwise leave a hole in it.
+   */
+  async removeAdImage(adId: string, actor: MediaActor) {
+    const ad = await this.prisma.ad.findUnique({ where: { id: adId } });
+    if (!ad) throw new NotFoundException('Espaço publicitário não encontrado.');
+    if (!ad.imageUrl) {
+      throw new BadRequestException('Este espaço não tem imagem.');
+    }
+
+    const imageUrl = ad.imageUrl;
+    const media = await this.prisma.media.findFirst({
+      where: { OR: [{ url: imageUrl }, { urlMedium: imageUrl }, { urlSmall: imageUrl }] },
+    });
+
+    // Always detach, whatever happens to the file. This is what the
+    // person asked for and it must not be held hostage by the checks
+    // below — a pasted external URL has no row at all.
+    await this.prisma.ad.update({
+      where: { id: adId },
+      data: { imageUrl: null, updatedAt: new Date() },
+    });
+
+    if (!media) {
+      return { ok: true, fileDeleted: false, reason: 'externa' as const };
+    }
+
+    if (media.purpose !== 'PUBLICIDADE') {
+      this.logger.log(
+        `Ad ${adId} detached from library image ${media.id}; file kept (EDITORIAL).`,
+      );
+      return { ok: true, fileDeleted: false, reason: 'biblioteca' as const };
+    }
+
+    const variants = [media.url, media.urlMedium, media.urlSmall].filter(
+      (u): u is string => Boolean(u),
+    );
+    const articleRef = await this.prisma.article.findFirst({
+      where: {
+        OR: [
+          { coverImageUrl: { in: variants } },
+          ...variants.map((u) => ({ content: { contains: u } })),
+        ],
+      },
+      select: { id: true },
+    });
+    if (articleRef) {
+      this.logger.warn(
+        `Ad image ${media.id} is also used by article ${articleRef.id}; file kept.`,
+      );
+      return { ok: true, fileDeleted: false, reason: 'em_artigo' as const };
+    }
+
+    // Another slot may point at the same banner — the same creative in
+    // the top and the pre-footer is ordinary. Only the last one out
+    // deletes the file.
+    const otherSlot = await this.prisma.ad.findFirst({
+      where: { id: { not: adId }, imageUrl: { in: variants } },
+      select: { id: true },
+    });
+    if (otherSlot) {
+      this.logger.log(
+        `Ad image ${media.id} still used by slot ${otherSlot.id}; file kept.`,
+      );
+      return { ok: true, fileDeleted: false, reason: 'noutro_espaco' as const };
+    }
+
+    await this.prisma.media.delete({ where: { id: media.id } });
+    await this.unlinkVariants(variants);
+    if (media.storageKey) await this.access.invalidate(media.storageKey);
+
+    void this.activity.record({
+      userId: actor.id,
+      action: 'deleted',
+      targetType: 'media',
+      targetId: media.id,
+      targetLabel: `${media.name} (publicidade)`,
+    });
+    this.logger.log(`Permanently deleted ad image ${media.id} for slot ${adId}.`);
+    return { ok: true, fileDeleted: true, reason: 'eliminada' as const };
+  }
+
   private async unlinkVariants(urls: string[]): Promise<void> {
     for (const url of urls) {
       if (!url.startsWith(this.publicBase)) continue;

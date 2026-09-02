@@ -46,7 +46,7 @@ describe('Media uploads (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await truncate(app, ['Article', 'Category', 'Media', 'User']);
+    await truncate(app, ['Ad', 'Article', 'Category', 'Media', 'User']);
   });
 
   async function makePngBuffer(width = 1200, height = 800): Promise<Buffer> {
@@ -1261,6 +1261,166 @@ describe('Media uploads (e2e)', () => {
         .expect(200);
 
       for (const p of paths) expect(existsSync(p)).toBe(false);
+    });
+  });
+  describe('advertising is not the library', () => {
+    /** Uploads one image, optionally marked as advertising. */
+    async function upload(
+      user: Awaited<ReturnType<typeof makeUser>>,
+      purpose?: 'PUBLICIDADE',
+    ) {
+      const png = await makePngBuffer(970, 250);
+      const res = await request(app.getHttpServer())
+        .post(
+          `/admin/media/upload${purpose ? `?purpose=${purpose}` : ''}`,
+        )
+        .set(bearer(user))
+        .attach('file', png, { filename: 'banner.png', contentType: 'image/png' })
+        .expect(201);
+      const paths = [res.body.url, res.body.urlMedium, res.body.urlSmall].map(
+        (u: string) =>
+          join(uploadsDir, u.replace('http://api.test/uploads/', '')),
+      );
+      return { id: res.body.id as string, url: res.body.url as string, paths };
+    }
+
+    /** A slot to hang a banner on. */
+    async function makeSlot(id: string, imageUrl: string | null) {
+      const prisma = app.get(PrismaService);
+      return prisma.ad.create({
+        data: {
+          id,
+          name: 'Teste',
+          page: 'Homepage',
+          position: 'Topo',
+          size: '970×250',
+          sizeLabel: 'Billboard',
+          type: 'IMAGE',
+          enabled: true,
+          imageUrl,
+        },
+      });
+    }
+
+    it('keeps a banner out of the library', async () => {
+      // The whole point. A journalist opening Média should see the
+      // photographs, not somebody's advertising.
+      const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      await upload(user);
+      await upload(user, 'PUBLICIDADE');
+
+      const list = await request(app.getHttpServer())
+        .get('/admin/media')
+        .set(bearer(user))
+        .expect(200);
+      expect(list.body.total).toBe(1);
+      expect(list.body.items[0].purpose).toBe('EDITORIAL');
+    });
+
+    it('does not spend the uploader quota on a banner', async () => {
+      // A banner is the newspaper's, not the person's who uploaded it,
+      // and they cannot see or delete it from here. Charging them for
+      // it would leave an allowance eaten by invisible files.
+      const user = await makeUser(app, { role: 'EDITOR_CHEFE' });
+      const before = await request(app.getHttpServer())
+        .get('/admin/media')
+        .set(bearer(user))
+        .expect(200);
+      await upload(user, 'PUBLICIDADE');
+      const after = await request(app.getHttpServer())
+        .get('/admin/media')
+        .set(bearer(user))
+        .expect(200);
+      expect(after.body.quota.used).toBe(before.body.quota.used);
+    });
+
+    it('deletes the banner outright — row, files and reference', async () => {
+      const user = await makeUser(app, { role: 'SUPER_ADMIN' });
+      const { id, url, paths } = await upload(user, 'PUBLICIDADE');
+      await makeSlot('slot-a', url);
+      for (const f of paths) expect(existsSync(f)).toBe(true);
+
+      const res = await request(app.getHttpServer())
+        .delete('/admin/ads/slot-a/image')
+        .set(bearer(user))
+        .expect(200);
+      expect(res.body.fileDeleted).toBe(true);
+
+      // Gone from disk, gone from the table, and the slot is empty.
+      for (const f of paths) expect(existsSync(f)).toBe(false);
+      const prisma = app.get(PrismaService);
+      expect(await prisma.media.findUnique({ where: { id } })).toBeNull();
+      expect(
+        (await prisma.ad.findUnique({ where: { id: 'slot-a' } }))!.imageUrl,
+      ).toBeNull();
+    });
+
+    it('will not delete a library photograph the ad borrowed', async () => {
+      // The ad screen offers "da biblioteca", so the image in a slot
+      // may be a photograph an article also uses. Deleting it from
+      // here would break a live page. The slot is cleared; the file
+      // stays.
+      const user = await makeUser(app, { role: 'SUPER_ADMIN' });
+      const { id, url, paths } = await upload(user);
+      await makeSlot('slot-b', url);
+
+      const res = await request(app.getHttpServer())
+        .delete('/admin/ads/slot-b/image')
+        .set(bearer(user))
+        .expect(200);
+      expect(res.body.fileDeleted).toBe(false);
+      expect(res.body.reason).toBe('biblioteca');
+
+      for (const f of paths) expect(existsSync(f)).toBe(true);
+      const prisma = app.get(PrismaService);
+      expect(await prisma.media.findUnique({ where: { id } })).not.toBeNull();
+      // Detached anyway — that part is what was asked for.
+      expect(
+        (await prisma.ad.findUnique({ where: { id: 'slot-b' } }))!.imageUrl,
+      ).toBeNull();
+    });
+
+    it('will not delete a banner a second slot still shows', async () => {
+      // The same creative in the top and the pre-footer is ordinary.
+      // Only the last slot out deletes the file.
+      const user = await makeUser(app, { role: 'SUPER_ADMIN' });
+      const { url, paths } = await upload(user, 'PUBLICIDADE');
+      await makeSlot('slot-c', url);
+      await makeSlot('slot-d', url);
+
+      const first = await request(app.getHttpServer())
+        .delete('/admin/ads/slot-c/image')
+        .set(bearer(user))
+        .expect(200);
+      expect(first.body.fileDeleted).toBe(false);
+      expect(first.body.reason).toBe('noutro_espaco');
+      for (const f of paths) expect(existsSync(f)).toBe(true);
+
+      const second = await request(app.getHttpServer())
+        .delete('/admin/ads/slot-d/image')
+        .set(bearer(user))
+        .expect(200);
+      expect(second.body.fileDeleted).toBe(true);
+      for (const f of paths) expect(existsSync(f)).toBe(false);
+    });
+
+    it('needs the permission, which an editor does not have', async () => {
+      const boss = await makeUser(app, { role: 'SUPER_ADMIN' });
+      const editor = await makeUser(app, { role: 'EDITOR' });
+      const { url, paths } = await upload(boss, 'PUBLICIDADE');
+      await makeSlot('slot-e', url);
+
+      await request(app.getHttpServer())
+        .delete('/admin/ads/slot-e/image')
+        .set(bearer(editor))
+        .expect(403);
+
+      // And nothing happened: not the file, not the reference.
+      for (const f of paths) expect(existsSync(f)).toBe(true);
+      const prisma = app.get(PrismaService);
+      expect(
+        (await prisma.ad.findUnique({ where: { id: 'slot-e' } }))!.imageUrl,
+      ).toBe(url);
     });
   });
 });

@@ -91,6 +91,20 @@ class ListMediaQueryDto extends PageQueryDto {
   kind?: 'IMAGEM' | 'VIDEO';
 }
 
+/**
+ * What an upload is for. Absent means the library, which is both the
+ * common case and the safe default — a file wrongly in the library can
+ * be seen and moved; one wrongly outside it is invisible.
+ *
+ * Declared because the global ValidationPipe runs with
+ * `forbidNonWhitelisted` — an undeclared query param is a 400.
+ */
+class UploadQueryDto {
+  @IsOptional()
+  @IsIn(['EDITORIAL', 'PUBLICIDADE'])
+  purpose?: 'EDITORIAL' | 'PUBLICIDADE';
+}
+
 class CreateMediaDto {
   @IsUrl()
   url!: string;
@@ -155,6 +169,7 @@ export class MediaController {
   upload(
     @UploadedFile() file: Express.Multer.File,
     @CurrentUser() user: AuthUser,
+    @Query() query: UploadQueryDto,
   ) {
     if (!file) {
       throw new BadRequestException('Ficheiro obrigatório.');
@@ -163,7 +178,7 @@ export class MediaController {
     // service. ParseFilePipeBuilder.addFileTypeValidator was
     // unreliable across Nest versions (regex-vs-magic-byte mismatch),
     // so we keep validation in one place — the service.
-    return this.service.uploadFile(file, user.id);
+    return this.service.uploadFile(file, user.id, query.purpose);
   }
 
   /**

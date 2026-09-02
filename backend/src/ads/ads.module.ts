@@ -1,8 +1,10 @@
 import { Module, type OnModuleInit } from '@nestjs/common';
 import { AdsService } from './ads.service';
 import { AdsController } from './ads.controller';
+import { MediaModule } from '../media/media.module';
 
 @Module({
+  imports: [MediaModule],
   providers: [AdsService],
   controllers: [AdsController],
   exports: [AdsService],
