@@ -37,6 +37,7 @@ import {
   createCategoryAction,
   deleteCategoryAction,
   reorderCategoryAction,
+  toggleCategoryFollowableAction,
   toggleCategoryVisibilityAction,
   updateCategoryAction,
 } from "./actions";
@@ -312,6 +313,11 @@ export default function AdminCategoriesClient({ initial }: Props) {
                       toggleCategoryVisibilityAction(cat.id, !cat.visible),
                     )
                   }
+                  onToggleFollowable={() =>
+                    wrap(async () =>
+                      toggleCategoryFollowableAction(cat.id, !cat.followable),
+                    )
+                  }
                   onAddChild={() => setNewParent(cat)}
                   collapsible={hasChildren(items, cat.id)}
                   collapsed={collapsed.has(cat.id)}
@@ -370,6 +376,7 @@ function CategoryRow({
   onSave,
   onDelete,
   onToggleVisible,
+  onToggleFollowable,
   onAddChild,
   collapsible,
   collapsed,
@@ -386,6 +393,7 @@ function CategoryRow({
   onSave: () => void;
   onDelete: () => void;
   onToggleVisible: () => void;
+  onToggleFollowable: () => void;
   onAddChild: () => void;
   collapsible: boolean;
   collapsed: boolean;
@@ -517,29 +525,89 @@ function CategoryRow({
           </div>
         )}
 
-        <div className="ml-auto flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            role="switch"
-            aria-checked={cat.visible}
-            aria-label={
-              cat.visible ? "Ocultar do menu público" : "Mostrar no menu público"
-            }
-            onClick={onToggleVisible}
-            disabled={pending}
-            className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[#0F2C6B]/30 disabled:opacity-50 ${
-              cat.visible
-                ? "border-green-600 bg-green-500"
-                : "border-gray-300 bg-gray-200"
-            }`}
-          >
-            <span
-              aria-hidden
-              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition-transform duration-200 ease-in-out ${
-                cat.visible ? "translate-x-5" : "translate-x-0.5"
+        <div className="ml-auto flex shrink-0 items-center gap-3">
+          {/* Two switches, two different questions. The first is
+              whether the section exists on the site; the second is
+              whether readers are invited to subscribe to it by e-mail.
+              Labelled, because two identical switches side by side are
+              a coin toss. */}
+          <div className="flex flex-col items-center gap-1">
+            <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400">
+              No site
+            </span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={cat.visible}
+              aria-label={
+                cat.visible
+                  ? "Ocultar do menu público"
+                  : "Mostrar no menu público"
+              }
+              title={
+                cat.visible
+                  ? "Aparece no menu do site. Clique para esconder."
+                  : "Escondida do site. Clique para mostrar."
+              }
+              onClick={onToggleVisible}
+              disabled={pending}
+              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[#0F2C6B]/30 disabled:opacity-50 ${
+                cat.visible
+                  ? "border-green-600 bg-green-500"
+                  : "border-gray-300 bg-gray-200"
               }`}
-            />
-          </button>
+            >
+              <span
+                aria-hidden
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition-transform duration-200 ease-in-out ${
+                  cat.visible ? "translate-x-5" : "translate-x-0.5"
+                }`}
+              />
+            </button>
+          </div>
+
+          <div className="flex flex-col items-center gap-1">
+            <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400">
+              Seguir
+            </span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={cat.followable}
+              aria-label={
+                cat.followable
+                  ? "Retirar da lista que os leitores podem seguir"
+                  : "Permitir que os leitores sigam esta secção"
+              }
+              title={
+                !cat.visible
+                  ? "Está escondida do site, por isso não é oferecida a ninguém."
+                  : cat.followable
+                    ? "Os leitores podem segui-la e receber e-mail. Clique para retirar da lista."
+                    : "Ainda não é oferecida aos leitores. Clique quando estiver pronta."
+              }
+              onClick={onToggleFollowable}
+              // Hidden from the site means nobody is offered it whatever
+              // this says, so the switch would be claiming something
+              // untrue. Disabled rather than hidden: it keeps its place
+              // and the tooltip explains why.
+              disabled={pending || !cat.visible}
+              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[#0F2C6B]/30 disabled:opacity-40 ${
+                cat.followable && cat.visible
+                  ? "border-amber-600 bg-amber-500"
+                  : "border-gray-300 bg-gray-200"
+              }`}
+            >
+              <span
+                aria-hidden
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition-transform duration-200 ease-in-out ${
+                  cat.followable && cat.visible
+                    ? "translate-x-5"
+                    : "translate-x-0.5"
+                }`}
+              />
+            </button>
+          </div>
 
           {editing ? (
             <>

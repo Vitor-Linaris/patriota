@@ -11,6 +11,8 @@ export interface CategoryPayload {
   icon: string;
   color: string;
   visible?: boolean;
+  /** Whether readers are offered this section to follow. */
+  followable?: boolean;
   parentId?: string | null;
 }
 
@@ -67,6 +69,14 @@ export async function toggleCategoryVisibilityAction(
   visible: boolean,
 ) {
   return updateCategoryAction(id, { visible });
+}
+
+/** Whether readers are offered this section to follow. See the schema. */
+export async function toggleCategoryFollowableAction(
+  id: string,
+  followable: boolean,
+) {
+  return updateCategoryAction(id, { followable });
 }
 
 export async function deleteCategoryAction(id: string) {

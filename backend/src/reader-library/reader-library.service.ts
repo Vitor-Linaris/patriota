@@ -51,6 +51,102 @@ export class ReaderLibraryService {
   }
 
   /**
+   * Every category a reader may follow, with what they have chosen.
+   *
+   * Replaces a page that listed only what somebody already followed and,
+   * to anybody who followed nothing, said "use the Seguir button on an
+   * article" — sending them away to find the feature by accident. This
+   * is the same information turned round: here is the paper, pick.
+   *
+   * Followable AND visible: `followable` says the newsroom is willing to
+   * promise mail about this section; `visible` says the section exists
+   * on the site at all. Offering to subscribe to something hidden from
+   * the menu would be inviting people to a page they cannot reach.
+   *
+   * A category the reader already follows is included even when it has
+   * since been withdrawn, and marked — otherwise their own follow would
+   * vanish off the page with no way to turn it off, and the e-mails
+   * would keep arriving.
+   */
+  async listFollowableCategories(readerId: string) {
+    const [cats, follows] = await Promise.all([
+      this.prisma.category.findMany({
+        where: { followable: true, visible: true },
+        // Tree order: parents before their children, siblings as the
+        // newsroom arranged them. `path` sorts a tree correctly on its
+        // own — that is what a materialised path is for — but `order`
+        // lives inside it, so sort by depth and order within each level
+        // after the fact.
+        orderBy: [{ path: 'asc' }],
+        select: {
+          id: true,
+          slug: true,
+          name: true,
+          color: true,
+          icon: true,
+          depth: true,
+          parentId: true,
+        },
+      }),
+      this.prisma.categoryFavorite.findMany({
+        where: { readerId },
+        select: {
+          categoryId: true,
+          notify: true,
+          createdAt: true,
+          category: {
+            select: {
+              id: true,
+              slug: true,
+              name: true,
+              color: true,
+              icon: true,
+              depth: true,
+              parentId: true,
+              followable: true,
+              visible: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    const chosen = new Map(follows.map((f) => [f.categoryId, f]));
+    const listed = new Set(cats.map((c) => c.id));
+
+    const rows = cats.map((c) => {
+      const f = chosen.get(c.id);
+      return {
+        ...c,
+        following: f !== undefined,
+        notify: f?.notify ?? false,
+        since: f?.createdAt ?? null,
+        /** Still on offer. False only on the withdrawn ones below. */
+        available: true,
+      };
+    });
+
+    // The withdrawn ones they still follow, appended rather than mixed
+    // in: they are not part of the catalogue any more, and sorting them
+    // among it would suggest anybody else could pick them too.
+    for (const f of follows) {
+      if (listed.has(f.categoryId)) continue;
+      const { followable: _f, visible: _v, ...cat } = f.category;
+      void _f;
+      void _v;
+      rows.push({
+        ...cat,
+        following: true,
+        notify: f.notify,
+        since: f.createdAt,
+        available: false,
+      });
+    }
+
+    return rows;
+  }
+
+  /**
    * Idempotent by design — PUT, not POST. A double tap on the follow
    * button must be a no-op, not a P2002 rendered as a 500.
    *
@@ -58,11 +154,27 @@ export class ReaderLibraryService {
    * category for their dashboard while muting its e-mails.
    */
   async followCategory(readerId: string, categoryId: string, notify = true) {
-    const exists = await this.prisma.category.findUnique({
+    const cat = await this.prisma.category.findUnique({
       where: { id: categoryId },
-      select: { id: true },
+      select: { id: true, followable: true, visible: true },
     });
-    if (!exists) throw new NotFoundException('Categoria não encontrada.');
+    if (!cat) throw new NotFoundException('Categoria não encontrada.');
+
+    // A category not on offer cannot be followed by id either. The list
+    // is what a reader sees, but the id is guessable and this endpoint
+    // is the thing that actually signs somebody up for e-mail.
+    //
+    // Checked only for NEW follows: somebody who already follows a
+    // category that has since been withdrawn keeps the row, and this is
+    // the call their "mute e-mails" switch makes. Refusing it would
+    // leave them receiving mail with no way to stop it.
+    const already = await this.prisma.categoryFavorite.findUnique({
+      where: { readerId_categoryId: { readerId, categoryId } },
+      select: { readerId: true },
+    });
+    if (!already && (!cat.followable || !cat.visible)) {
+      throw new NotFoundException('Categoria não encontrada.');
+    }
 
     await this.prisma.categoryFavorite.upsert({
       where: { readerId_categoryId: { readerId, categoryId } },

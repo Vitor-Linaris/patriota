@@ -37,6 +37,18 @@ export class ReaderLibraryController {
     return this.library.listCategoryFavorites(reader.id);
   }
 
+  /**
+   * The whole catalogue, with what this reader has chosen for each.
+   *
+   * Separate from the list above, which is only what they follow. That
+   * one still backs the article page's follow button; this one backs the
+   * page where somebody picks.
+   */
+  @Get('reader/categories')
+  listFollowable(@CurrentReader() reader: ReaderPrincipal) {
+    return this.library.listFollowableCategories(reader.id);
+  }
+
   @Put('reader/favorites/categories/:categoryId')
   follow(
     @CurrentReader() reader: ReaderPrincipal,

@@ -13,6 +13,8 @@ export interface CategoryTreeNode {
   icon: string;
   color: string;
   visible: boolean;
+  /** Whether readers are offered this section to follow by e-mail. */
+  followable: boolean;
   parentId: string | null;
   depth: number;
   /** Self-inclusive materialised path, e.g. "/portugalId/madeiraId/". */
@@ -215,6 +217,7 @@ export class CategoryTreeService {
         icon: row.icon,
         color: row.color,
         visible: row.visible,
+        followable: row.followable,
         parentId: row.parentId,
         depth: row.depth,
         path: row.path,

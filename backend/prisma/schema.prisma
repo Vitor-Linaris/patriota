@@ -335,6 +335,25 @@ model Category {
   /// create, delete and reorder. NOT a global order across the tree.
   order       Int                @default(0)
   visible     Boolean            @default(true)
+  /// Whether readers are OFFERED this category to follow.
+  ///
+  /// Separate from `visible`, which decides the public menu. The two ask
+  /// different questions: `visible` is "does this section exist on the
+  /// site", and this is "do we invite people to subscribe to it by
+  /// e-mail". A section can be live and still not be something the
+  /// newsroom wants to promise a mail about — a category being tried
+  /// out, or one that will be renamed next week.
+  ///
+  /// Default FALSE, which is the opposite of `visible` and deliberate: a
+  /// category just created is usually still being decided on, and it
+  /// appearing in every reader's follow list the moment somebody typed a
+  /// name is the mistake this prevents. It is turned on when the section
+  /// is ready to be promoted.
+  ///
+  /// Existing follows are NOT broken by turning this off — see
+  /// reader-library.service.ts. Silently unsubscribing people is worse
+  /// than leaving a stale follow in place.
+  followable  Boolean            @default(false)
   articles    Article[]
   favorites   CategoryFavorite[]
   createdAt   DateTime           @default(now())

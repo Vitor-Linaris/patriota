@@ -228,6 +228,10 @@ export class CategoriesService {
             color: dto.color,
             order: dto.order ?? 0,
             visible: dto.visible ?? true,
+            // Off unless asked for. The opposite default to `visible`,
+            // and the point of the column: a new section is turned on
+            // for readers when it is ready, not when it is created.
+            followable: dto.followable ?? false,
             parentId: parent?.id ?? null,
             depth: parent ? parent.depth + 1 : 0,
             path: '/',

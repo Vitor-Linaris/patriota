@@ -1,9 +1,8 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FEATURES } from "@/lib/features";
 import { readerApiFetch, requireReader } from "@/lib/reader-api";
 import { ContaShell, EmptyState } from "../ContaShell";
-import { CategoryToggles, type FollowedCategory } from "./CategoryToggles";
+import { CategoryPicker, type PickableCategory } from "./CategoryPicker";
 
 export const metadata = {
   title: "Categorias que sigo — O Patriota Notícias",
@@ -14,14 +13,20 @@ export default async function CategoriasPage() {
   if (!FEATURES.readerArea) notFound();
   await requireReader("/conta/categorias");
 
-  const res = await readerApiFetch("/reader/favorites/categories");
-  const items = res && res.ok ? ((await res.json()) as FollowedCategory[]) : [];
+  // The whole catalogue, with what this reader has chosen on each row —
+  // not just what they already follow. The page used to list only their
+  // follows and, to anybody following nothing, point them back at an
+  // article to find the button, which is a strange way to offer
+  // something.
+  const res = await readerApiFetch("/reader/categories");
+  const items =
+    res && res.ok ? ((await res.json()) as PickableCategory[]) : [];
 
   return (
     <ContaShell
       active="/conta/categorias"
       title="Categorias que sigo"
-      subtitle="Receba um e-mail quando sair uma notícia nova nestes temas."
+      subtitle="Escolha os temas que quer acompanhar e se quer receber e-mail."
     >
       {items.length > 0 && (
         // Says what the follow actually does now. Seguir "Portugal"
@@ -35,22 +40,18 @@ export default async function CategoriasPage() {
           directamente.
         </p>
       )}
+
       {items.length === 0 ? (
+        // Only when the newsroom is offering nothing at all — a fresh
+        // install, or every section still under review. Nothing the
+        // reader can do about it, so it does not pretend otherwise.
         <EmptyState
           glyph="☆"
-          title="Ainda não segue nenhuma categoria"
-          body="Use o botão “Seguir” no topo de qualquer notícia para acompanhar o tema."
-          cta={
-            <Link
-              href="/"
-              className="inline-block rounded-[8px] bg-patriota-pure px-4 py-2 text-[13px] font-bold text-white transition hover:brightness-110"
-            >
-              Explorar categorias
-            </Link>
-          }
+          title="Ainda não há secções para seguir"
+          body="Assim que a redacção abrir as primeiras secções, aparecem aqui para escolher."
         />
       ) : (
-        <CategoryToggles initial={items} />
+        <CategoryPicker initial={items} />
       )}
     </ContaShell>
   );

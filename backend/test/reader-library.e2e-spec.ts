@@ -35,6 +35,11 @@ describe('Reader library — favourites & history (e2e)', () => {
         color: '#1e40af',
         order: 1,
         visible: true,
+        // A live section, which is what these tests are about. The
+        // column defaults to FALSE — a category is not offered to
+        // readers until somebody says it is ready — so leaving it out
+        // would make every follow below a 404, correctly.
+        followable: true,
         path: '/root/', // placeholder — these tests never assert on the tree
       },
     });
@@ -166,6 +171,140 @@ describe('Reader library — favourites & history (e2e)', () => {
         .set(readerBearer(reader))
         .send({})
         .expect(404);
+    });
+  });
+
+  describe('the catalogue a reader picks from', () => {
+    const prisma = () => app.get(PrismaService);
+
+    /** A section, on offer unless told otherwise. */
+    async function section(name: string, over: Record<string, unknown> = {}) {
+      return prisma().category.create({
+        data: {
+          slug: name.toLowerCase(),
+          name,
+          description: '',
+          icon: '◆',
+          color: '#1e40af',
+          order: 2,
+          visible: true,
+          followable: true,
+          path: `/${name}/`,
+          ...over,
+        },
+      });
+    }
+
+    const catalogue = () =>
+      request(app.getHttpServer())
+        .get('/reader/categories')
+        .set(readerBearer(reader))
+        .expect(200);
+
+    it('lists every section on offer, followed or not', async () => {
+      // The page used to show only what somebody already followed, and
+      // to anybody following nothing it said "use the button on an
+      // article" — sending them away to find the feature by accident.
+      await section('Desporto');
+
+      const res = await catalogue();
+      const names = res.body.map((c: { name: string }) => c.name).sort();
+      expect(names).toEqual(['Desporto', 'Economia']);
+      expect(res.body.every((c: { following: boolean }) => !c.following)).toBe(
+        true,
+      );
+    });
+
+    it('reports what the reader has chosen on each row', async () => {
+      await request(app.getHttpServer())
+        .put(`/reader/favorites/categories/${categoryId}`)
+        .set(readerBearer(reader))
+        .send({ notify: false })
+        .expect(200);
+
+      const res = await catalogue();
+      const eco = res.body.find((c: { id: string }) => c.id === categoryId);
+      expect(eco.following).toBe(true);
+      expect(eco.notify).toBe(false);
+      expect(eco.since).not.toBeNull();
+    });
+
+    it('leaves out a section not yet opened to readers', async () => {
+      // The whole point of the switch: a category created this morning
+      // and still being decided on must not appear in everybody's list
+      // the moment somebody typed a name.
+      await section('Em Análise', { followable: false });
+
+      const res = await catalogue();
+      expect(
+        res.body.some((c: { name: string }) => c.name === 'Em Análise'),
+      ).toBe(false);
+    });
+
+    it('leaves out a section hidden from the site', async () => {
+      // Offering to subscribe to something that is not on the menu
+      // would be inviting people to a page they cannot reach.
+      await section('Escondida', { visible: false });
+
+      const res = await catalogue();
+      expect(
+        res.body.some((c: { name: string }) => c.name === 'Escondida'),
+      ).toBe(false);
+    });
+
+    it('refuses to follow a section that is not on offer', async () => {
+      // The list is what a reader sees, but the id is guessable and
+      // this endpoint is what actually signs somebody up for e-mail.
+      const hidden = await section('Fechada', { followable: false });
+
+      await request(app.getHttpServer())
+        .put(`/reader/favorites/categories/${hidden.id}`)
+        .set(readerBearer(reader))
+        .send({})
+        .expect(404);
+    });
+
+    it('keeps a withdrawn section on the page of whoever follows it', async () => {
+      // Otherwise their own follow vanishes with no way to turn it off,
+      // and the e-mails keep arriving. Marked rather than hidden.
+      await request(app.getHttpServer())
+        .put(`/reader/favorites/categories/${categoryId}`)
+        .set(readerBearer(reader))
+        .send({})
+        .expect(200);
+
+      await prisma().category.update({
+        where: { id: categoryId },
+        data: { followable: false },
+      });
+
+      const res = await catalogue();
+      const eco = res.body.find((c: { id: string }) => c.id === categoryId);
+      expect(eco).toBeDefined();
+      expect(eco.following).toBe(true);
+      expect(eco.available).toBe(false);
+
+      // And they can still mute it, and still leave.
+      await request(app.getHttpServer())
+        .put(`/reader/favorites/categories/${categoryId}`)
+        .set(readerBearer(reader))
+        .send({ notify: false })
+        .expect(200);
+      await request(app.getHttpServer())
+        .delete(`/reader/favorites/categories/${categoryId}`)
+        .set(readerBearer(reader))
+        .expect(200);
+
+      // Once out, they cannot get back in — it is not on offer.
+      await request(app.getHttpServer())
+        .put(`/reader/favorites/categories/${categoryId}`)
+        .set(readerBearer(reader))
+        .send({})
+        .expect(404);
+    });
+
+    it('needs a reader session', async () => {
+      await request(app.getHttpServer()).get('/reader/categories').expect(401);
     });
   });
 
