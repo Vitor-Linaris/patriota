@@ -3,7 +3,123 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { FiChevronRight, FiLogOut, FiUser } from "react-icons/fi";
+import { FEATURES } from "@/lib/features";
 import type { CategoryDef } from "@/lib/categories";
+
+interface DrawerReader {
+  name: string;
+}
+
+/**
+ * Sign-in / account entry point, for the drawer.
+ *
+ * The desktop <ReaderNav> in <TopBar> shows only from `sm:` up — the
+ * drawer is what a phone actually sees, and it never carried this at
+ * all. Search and Newsletter were already duplicated down here for
+ * exactly that reason ("Atalhos", below); reader identity was the one
+ * thing that fell through. Same data source (`/api/conta/me`), same
+ * "render nothing until resolved" rule so a signed-in reader never
+ * flashes "Iniciar sessão" first — but styled for a light panel with
+ * full-width rows, not <ReaderNav>'s dark inline-bar chrome.
+ */
+function DrawerAccount({ onNavigate }: { onNavigate: () => void }) {
+  const [reader, setReader] = useState<DrawerReader | null>(null);
+  const [resolved, setResolved] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/conta/me");
+        if (cancelled) return;
+        if (res.ok) {
+          const data = (await res.json()) as { reader: DrawerReader | null };
+          setReader(data.reader);
+        }
+      } catch {
+        // The drawer must open even if this fails; treated as logged out.
+      } finally {
+        if (!cancelled) setResolved(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!resolved) {
+    // Holds the row's height so the sections below do not jump once
+    // the answer lands.
+    return <div className="h-[60px] px-2 py-4" aria-hidden />;
+  }
+
+  if (!reader) {
+    return (
+      <div className="flex gap-2 px-3 py-4">
+        <Link
+          href="/conta/entrar"
+          onClick={onNavigate}
+          className="flex flex-1 items-center justify-center rounded-xl border border-slate-200 px-3 py-2.5 text-[14px] font-bold text-slate-700 transition-colors hover:border-patriota-medium hover:text-patriota-medium"
+        >
+          Iniciar sessão
+        </Link>
+        <Link
+          href="/conta/registar"
+          onClick={onNavigate}
+          className="flex flex-1 items-center justify-center rounded-xl bg-patriota-dark px-3 py-2.5 text-[14px] font-bold text-white transition-colors hover:bg-patriota-medium"
+        >
+          Criar conta
+        </Link>
+      </div>
+    );
+  }
+
+  const initials = reader.name.slice(0, 2).toUpperCase();
+
+  return (
+    <div className="px-2 py-3">
+      <Link
+        href="/conta"
+        onClick={onNavigate}
+        className="flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-patriota-pure"
+      >
+        <span
+          aria-hidden
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-patriota-dark text-[12px] font-bold text-white"
+        >
+          {initials}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[15px] font-semibold text-slate-800">
+            {reader.name}
+          </span>
+          <span className="flex items-center gap-1 text-[12px] text-slate-400">
+            <FiUser size={11} aria-hidden />A minha conta
+          </span>
+        </span>
+        <FiChevronRight size={16} className="shrink-0 text-slate-300" aria-hidden />
+      </Link>
+      {/*
+        POST, not a link: a GET logout is fired by link prefetch and by
+        corporate mail scanners, silently ending sessions. Same as the
+        desktop ReaderNav.
+      */}
+      <form action="/conta/sair" method="post">
+        <button
+          type="submit"
+          onClick={onNavigate}
+          className="mt-0.5 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[14px] text-slate-500 hover:bg-patriota-pure hover:text-slate-700"
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center">
+            <FiLogOut size={15} aria-hidden />
+          </span>
+          Terminar sessão
+        </button>
+      </form>
+    </div>
+  );
+}
 
 /**
  * Hamburger menu for tablet + mobile. Replaces the inline category
@@ -20,34 +136,46 @@ import type { CategoryDef } from "@/lib/categories";
  * on a tiny viewport.
  */
 /**
- * A top-level section in the drawer. If it has subsections, the row
- * splits: the label navigates, the chevron expands.
+ * A section in the drawer, at any depth. If it has subsections, the row
+ * splits: the label navigates, the chevron expands to show them —
+ * recursively, so a subcategory's own children get exactly the same
+ * row, one level further indented.
  *
- * Exactly ONE level deep, and deliberately so. Level 3 and 4 are reached
- * from inside the section page, not here — a four-level accordion on a
- * phone is a scroll trap where the reader loses track of what they
- * opened.
+ * Used to stop at depth 1 on purpose, with a comment calling a deeper
+ * accordion "a scroll trap". It still can be, which is why:
+ *   • each row's expanded state is its OWN, not lifted to a shared
+ *     "one thing open at a time" — forcing that across four levels
+ *     would close a grandparent's other branches the moment a reader
+ *     opens a great-grandchild, which is a worse trap than a long list;
+ *   • indentation and type size both shrink with depth, so the reader
+ *     can tell how deep they are without counting chevrons;
+ *   • it only ever grows on a tap — nothing expands two levels at once.
  */
 function SectionRow({
   category,
-  expanded,
-  onToggle,
+  depth = 0,
   onNavigate,
 }: {
   category: CategoryDef;
-  expanded: boolean;
-  onToggle: () => void;
+  depth?: number;
   onNavigate: () => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const href = `/categoria/${category.slug}`;
   const count = category.articleCountTotal || category.articleCount;
+  // Clamped: depth 3 (subtópico) and beyond share the deepest step
+  // rather than marching off the edge of a phone screen.
+  const indent = Math.min(depth, 3) * 14;
+  const labelSize = depth === 0 ? "text-[15px]" : "text-[14px]";
+  const labelWeight = depth === 0 ? "font-semibold" : "font-medium";
 
   if (category.children.length === 0) {
     return (
       <Link
         href={href}
         onClick={onNavigate}
-        className="flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-[15px] font-semibold text-slate-800 transition-colors hover:bg-patriota-pure hover:text-patriota-dark"
+        style={{ paddingLeft: 12 + indent }}
+        className={`flex items-center justify-between gap-3 rounded-lg py-2.5 pr-3 ${labelSize} ${labelWeight} text-slate-800 transition-colors hover:bg-patriota-pure hover:text-patriota-dark`}
       >
         <span>{category.label}</span>
         {count > 0 && (
@@ -65,20 +193,21 @@ function SectionRow({
         <Link
           href={href}
           onClick={onNavigate}
-          className="flex-1 px-3 py-2.5 text-[15px] font-semibold text-slate-800 hover:text-patriota-dark"
+          style={{ paddingLeft: 12 + indent }}
+          className={`flex-1 py-2.5 pr-3 ${labelSize} ${labelWeight} text-slate-800 hover:text-patriota-dark`}
         >
           {category.label}
         </Link>
         <button
           type="button"
-          onClick={onToggle}
+          onClick={() => setExpanded((v) => !v)}
           aria-expanded={expanded}
           aria-label={
             expanded
               ? `Fechar subsecções de ${category.label}`
               : `Ver subsecções de ${category.label}`
           }
-          className="flex h-10 w-10 items-center justify-center text-slate-400 hover:text-patriota-dark"
+          className="flex h-10 w-10 shrink-0 items-center justify-center text-slate-400 hover:text-patriota-dark"
         >
           <span
             aria-hidden
@@ -90,30 +219,24 @@ function SectionRow({
       </div>
 
       {expanded && (
-        <ul className="mb-1 ml-3 flex flex-col gap-0.5 border-l border-slate-100 pl-3">
+        <ul className="mb-1 flex flex-col gap-0.5 border-l border-slate-100">
           <li>
             <Link
               href={href}
               onClick={onNavigate}
-              className="block rounded-lg px-3 py-2 text-[13px] font-bold text-patriota-medium hover:bg-patriota-pure"
+              style={{ paddingLeft: 24 + indent }}
+              className="block rounded-lg py-2 pr-3 text-[13px] font-bold text-patriota-medium hover:bg-patriota-pure"
             >
               Ver tudo em {category.label} →
             </Link>
           </li>
           {category.children.map((child) => (
             <li key={child.slug}>
-              <Link
-                href={`/categoria/${child.slug}`}
-                onClick={onNavigate}
-                className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-[14px] text-slate-600 transition-colors hover:bg-patriota-pure hover:text-patriota-dark"
-              >
-                <span>{child.label}</span>
-                {child.articleCountTotal > 0 && (
-                  <span className="text-[11px] text-slate-400">
-                    {child.articleCountTotal}
-                  </span>
-                )}
-              </Link>
+              <SectionRow
+                category={child}
+                depth={depth + 1}
+                onNavigate={onNavigate}
+              />
             </li>
           ))}
         </ul>
@@ -130,10 +253,6 @@ export function MobileNav({
   secondary: CategoryDef[];
 }) {
   const [open, setOpen] = useState(false);
-  // One section open at a time. A tap on another closes the first —
-  // a phone screen has no room for two expanded lists, and letting
-  // several stack turns the drawer into a scroll trap.
-  const [expanded, setExpanded] = useState<string | null>(null);
 
   // Esc to close, body scroll lock while open.
   useEffect(() => {
@@ -218,6 +337,16 @@ export function MobileNav({
           </button>
         </div>
 
+        {/* Sign in / account. First thing after the header — on a
+            phone this drawer IS the only navigation surface, so it is
+            also the only place a reader can reach their account at
+            all; it should not be buried under every category list. */}
+        {FEATURES.publicAuth && FEATURES.readerArea && (
+          <div className="border-b border-slate-100">
+            <DrawerAccount onNavigate={() => setOpen(false)} />
+          </div>
+        )}
+
         {/* Primary categories — featured prominently */}
         {primary.length > 0 && (
           <nav className="px-2 py-4" aria-label="Secções principais">
@@ -229,10 +358,6 @@ export function MobileNav({
                 <li key={c.slug}>
                   <SectionRow
                     category={c}
-                    expanded={expanded === c.slug}
-                    onToggle={() =>
-                      setExpanded((prev) => (prev === c.slug ? null : c.slug))
-                    }
                     onNavigate={() => setOpen(false)}
                   />
                 </li>
@@ -256,18 +381,7 @@ export function MobileNav({
             <ul className="flex flex-col gap-0.5">
               {secondary.map((c) => (
                 <li key={c.slug}>
-                  <Link
-                    href={`/categoria/${c.slug}`}
-                    onClick={() => setOpen(false)}
-                    className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-[14px] text-slate-600 transition-colors hover:bg-patriota-pure hover:text-patriota-dark"
-                  >
-                    <span>{c.label}</span>
-                    {c.articleCountTotal > 0 && (
-                      <span className="text-[11px] text-slate-400">
-                        {c.articleCountTotal}
-                      </span>
-                    )}
-                  </Link>
+                  <SectionRow category={c} onNavigate={() => setOpen(false)} />
                 </li>
               ))}
             </ul>

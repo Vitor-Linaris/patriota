@@ -127,3 +127,17 @@ body {
   pointer-events: none;
   height: 0;
 }
+
+/**
+ * Hides the scrollbar on an element that scrolls natively (touch swipe,
+ * trackpad, arrow keys all still work) — used for horizontal strips
+ * like SecondaryNavStrip, where a visible scrollbar would sit under the
+ * text and the strip's own dot indicator already shows position.
+ */
+.scrollbar-hide {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* old Edge */
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none; /* Chrome, Safari */
+}

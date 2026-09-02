@@ -50,11 +50,20 @@ interface PanelState {
  * no dots, no transform, no timer.
  *
  * The panel is positioned `fixed` and measured from the link, rather
- * than absolutely inside it, because the sliding track needs
- * `overflow-hidden` to clip and that would equally clip a dropdown. CSS
- * cannot clip one axis and not the other — asking for it silently clips
- * both — so escaping the container is the only way both features can
- * coexist.
+ * than absolutely inside it, because the strip needs its own scrolling
+ * and that would equally clip a dropdown. CSS cannot let one axis
+ * scroll and not clip the other — a scrollable container clips
+ * everything that overflows it — so escaping the container is the only
+ * way both features can coexist.
+ *
+ * The viewport scrolls NATIVELY (`overflow-x-auto`), not by a CSS
+ * transform driven only from JS. It used to be transform-only, which
+ * is why a finger dragging the strip on a phone did nothing — there
+ * was no scrollable axis for the browser's own touch handling to grab.
+ * Paging (dots, auto-rotate) now drives the same native scroll via
+ * `scrollTo()`, so a tap on a dot and a finger swipe move the exact
+ * same thing instead of two mechanisms fighting over the strip's
+ * position.
  */
 export function SecondaryNavStrip({ items }: { items: CategoryDef[] }) {
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -139,6 +148,50 @@ export function SecondaryNavStrip({ items }: { items: CategoryDef[] }) {
     return () => clearInterval(timer);
   }, [pageCount, hovered]);
 
+  // The one thing that actually moves the strip, for every source of
+  // paging: the dots, the auto-rotate timer, both just change `active`.
+  // Smooth-scrolls to that page's offset; a finger dragging the strip
+  // moves it too, through the browser's own touch handling, with
+  // nothing here to fight it.
+  useEffect(() => {
+    viewportRef.current?.scrollTo({
+      left: pageOffsets[active] ?? 0,
+      behavior: "smooth",
+    });
+  }, [active, pageOffsets]);
+
+  // Keeps the dots honest after a manual swipe. Debounced on `scroll`
+  // rather than reading position continuously: mid-swipe the strip
+  // sits between two pages, and picking a "closest" dot at every pixel
+  // would flicker the highlighted one back and forth as a finger
+  // crosses the midpoint.
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport || pageOffsets.length <= 1) return;
+    let settle: ReturnType<typeof setTimeout>;
+    const onScroll = () => {
+      clearTimeout(settle);
+      settle = setTimeout(() => {
+        const at = viewport.scrollLeft;
+        let closest = 0;
+        let best = Infinity;
+        pageOffsets.forEach((offset, i) => {
+          const d = Math.abs(offset - at);
+          if (d < best) {
+            best = d;
+            closest = i;
+          }
+        });
+        setActive(closest);
+      }, 120);
+    };
+    viewport.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      clearTimeout(settle);
+      viewport.removeEventListener("scroll", onScroll);
+    };
+  }, [pageOffsets]);
+
   useEffect(() => {
     return () => {
       if (closeTimer.current) clearTimeout(closeTimer.current);
@@ -191,11 +244,30 @@ export function SecondaryNavStrip({ items }: { items: CategoryDef[] }) {
       }}
     >
       <Container className="relative flex h-9 items-center">
-        <div ref={viewportRef} className="relative flex-1 overflow-hidden">
+        <div
+          ref={viewportRef}
+          className="scrollbar-hide relative flex-1 overflow-x-auto"
+          style={{
+            WebkitOverflowScrolling: "touch",
+            // Fades the last link into the dots instead of the dots'
+            // solid background hard-cutting it mid-word — the dots sit
+            // absolutely on top of this viewport, not in normal flow,
+            // so without a fade the text was simply invisible behind
+            // them rather than actually clipped.
+            maskImage:
+              pageCount > 1
+                ? `linear-gradient(to right, black 0%, black calc(100% - ${DOTS_RESERVE}px), transparent 100%)`
+                : undefined,
+            WebkitMaskImage:
+              pageCount > 1
+                ? `linear-gradient(to right, black 0%, black calc(100% - ${DOTS_RESERVE}px), transparent 100%)`
+                : undefined,
+          }}
+        >
           <div
             ref={trackRef}
-            className="flex items-center gap-6 whitespace-nowrap text-[12px] font-medium text-[#667085] transition-transform duration-500 ease-out"
-            style={{ transform: `translateX(-${pageOffsets[active] ?? 0}px)` }}
+            className="flex items-center gap-6 whitespace-nowrap text-[12px] font-medium text-[#667085]"
+            style={{ paddingRight: pageCount > 1 ? DOTS_RESERVE : 0 }}
           >
             {items.map((c) => (
               <Link
@@ -212,47 +284,37 @@ export function SecondaryNavStrip({ items }: { items: CategoryDef[] }) {
         </div>
 
         {pageCount > 1 && (
-          // Absolute, so the paging maths above never has to account for
-          // its own indicator. The space it sits in is already reserved
-          // by DOTS_RESERVE.
+          // Same dot-indicator language as <BreakingNews>'s ticker —
+          // duplicated rather than shared, since the two live in
+          // unrelated components with their own background/timing and
+          // sharing one would just couple them for no benefit.
+          //
+          // Absolute, so the paging maths above never has to account
+          // for its own indicator; the mask + padding-right above are
+          // what actually keep the track's text out from under it.
           <div
-            className="absolute inset-y-0 right-0 flex items-center gap-1 bg-[#f0f2f7] pl-2"
+            className="absolute inset-y-0 right-0 flex shrink-0 items-center gap-1.5"
             role="tablist"
             aria-label="Páginas de rubricas"
           >
-            {pageOffsets.map((offset, i) => (
-              // The button is a fixed 24×24 hit area; only the pill
-              // inside it changes. The dot used to BE the button at 6×6
-              // px — too small to hit, and growing it on hover reflowed
-              // the row and slid it out from under the pointer, so the
-              // click landed on nothing. The outer box never changes
-              // size now, so nothing moves while you aim at it.
-              //
-              // justify-end pins every pill to the RIGHT of its box, so
-              // the active one grows leftwards. Centred, the last pill
-              // grew outwards into the grid's right edge — the row sits
-              // flush against it — and read as the bar bursting its
-              // container. Right-anchored, the row's right edge is the
-              // same x in every state.
-              <button
-                key={`${i}-${offset}`}
-                type="button"
-                role="tab"
-                aria-selected={i === active}
-                aria-label={`Mostrar rubricas, página ${i + 1} de ${pageCount}`}
-                onClick={() => setActive(i)}
-                className="group/dot flex h-6 w-6 items-center justify-end"
-              >
-                <span
-                  aria-hidden
-                  className={`block h-1.5 rounded-full transition-all duration-300 ${
-                    i === active
-                      ? "w-5 bg-patriota-medium"
-                      : "w-1.5 bg-slate-300 group-hover/dot:bg-slate-500"
+            {pageOffsets.map((offset, i) => {
+              const isActive = i === active;
+              return (
+                <button
+                  key={`${i}-${offset}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  aria-label={`Mostrar rubricas, página ${i + 1} de ${pageCount}`}
+                  onClick={() => setActive(i)}
+                  className={`rounded-full transition-all duration-300 ${
+                    isActive
+                      ? "h-2 w-6 bg-patriota-medium"
+                      : "h-2 w-2 bg-slate-300 hover:bg-slate-400"
                   }`}
                 />
-              </button>
-            ))}
+              );
+            })}
           </div>
         )}
       </Container>
