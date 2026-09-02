@@ -38,6 +38,18 @@ export class CreateCategoryDto {
   visible?: boolean;
 
   /**
+   * Se os leitores são convidados a seguir esta secção por e-mail.
+   *
+   * Distinto de `visible`, que decide o menu público. Por omissão fica
+   * DESLIGADO numa categoria nova: uma secção acabada de criar está
+   * quase sempre ainda a ser decidida, e não deve aparecer na lista de
+   * toda a gente no instante em que alguém escreveu um nome.
+   */
+  @IsOptional()
+  @IsBoolean()
+  followable?: boolean;
+
+  /**
    * Categoria-mãe. Omitir (ou null) cria uma raiz.
    *
    * A profundidade não é validada aqui: a regra é

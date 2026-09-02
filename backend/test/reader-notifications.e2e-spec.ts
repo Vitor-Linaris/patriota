@@ -64,6 +64,11 @@ describe('Reader notifications (e2e)', () => {
         color: '#1e40af',
         order: 1,
         visible: true,
+        // A live section. The column defaults to FALSE — a category is
+        // not offered to readers until somebody opens it — so without
+        // this the follow below is refused and every notification test
+        // fails for a reason that has nothing to do with notifications.
+        followable: true,
         path: '/root/', // placeholder — these tests never assert on the tree
       },
     });
@@ -472,6 +477,11 @@ describe('Reader notifications (e2e)', () => {
           description: '',
           icon: '◆',
           color: '#000000',
+          // Opened to readers, which a new category is NOT by default —
+          // an editor turns it on when the section is ready. These tests
+          // are about the notification roll-up, so the sections start
+          // where that story begins: already on offer.
+          followable: true,
           ...(parentId ? { parentId } : {}),
         })
         .expect(201);

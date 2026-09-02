@@ -20,6 +20,14 @@ export interface TreeNode {
   icon: string;
   color: string;
   visible: boolean;
+  /**
+   * Whether readers are offered this section to follow by e-mail.
+   *
+   * Not the same question as `visible`, which is the public menu. A
+   * section can be live without the newsroom being ready to promise
+   * mail about it — one being tried out, or one about to be renamed.
+   */
+  followable: boolean;
   parentId: string | null;
   depth: number;
   order: number;
@@ -36,6 +44,7 @@ export interface FlatNode {
   icon: string;
   color: string;
   visible: boolean;
+  followable: boolean;
   parentId: string | null;
   depth: number;
   articleCount: number;

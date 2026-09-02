@@ -31,6 +31,7 @@ const n = (
   name: id,
   slug: id,
   description: "",
+  followable: true,
   icon: "◆",
   color: "#000",
   visible: true,
