@@ -50,11 +50,20 @@ interface PanelState {
  * no dots, no transform, no timer.
  *
  * The panel is positioned `fixed` and measured from the link, rather
- * than absolutely inside it, because the sliding track needs
- * `overflow-hidden` to clip and that would equally clip a dropdown. CSS
- * cannot clip one axis and not the other — asking for it silently clips
- * both — so escaping the container is the only way both features can
- * coexist.
+ * than absolutely inside it, because the strip needs its own scrolling
+ * and that would equally clip a dropdown. CSS cannot let one axis
+ * scroll and not clip the other — a scrollable container clips
+ * everything that overflows it — so escaping the container is the only
+ * way both features can coexist.
+ *
+ * The viewport scrolls NATIVELY (`overflow-x-auto`), not by a CSS
+ * transform driven only from JS. It used to be transform-only, which
+ * is why a finger dragging the strip on a phone did nothing — there
+ * was no scrollable axis for the browser's own touch handling to grab.
+ * Paging (dots, auto-rotate) now drives the same native scroll via
+ * `scrollTo()`, so a tap on a dot and a finger swipe move the exact
+ * same thing instead of two mechanisms fighting over the strip's
+ * position.
  */
 export function SecondaryNavStrip({ items }: { items: CategoryDef[] }) {
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -139,6 +148,50 @@ export function SecondaryNavStrip({ items }: { items: CategoryDef[] }) {
     return () => clearInterval(timer);
   }, [pageCount, hovered]);
 
+  // The one thing that actually moves the strip, for every source of
+  // paging: the dots, the auto-rotate timer, both just change `active`.
+  // Smooth-scrolls to that page's offset; a finger dragging the strip
+  // moves it too, through the browser's own touch handling, with
+  // nothing here to fight it.
+  useEffect(() => {
+    viewportRef.current?.scrollTo({
+      left: pageOffsets[active] ?? 0,
+      behavior: "smooth",
+    });
+  }, [active, pageOffsets]);
+
+  // Keeps the dots honest after a manual swipe. Debounced on `scroll`
+  // rather than reading position continuously: mid-swipe the strip
+  // sits between two pages, and picking a "closest" dot at every pixel
+  // would flicker the highlighted one back and forth as a finger
+  // crosses the midpoint.
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport || pageOffsets.length <= 1) return;
+    let settle: ReturnType<typeof setTimeout>;
+    const onScroll = () => {
+      clearTimeout(settle);
+      settle = setTimeout(() => {
+        const at = viewport.scrollLeft;
+        let closest = 0;
+        let best = Infinity;
+        pageOffsets.forEach((offset, i) => {
+          const d = Math.abs(offset - at);
+          if (d < best) {
+            best = d;
+            closest = i;
+          }
+        });
+        setActive(closest);
+      }, 120);
+    };
+    viewport.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      clearTimeout(settle);
+      viewport.removeEventListener("scroll", onScroll);
+    };
+  }, [pageOffsets]);
+
   useEffect(() => {
     return () => {
       if (closeTimer.current) clearTimeout(closeTimer.current);
@@ -191,11 +244,14 @@ export function SecondaryNavStrip({ items }: { items: CategoryDef[] }) {
       }}
     >
       <Container className="relative flex h-9 items-center">
-        <div ref={viewportRef} className="relative flex-1 overflow-hidden">
+        <div
+          ref={viewportRef}
+          className="scrollbar-hide relative flex-1 overflow-x-auto"
+          style={{ WebkitOverflowScrolling: "touch" }}
+        >
           <div
             ref={trackRef}
-            className="flex items-center gap-6 whitespace-nowrap text-[12px] font-medium text-[#667085] transition-transform duration-500 ease-out"
-            style={{ transform: `translateX(-${pageOffsets[active] ?? 0}px)` }}
+            className="flex items-center gap-6 whitespace-nowrap text-[12px] font-medium text-[#667085]"
           >
             {items.map((c) => (
               <Link
