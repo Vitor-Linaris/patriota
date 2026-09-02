@@ -20,13 +20,19 @@ function resolveCorsOrigin(): string[] | false {
 }
 
 async function bootstrap() {
-  // PHASE 2 (billing): Stripe webhooks need the untouched request body to
-  // verify the signature, so this will have to become
-  //   NestFactory.create(AppModule, { rawBody: true })
-  // and the webhook route must carry @SkipThrottle() plus its own body
-  // parser — the global ValidationPipe below (forbidNonWhitelisted) and
-  // the JSON parsing both destroy the signature otherwise.
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // rawBody keeps the untouched bytes of every request on req.rawBody,
+  // alongside the parsed body. The Stripe webhook needs them: Stripe
+  // signs what it sent, and parsing then reserialising JSON changes the
+  // bytes enough to break the signature (key order, whitespace, number
+  // formatting). See billing.controller.ts — it reads req.rawBody and
+  // deliberately takes no @Body().
+  //
+  // The cost is one extra copy of each request body in memory. Bounded
+  // by the body-size limit, and worth it against the alternative of a
+  // second Express instance or a route-specific parser.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true,
+  });
 
   // Behind Docker/Nginx every request arrives from the proxy, so req.ip is
   // the proxy IP and ThrottlerGuard buckets the whole internet together —
@@ -55,11 +61,18 @@ async function bootstrap() {
   if (!existsSync(uploadsDir)) {
     mkdirSync(uploadsDir, { recursive: true });
   }
-  app.useStaticAssets(uploadsDir, {
-    prefix: '/uploads/',
-    immutable: true,
-    maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days — variants are content-addressed
-  });
+  // NOT useStaticAssets any more. /uploads is served by
+  // UploadsController, which decides per file whether the caller may
+  // have it: everything published is served to anyone, and material
+  // that has not run yet only to its owner. The static handler had no
+  // way to make that distinction — it served whatever it was pointed
+  // at, to whoever asked.
+  //
+  // The URLs and the caching headers are identical, so nothing that
+  // already points at a file notices the change.
+  //
+  // The directory is still created above: the upload pipeline writes
+  // into it, and a container started from a stale image may not have it.
 
   // First-deploy admin bootstrap — only fires on a truly empty DB.
   // See src/bootstrap-admin.ts for the triple-guard logic. Runs

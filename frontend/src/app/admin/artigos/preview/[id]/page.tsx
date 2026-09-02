@@ -8,6 +8,7 @@ import { Blockquote } from "@/components/article/Blockquote";
 import { AuthorBio } from "@/components/article/AuthorBio";
 import { apiFetch } from "@/lib/api";
 import { imageVariant } from "@/lib/images";
+import { adminMediaUrl } from "@/lib/media-preview";
 
 /**
  * Admin-only preview of a single article, regardless of status.
@@ -232,8 +233,13 @@ export default async function ArticlePreviewPage({
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={
-                    imageVariant(article.coverImageUrl, "large") ??
-                    article.coverImageUrl
+                    // Through the admin proxy: this page exists to show
+                    // an article BEFORE it is published, which is
+                    // precisely when its media is still private.
+                    adminMediaUrl(
+                      imageVariant(article.coverImageUrl, "large") ??
+                        article.coverImageUrl,
+                    ) ?? ""
                   }
                   alt={article.title}
                   className="aspect-[16/9] w-full rounded-lg object-cover"

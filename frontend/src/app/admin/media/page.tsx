@@ -1,6 +1,14 @@
 import { AdminShell } from "../AdminShell";
 import AdminMediaClient, { type MediaItem } from "./AdminMediaClient";
 import { apiFetch } from "@/lib/api";
+import { mediaPreviewUrl } from "@/lib/media-preview";
+
+/** How much of their 2 GB allowance this person has used. */
+interface MediaQuota {
+  used: number;
+  limit: number;
+  remaining: number;
+}
 
 interface PageResult<T> {
   items: T[];
@@ -20,6 +28,19 @@ interface MediaApi {
   width: number | null;
   height: number | null;
   uploadedAt: string;
+  /** Who put it there. Null for files left by staff who have gone. */
+  uploadedBy: { id: string; name: string | null } | null;
+  /** PRIVADO until the file is used in something published. */
+  visibility: "PRIVADO" | "PUBLICO";
+  /** Frame count on an animation, null on a still. */
+  frames: number | null;
+  /** IMAGEM or VIDEO. Not derivable from the mime type: a video's row
+   *  carries the type of the WebP poster taken from it. */
+  kind: "IMAGEM" | "VIDEO";
+  /** Length in seconds. Only on a video. */
+  durationSeconds: number | null;
+  /** The still taken from the video, for the grid. Only on a video. */
+  posterUrl: string | null;
   /** Count of articles that reference this media (cover or inline). */
   articleCount: number;
   /** Count of ad slots whose imageUrl points at this media. */
@@ -47,7 +68,20 @@ function humanSize(bytes: number | null): string | undefined {
 function toMediaItem(m: MediaApi): MediaItem {
   return {
     id: m.id,
-    url: m.url,
+    // What the grid renders. A private file cannot be shown from its
+    // real address — see mediaPreviewUrl.
+    url: mediaPreviewUrl(m.url, m.visibility),
+    /** The real address: what gets copied, and what articles point at. */
+    canonicalUrl: m.url,
+    visibility: m.visibility,
+    frames: m.frames,
+    kind: m.kind ?? "IMAGEM",
+    durationSeconds: m.durationSeconds ?? null,
+    // The tile shows the poster, and the poster is a file with the
+    // same visibility as the video it was taken from.
+    posterUrl: m.posterUrl
+      ? mediaPreviewUrl(m.posterUrl, m.visibility)
+      : null,
     name: m.name,
     uploadedAt: dateFmt.format(new Date(m.uploadedAt)),
     size: humanSize(m.size),
@@ -56,6 +90,7 @@ function toMediaItem(m: MediaApi): MediaItem {
     articleCount: m.articleCount ?? 0,
     adCount: m.adCount ?? 0,
     usedIn: m.usedIn ?? [],
+    uploadedBy: m.uploadedBy?.name ?? null,
   };
 }
 
@@ -64,30 +99,50 @@ const PAGE_SIZE = 24;
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; q?: string }>;
+  searchParams: Promise<{ page?: string; q?: string; scope?: string }>;
 }) {
-  const { page: pageParam, q: qParam } = await searchParams;
+  const { page: pageParam, q: qParam, scope: scopeParam } = await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
   const q = (qParam ?? "").trim();
+  // Anything unrecognised is dropped rather than forwarded: the API
+  // rejects unknown query params outright (forbidNonWhitelisted), so a
+  // typo in a bookmark would render an empty page instead of a library.
+  const scope = scopeParam === "todas" ? "todas" : undefined;
 
   const listParams = new URLSearchParams();
   listParams.set("page", String(page));
   listParams.set("pageSize", String(PAGE_SIZE));
   if (q) listParams.set("q", q);
+  if (scope) listParams.set("scope", scope);
 
   // Fire the page query AND a no-search count query in parallel — the
   // latter feeds the "X imagens no total" stat (always the full
   // library count, ignores the search filter).
-  const [res, totalRes] = await Promise.all([
+  const [res, totalRes, meRes] = await Promise.all([
     apiFetch(`/admin/media?${listParams.toString()}`),
-    apiFetch("/admin/media?pageSize=1"),
+    // The stat card's denominator. Same scope as the list, so "de X no
+    // total" never counts files the grid below cannot show.
+    apiFetch(`/admin/media?pageSize=1${scope ? "&scope=todas" : ""}`),
+    // Only to decide whether to offer the "toda a equipa" filter. The
+    // API refuses scope=todas to anyone else regardless.
+    apiFetch("/auth/me"),
   ]);
   const body = res.ok
-    ? ((await res.json()) as PageResult<MediaApi>)
-    : { items: [], total: 0, page: 1, pageSize: PAGE_SIZE };
+    ? ((await res.json()) as PageResult<MediaApi> & { quota?: MediaQuota })
+    : {
+        items: [] as MediaApi[],
+        total: 0,
+        page: 1,
+        pageSize: PAGE_SIZE,
+        quota: undefined,
+      };
   const totalLibrary = totalRes.ok
     ? ((await totalRes.json()) as PageResult<MediaApi>).total
     : body.total;
+  const me = meRes.ok
+    ? ((await meRes.json()) as { role?: string })
+    : {};
+  const canSeeAll = me.role === "SUPER_ADMIN";
   const items = body.items.map(toMediaItem);
   const totalPages = Math.max(1, Math.ceil(body.total / PAGE_SIZE));
   return (
@@ -96,9 +151,12 @@ export default async function Page({
         initialItems={items}
         totalItems={body.total}
         statsTotal={totalLibrary}
+        quota={body.quota ?? null}
         currentPage={page}
         totalPages={totalPages}
         searchQuery={q}
+        scope={scope === "todas" ? "todas" : "minha"}
+        canSeeAll={canSeeAll}
       />
     </AdminShell>
   );

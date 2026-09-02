@@ -1,12 +1,24 @@
 import {
   CanActivate,
   ExecutionContext,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReaderTokenService } from './reader-token.service';
+import {
+  isSuspended,
+  lapseData,
+  suspensionLapsed,
+  suspensionMessage,
+} from './reader-suspension';
+import {
+  effectivePlan,
+  lapsedPlanData,
+  planLapsed,
+} from './reader-entitlement';
 
 /**
  * The authenticated principal for a public reader. Intentionally NOT
@@ -18,13 +30,33 @@ export interface ReaderPrincipal {
   name: string | null;
   avatarUrl: string | null;
   emailVerified: boolean;
-  /** Phase 2 reads this; today it is always GRATIS. */
+  /**
+   * The EFFECTIVE plan — already downgraded to GRATIS if the
+   * subscription's end date has passed.
+   *
+   * Downgrading here rather than at each call site is the point: a
+   * lapsed subscription is indistinguishable from never having had one,
+   * and nothing downstream has to remember to check a date. See
+   * reader-entitlement.ts.
+   */
   plan: string;
   displayNamePublic: boolean;
 }
 
-/** Request augmented with the reader principal. Never `user` — see below. */
-export type ReaderRequest = Request & { reader?: ReaderPrincipal };
+/**
+ * Request augmented with the reader principal. Never `user` — see below.
+ *
+ * `readerSuspension` is how resolve() tells canActivate() WHY it refused.
+ * Both outcomes are `null` from resolve()'s point of view, but a banned
+ * reader deserves to be told they are banned and until when, while a
+ * stale token deserves nothing more than "sessão inválida". The marker
+ * keeps that distinction without making resolve() throw, which would
+ * break OptionalReaderAuthGuard's contract that anonymous is fine.
+ */
+export type ReaderRequest = Request & {
+  reader?: ReaderPrincipal;
+  readerSuspension?: { suspendedUntil: Date | null; suspensionReason: string | null };
+};
 
 /**
  * Resolves a reader bearer token.
@@ -50,7 +82,12 @@ export class ReaderAuthGuard implements CanActivate {
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req = ctx.switchToHttp().getRequest<ReaderRequest>();
     const principal = await this.resolve(req);
-    if (!principal) throw new UnauthorizedException('Sessão inválida.');
+    if (!principal) {
+      if (req.readerSuspension) {
+        throw new ForbiddenException(suspensionMessage(req.readerSuspension));
+      }
+      throw new UnauthorizedException('Sessão inválida.');
+    }
     req.reader = principal;
     return true;
   }
@@ -72,7 +109,10 @@ export class ReaderAuthGuard implements CanActivate {
         avatarUrl: true,
         emailVerifiedAt: true,
         status: true,
+        suspendedUntil: true,
+        suspensionReason: true,
         plan: true,
+        planRenewsAt: true,
         tokenVersion: true,
         displayNamePublic: true,
       },
@@ -88,8 +128,30 @@ export class ReaderAuthGuard implements CanActivate {
     // PENDENTE_VERIFICACAO deliberately DOES authenticate — they need to be
     // able to reach /reader/me and re-request the verification email. Write
     // endpoints check emailVerified separately.
-    if (reader.status === 'SUSPENSO' || reader.status === 'ANONIMIZADO') {
+    if (reader.status === 'ANONIMIZADO') return null;
+
+    if (isSuspended(reader)) {
+      req.readerSuspension = reader;
       return null;
+    }
+
+    // The ban ended. isSuspended() has already let them through on the
+    // date alone — this only tidies the row so the admin list stops
+    // showing a SUSPENSO next to an end date from last month. Fire and
+    // forget: if it fails, the next request lets them in just the same.
+    if (suspensionLapsed(reader)) {
+      void this.prisma.reader
+        .update({ where: { id: reader.id }, data: lapseData(reader) })
+        .catch(() => undefined);
+    }
+
+    // Same treatment for an expired subscription, and for the same
+    // reason: the date below has already decided the answer, this only
+    // stops the row from claiming a plan that ended. Fire and forget.
+    if (planLapsed(reader)) {
+      void this.prisma.reader
+        .update({ where: { id: reader.id }, data: lapsedPlanData() })
+        .catch(() => undefined);
     }
 
     return {
@@ -98,7 +160,7 @@ export class ReaderAuthGuard implements CanActivate {
       name: reader.name,
       avatarUrl: reader.avatarUrl,
       emailVerified: reader.emailVerifiedAt !== null,
-      plan: reader.plan,
+      plan: effectivePlan(reader),
       displayNamePublic: reader.displayNamePublic,
     };
   }

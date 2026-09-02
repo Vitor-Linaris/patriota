@@ -15,9 +15,11 @@ import { ArticleSidebar } from "@/components/article/ArticleSidebar";
 import { ShareButtons, ICON_BUTTON } from "@/components/article/ShareButtons";
 import { ReaderActions } from "@/components/article/ReaderActions";
 import { ArticleComments } from "@/components/article/ArticleComments";
+import { Paywall } from "@/components/article/Paywall";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { getAncestors } from "@/lib/categories";
 import { FEATURES } from "@/lib/features";
+import { getReaderToken } from "@/lib/reader-api";
 import { imageVariant } from "@/lib/images";
 import {
   getAdsByPage,
@@ -48,6 +50,43 @@ export default async function ArticlePage({
     process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.opatriota.pt"
   }/artigo/${article.slug}`;
 
+  const body = article.content ?? article.contentPreview ?? "";
+  const signedIn = (await getReaderToken()) !== null;
+
+  /**
+   * NewsArticle, declaring the piece as subscription content.
+   *
+   * Not optional politeness. Serving a crawler a cut version of what a
+   * subscriber sees is cloaking unless the page says so in the way
+   * Google reads — `isAccessibleForFree: false` plus a `hasPart` naming
+   * the CSS selector of the withheld section. Without it, a paywalled
+   * site risks being demoted for the exact behaviour the paywall exists
+   * to perform. The selector must match the class on <Paywall />.
+   */
+  const articleJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "NewsArticle",
+    headline: article.title,
+    description: article.metaDescription ?? article.summary,
+    datePublished: article.publishedAt ?? undefined,
+    author: article.author.name
+      ? { "@type": "Person", name: article.author.name }
+      : undefined,
+    articleSection: article.category.name,
+    mainEntityOfPage: { "@type": "WebPage", "@id": shareUrl },
+    ...(article.coverImageUrl ? { image: [article.coverImageUrl] } : {}),
+    isAccessibleForFree: !article.paywalled,
+    ...(article.paywalled
+      ? {
+          hasPart: {
+            "@type": "WebPageElement",
+            isAccessibleForFree: false,
+            cssSelector: ".paywall-cut",
+          },
+        }
+      : {}),
+  };
+
   const authorInitials = (article.author.name ?? "??")
     .split(" ")
     .filter(Boolean)
@@ -57,6 +96,12 @@ export default async function ArticlePage({
 
   return (
     <div className="flex flex-1 flex-col bg-white text-slate-900">
+      <script
+        type="application/ld+json"
+        // Same pattern as <Breadcrumb />. JSON.stringify of a plain
+        // object we built ourselves, never reader input.
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(articleJsonLd) }}
+      />
       <TopBar />
       <BreakingNews
         items={breaking.map((a) => ({ slug: a.slug, title: a.title }))}
@@ -195,16 +240,28 @@ export default async function ArticlePage({
                 </figure>
               )}
 
-              {/* Body */}
-              {article.content ? (
+              {/* Body.
+                  `content ?? contentPreview` and not a check for an empty
+                  string: on a withheld exclusive `content` is absent from
+                  the payload entirely, which is what makes this pair
+                  safe to read in that order. */}
+              {body ? (
                 <div
                   className="prose prose-slate mt-8 max-w-none text-[16px] leading-relaxed text-slate-800 [&_p]:mt-4"
-                  dangerouslySetInnerHTML={{ __html: article.content }}
+                  dangerouslySetInnerHTML={{ __html: body }}
                 />
               ) : (
                 <p className="mt-8 text-[16px] leading-relaxed text-slate-800">
                   {article.summary}
                 </p>
+              )}
+
+              {article.paywalled && (
+                <Paywall
+                  signedIn={signedIn}
+                  billingLive={FEATURES.billing}
+                  returnTo={`/artigo/${article.slug}`}
+                />
               )}
 
               {/* Context */}

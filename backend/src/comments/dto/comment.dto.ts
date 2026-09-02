@@ -11,13 +11,24 @@ import {
 import { PageQueryDto } from '../../common/dto/pagination.dto';
 import { CommentStatus } from '../../../generated/prisma/enums';
 
+/**
+ * Ceiling on the RAW body, before tags come off.
+ *
+ * Deliberately far above the real 280-character limit in
+ * comments.service.ts, and not the same check. This one only stops a
+ * megabyte of paste from reaching the sanitiser; the limit the reader is
+ * held to is measured on the stripped text, so markup they never typed
+ * does not count against them. Matching the two numbers here would
+ * quietly reintroduce that.
+ */
+const MAX_RAW_BODY = 4000;
+
 export class CreateCommentDto {
-  /**
-   * Plain text. The service strips tags again on write; this bound is the
-   * first line of defence, not the only one.
-   */
+  /** Plain text. The service strips tags and applies the real bound. */
   @IsString()
-  @Length(2, 2000, { message: 'O comentário deve ter entre 2 e 2000 caracteres.' })
+  @Length(2, MAX_RAW_BODY, {
+    message: 'O comentário é demasiado longo.',
+  })
   body!: string;
 
   /** Replying to a reply re-parents onto the root — threads stay 2 deep. */
@@ -28,7 +39,9 @@ export class CreateCommentDto {
 
 export class UpdateCommentDto {
   @IsString()
-  @Length(2, 2000, { message: 'O comentário deve ter entre 2 e 2000 caracteres.' })
+  @Length(2, MAX_RAW_BODY, {
+    message: 'O comentário é demasiado longo.',
+  })
   body!: string;
 }
 

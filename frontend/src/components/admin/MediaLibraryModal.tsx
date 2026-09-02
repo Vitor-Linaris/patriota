@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { mediaPreviewUrl } from "@/lib/media-preview";
 import { imageVariant } from "@/lib/images";
 
 interface MediaItem {
@@ -12,6 +13,8 @@ interface MediaItem {
   width: number | null;
   height: number | null;
   mimeType: string | null;
+  /** PRIVADO until the file is used in something published. */
+  visibility?: "PRIVADO" | "PUBLICO";
 }
 
 interface PageResult<T> {
@@ -45,7 +48,15 @@ export function MediaLibraryModal({
     let abort = false;
     setLoading(true);
     setError(null);
-    fetch("/api/admin/media/proxy?pageSize=200", { cache: "no-store" })
+    fetch("/api/admin/media/proxy?pageSize=200&kind=IMAGEM", {
+      // Images only. Both places this picker feeds — the cover and the
+      // article body — insert an <img>, so a video chosen here would
+      // render as a broken picture. Filtered by the server rather than
+      // here, because this fetches one page of 200 and stops: filtering
+      // afterwards would let videos push images off the end of a list
+      // that still looks complete.
+      cache: "no-store",
+    })
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json() as Promise<PageResult<MediaItem>>;
@@ -124,7 +135,15 @@ export function MediaLibraryModal({
           {!loading && filtered.length > 0 && (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
               {filtered.map((m) => {
-                const thumb = imageVariant(m.urlSmall ?? m.url, "small") ?? m.url;
+                // Private files cannot be shown from their real
+                // address — an <img> carries no session. Only the
+                // THUMBNAIL goes through the proxy; onPick still hands
+                // back the real URL, which is what the article stores
+                // and what the reader will eventually load.
+                const thumb = mediaPreviewUrl(
+                  imageVariant(m.urlSmall ?? m.url, "small") ?? m.url,
+                  m.visibility,
+                );
                 return (
                   <button
                     type="button"
@@ -138,6 +157,14 @@ export function MediaLibraryModal({
                       alt={m.name}
                       className="h-full w-full object-cover"
                     />
+                    {m.visibility === "PRIVADO" && (
+                      <span
+                        title="Ainda privada. Fica pública ao ser usada num artigo publicado."
+                        className="absolute right-1.5 top-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-700"
+                      >
+                        privada
+                      </span>
+                    )}
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 py-2 opacity-0 transition-opacity group-hover:opacity-100">
                       <p className="truncate text-[10px] font-semibold text-white">
                         {m.name}

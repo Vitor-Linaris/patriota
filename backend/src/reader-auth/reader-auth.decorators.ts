@@ -49,6 +49,24 @@ export const OptionalReaderAuth = () =>
   );
 
 /**
+ * For a PUBLIC endpoint that reads better when it knows who is asking.
+ *
+ * The difference from @OptionalReaderAuth() above is the missing
+ * ReaderFeatureGuard, and it is the whole reason this exists. That guard
+ * throws 404 when FEATURE_READER_AREA is off — correct for the reader
+ * area's own endpoints, catastrophic on an article page, which would
+ * stop existing for everybody the moment accounts were switched off.
+ *
+ * Here the reader area being off simply means nobody is ever identified,
+ * which is exactly the anonymous case this already handles.
+ *
+ * Used by the article page, where the answer varies: a subscriber gets
+ * the exclusive in full and everybody else gets the opening.
+ */
+export const AnonymousOrReader = () =>
+  applyDecorators(Public(), UseGuards(OptionalReaderAuthGuard));
+
+/**
  * Anonymous reader endpoint (register, login, verify, reset, OAuth).
  * Still behind the feature flag, but with no session requirement.
  */

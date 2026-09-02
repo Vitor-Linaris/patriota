@@ -91,9 +91,21 @@ export default async function ContaDashboardPage() {
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="rounded-full bg-slate-200 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-slate-600">
-                  {me.plan === "PREMIUM" ? "Assinante" : "Conta gratuita"}
-                </span>
+                {/* `planActive`, not `plan`: the column keeps saying
+                    PREMIUM past the end date until something tidies it,
+                    and a badge that disagrees with the paywall is the
+                    site arguing with the reader. Links to the page that
+                    can actually explain it. */}
+                <Link
+                  href="/conta/assinatura"
+                  className={`rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wide transition ${
+                    me.planActive
+                      ? "bg-amber-100 text-amber-800 hover:bg-amber-200"
+                      : "bg-slate-200 text-slate-600 hover:bg-slate-300"
+                  }`}
+                >
+                  {me.planActive ? "Assinante" : "Conta gratuita"}
+                </Link>
                 {/* POST, not a link: a GET logout gets fired by prefetch. */}
                 <form action="/conta/sair" method="post">
                   <button

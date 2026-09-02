@@ -38,8 +38,17 @@ enum ReaderStatus {
   ANONIMIZADO
 }
 
-/// PREMIUM is inert until phase 2 (Stripe Billing). Shipped now so the
-/// paywall migration is data-only.
+/// Where a subscription came from. Lets the dashboard tell a gift from
+/// a paying customer, and stops a manual grant quietly overwriting a
+/// live Stripe subscription.
+enum PlanSource {
+  MANUAL
+  STRIPE
+}
+
+/// The reader's plan. No longer inert: the paywall reads it, though only
+/// through the PlanPermissions table — what PREMIUM actually buys is a
+/// question answered on /admin/permissions, not by this enum.
 enum ReaderPlan {
   GRATIS
   PREMIUM
@@ -76,6 +85,45 @@ enum NotificationStatus {
   FALHOU
 }
 
+/// Whether a file may be fetched by anyone with the address.
+///
+/// Media starts PRIVADO and becomes PUBLICO the moment it is used in
+/// something published. That is not a preference — an article on the
+/// site has to serve its images to readers with no session, to
+/// Googlebot, and to whatever generates the preview when somebody
+/// shares the link. None of those authenticate.
+///
+/// So the promise is narrower than "private files": an embargoed
+/// photograph or a draft graphic is unreachable, and the moment the
+/// piece runs, its images are public for good. See uploads serving in
+/// src/media/.
+enum MediaVisibility {
+  PRIVADO
+  PUBLICO
+}
+
+/// Image or video. The stored mime type cannot answer this on its own:
+/// an image is always converted to WebP, while a video is stored in
+/// whatever web-playable format it arrived in.
+enum MediaKind {
+  IMAGEM
+  VIDEO
+}
+
+/// What a file is FOR, which decides whose problem it is.
+///
+/// EDITORIAL is the newsroom library: photographs for articles, kept so
+/// they can be reused, and deleted only when nothing points at them.
+///
+/// PUBLICIDADE is a banner. It belongs to one ad slot, is replaced when
+/// the campaign changes, and is of no use to anybody writing. It stays
+/// out of the library entirely and is deleted outright from the ad
+/// screen — a different rule from EDITORIAL, deliberately.
+enum MediaPurpose {
+  EDITORIAL
+  PUBLICIDADE
+}
+
 model Media {
   id           String   @id @default(cuid())
   // Canonical URL — points to the "large" WebP variant for uploads,
@@ -88,10 +136,76 @@ model Media {
   size         Int?
   width        Int?
   height       Int?
+  /// Frame count, on an animation. NULL on a still.
+  ///
+  /// Stored so the library can mark a GIF as animated without opening
+  /// the file — the stored format is WebP either way, so the mime type
+  /// cannot answer it.
+  frames       Int?
+
+  /// Everything this upload actually occupies: all three variants, not
+  /// just the canonical one.
+  ///
+  /// Separate from `size` on purpose. `size` is what the library shows
+  /// next to "Tamanho", and it has to match the file somebody would
+  /// download; this is what the quota has to count, and counting only
+  /// the large variant would undercount every upload by the other two —
+  /// roughly a third of the disk, invisible.
+  ///
+  /// NULL on rows that predate the column and on pasted external URLs,
+  /// which occupy nothing of ours.
+  ///
+  /// Int, not BigInt: one row holds ONE upload, which is capped well
+  /// below the ~2.1 GB an Int reaches. The per-person total can exceed
+  /// that safely — Postgres sums integers into a bigint.
+  bytesOnDisk  Int?
+  /// Who put this here. Written since the column existed but never read
+  /// until the library became per-user — see media.service.ts.
+  ///
+  /// SetNull, never Cascade: deleting a member of staff must not delete
+  /// the images their published articles still point at. The row
+  /// outlives the account and falls back to the SUPER_ADMIN's view.
   uploadedById String?
+  uploadedBy   User?    @relation("MediaUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
   uploadedAt   DateTime @default(now())
 
+  visibility   MediaVisibility @default(PRIVADO)
+
+  /// Editorial library, or an ad banner. See MediaPurpose.
+  ///
+  /// Default EDITORIAL so every existing row, and anything uploaded by
+  /// a path that does not know about this column, lands in the library
+  /// — the safe direction. A file wrongly IN the library is visible and
+  /// fixable; one wrongly outside it is invisible to everyone.
+  purpose      MediaPurpose    @default(EDITORIAL)
+
+  kind         MediaKind       @default(IMAGEM)
+  /// Length in seconds, on a video. NULL on an image.
+  durationSeconds Int?
+  /// A still taken from the video, for the library grid and the picker.
+  /// NULL when the frame could not be extracted — a worse-looking
+  /// library, not a reason to refuse a working video.
+  posterUrl    String?
+
+  /// "YYYY/MM/<baseId>" — the three variants share it and differ only by
+  /// suffix. NULL for pasted external URLs, which are not ours to serve.
+  ///
+  /// Exists so that serving a file is ONE indexed lookup. Without it,
+  /// answering "which row owns /uploads/2026/09/abc-large.webp" would
+  /// mean OR-ing three unindexed columns on every image request —
+  /// a full table scan per image on every page of the newspaper.
+  storageKey   String?         @unique
+
   @@index([uploadedAt])
+  /// "my library, newest first" — the shape of every listing now that
+  /// the library is scoped to one person. Without it that is a full
+  /// table scan on every page load.
+  @@index([uploadedById, uploadedAt])
+  /// The quota sums bytesOnDisk per owner on every upload. Covering
+  /// both columns lets Postgres answer it from the index alone.
+  @@index([uploadedById, bytesOnDisk])
+  /// Every library listing filters on purpose as well as owner now.
+  @@index([purpose, uploadedById, uploadedAt])
 }
 
 enum AdType {
@@ -190,6 +304,9 @@ model User {
   activities        ActivityLog[]
   articles          Article[]
   moderatedComments Comment[]     @relation("CommentModerator")
+  suspendedReaders  Reader[]      @relation("ReaderSuspender")
+  grantedPlans      Reader[]      @relation("PlanGranter")
+  media             Media[]       @relation("MediaUploader")
 }
 
 /// Up to 4 levels: categoria (depth 0) -> subcategoria -> topico ->
@@ -336,6 +453,38 @@ model RolePermissions {
   updatedAt   DateTime @updatedAt
 }
 
+/// What a reader on each plan may do. Mirrors RolePermissions, and is a
+/// separate table on purpose: a reader's plan is not a Role, and folding
+/// the two lists together would let a staff role be granted a reader
+/// permission by accident. See the note in rbac.constants.ts.
+/// Every Stripe event we have already acted on.
+///
+/// Stripe retries a webhook until it gets a 2xx, and it sends the same
+/// event more than once by design — "at least once" delivery. Handling
+/// one twice must not extend a subscription twice, so the id goes in
+/// here first, inside the same transaction as the change it authorises.
+/// The primary key is Stripe's own event id, which makes the second
+/// delivery a unique-constraint violation rather than a judgement call.
+///
+/// Rows are never updated. Old ones can be pruned by date if this ever
+/// grows enough to matter.
+model StripeEvent {
+  /// Stripe's `evt_…` id.
+  id         String   @id
+  type       String
+  /// Which reader it touched, when we could tell. For support, not logic.
+  readerId   String?
+  receivedAt DateTime @default(now())
+
+  @@index([receivedAt])
+}
+
+model PlanPermissions {
+  plan        ReaderPlan @id
+  permissions String[]
+  updatedAt   DateTime   @updatedAt
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Reader area — the PUBLIC audience.
 //
@@ -363,6 +512,18 @@ model Reader {
   /// 30-day cookie gets revoked without server-side session storage.
   tokenVersion    Int          @default(0)
 
+  /// Suspension detail. `status = SUSPENSO` is the flag; this is the rest
+  /// of the story. A NULL `suspendedUntil` alongside SUSPENSO means
+  /// permanent; a date in the future is a ban that LAPSES ON ITS OWN,
+  /// because every checkpoint compares the date instead of trusting a
+  /// scheduled job to come along and flip the status back. If the process
+  /// is down on the day a ban ends, nobody stays banned by accident.
+  /// reader-suspension.ts is the single place that decides.
+  suspendedUntil   DateTime?
+  suspensionReason String?
+  suspendedById    String?
+  suspendedBy      User?     @relation("ReaderSuspender", fields: [suspendedById], references: [id], onDelete: SetNull)
+
   // Notification preferences (global; per-category lives on CategoryFavorite)
   notifyNewArticles Boolean         @default(true)
   digestFrequency   DigestFrequency @default(DIARIO)
@@ -375,12 +536,39 @@ model Reader {
   /// When false the reader shows as "Leitor" on their public comments.
   displayNamePublic Boolean @default(true)
 
-  // Phase 2 (Stripe Billing). Inert today; shipped now so enabling the
-  // paywall is a data migration rather than a schema migration.
-  plan             ReaderPlan @default(GRATIS)
-  planStatus       String?
+  plan       ReaderPlan @default(GRATIS)
+  planStatus String?
+  /// When the current entitlement ENDS. NULL means no end date.
+  ///
+  /// One column for both kinds of subscription, and one meaning:
+  /// "entitled until". For Stripe that is the end of the paid period —
+  /// which is also why a cancelled subscription keeps working to the
+  /// date it was paid up to. For a subscription given by hand it is the
+  /// expiry the admin chose.
+  ///
+  /// Read by date, like a suspension: a lapsed plan reads as GRATIS at
+  /// the next request, with no job to run. See reader-entitlement.ts.
   planRenewsAt     DateTime?
-  stripeCustomerId String?    @unique
+  /// When the current subscription BEGAN.
+  ///
+  /// Needed to answer "how many new subscribers this month", which no
+  /// other column can: planRenewsAt moves forward on every renewal, and
+  /// createdAt is when the account was opened, not when they started
+  /// paying.
+  planStartedAt    DateTime?
+  /// Where the subscription came from. NULL on a free reader.
+  planSource       PlanSource?
+  /// Who gave it, on a manual grant. Kept so a gift has a name attached.
+  planGrantedById  String?
+  planGrantedBy    User?       @relation("PlanGranter", fields: [planGrantedById], references: [id], onDelete: SetNull)
+  /// Why it was given. Internal; the reader never sees it.
+  planNote         String?
+  /// The Stripe customer. Kept even after a subscription ends — they are
+  /// still the same customer, and losing it would orphan their invoice
+  /// history and mint a second customer if they ever come back.
+  stripeCustomerId String?     @unique
+  /// The Stripe subscription currently backing this plan, if any.
+  stripeSubscriptionId String? @unique
 
   lastLoginAt DateTime?
   createdAt   DateTime  @default(now())
@@ -396,6 +584,16 @@ model Reader {
 
   @@index([status])
   @@index([createdAt])
+  /// Counting live subscribers is "plan = PREMIUM AND the end date has
+  /// not passed" — the shape of every subscription figure on the
+  /// dashboard. Without this it is a full table scan on every load.
+  @@index([plan, planRenewsAt])
+  /// Both of these exist in the database already, created by hand in the
+  /// migrations that added the foreign keys. Declared here so the schema
+  /// and the database agree — undeclared, the next `migrate dev` would
+  /// generate a migration to drop them.
+  @@index([suspendedById])
+  @@index([planGrantedById])
 }
 
 /// A linked social account. One Reader may hold several.

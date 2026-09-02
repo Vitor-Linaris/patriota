@@ -57,13 +57,44 @@ describe('OAuthService', () => {
       expect(prisma.reader.create).not.toHaveBeenCalled();
     });
 
-    it('refuses a suspended reader', async () => {
+    it('refuses a suspended reader, saying so', async () => {
+      // 403 with the reason, not the generic 409: signing in through
+      // Google proves the account is theirs just as a password does.
       prisma.readerIdentity.findUnique.mockResolvedValueOnce({
-        reader: { id: 'r1', tokenVersion: 0, status: 'SUSPENSO' },
+        reader: {
+          id: 'r1',
+          tokenVersion: 0,
+          status: 'SUSPENSO',
+          suspendedUntil: new Date('2099-01-15T00:00:00Z'),
+          suspensionReason: null,
+          emailVerifiedAt: new Date(),
+        },
       });
 
-      await expect(service.signIn(profile())).rejects.toThrow(
-        ConflictException,
+      await expect(service.signIn(profile())).rejects.toMatchObject({
+        status: 403,
+      });
+    });
+
+    it('lets a reader in once the ban has lapsed', async () => {
+      prisma.readerIdentity.findUnique.mockResolvedValueOnce({
+        reader: {
+          id: 'r1',
+          tokenVersion: 0,
+          status: 'SUSPENSO',
+          suspendedUntil: new Date('2020-01-01T00:00:00Z'),
+          suspensionReason: null,
+          emailVerifiedAt: new Date(),
+        },
+      });
+      prisma.reader.update.mockResolvedValueOnce({});
+
+      const out = await service.signIn(profile());
+      expect(out.accessToken).toBe('signed.jwt');
+      expect(prisma.reader.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: 'ATIVO', suspendedUntil: null }),
+        }),
       );
     });
   });

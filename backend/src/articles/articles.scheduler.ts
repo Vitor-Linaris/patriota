@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
+import { MediaService } from '../media/media.service';
 
 /**
  * Promotes articles whose `scheduledAt` has passed from AGENDADO to
@@ -26,6 +27,7 @@ export class ArticlesScheduler {
   constructor(
     private readonly prisma: PrismaService,
     private readonly activity: ActivityLogService,
+    private readonly media: MediaService,
   ) {}
 
   @Cron(CronExpression.EVERY_MINUTE)
@@ -44,7 +46,17 @@ export class ArticlesScheduler {
         status: 'AGENDADO',
         scheduledAt: { lte: now },
       },
-      select: { id: true, title: true, scheduledAt: true, authorId: true },
+      select: {
+        id: true,
+        title: true,
+        scheduledAt: true,
+        authorId: true,
+        // Needed to publish the images along with the article — a
+        // scheduled piece goes live with nobody watching, so a cover
+        // that 404s would sit there until somebody noticed.
+        coverImageUrl: true,
+        content: true,
+      },
     });
     if (due.length === 0) return 0;
 
@@ -59,6 +71,7 @@ export class ArticlesScheduler {
             rejectionReason: null,
           },
         });
+        await this.media.promoteForPublication(a.coverImageUrl, a.content);
         await this.activity.record({
           userId: a.authorId,
           action: 'published_scheduled',
