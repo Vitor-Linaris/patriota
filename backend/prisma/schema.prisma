@@ -556,6 +556,25 @@ model Reader {
   /// createdAt is when the account was opened, not when they started
   /// paying.
   planStartedAt    DateTime?
+  /// Whether the current period is the LAST one.
+  ///
+  /// `planRenewsAt` alone cannot answer this. It means "entitled until",
+  /// and a cancelled Stripe subscription keeps that date exactly as it
+  /// was — Stripe leaves the status `active` and only sets
+  /// `cancel_at_period_end`. So a reader who had just cancelled was
+  /// being told "Renova a 2 de outubro", which is the opposite of what
+  /// they had asked for.
+  ///
+  /// True also for a subscription given by hand, which never renews.
+  /// One column, one question — "does this date mean renewal or the
+  /// end?" — answered the same way whatever the source.
+  planCancelAtPeriodEnd Boolean @default(false)
+  /// When the cancellation was REQUESTED, not when access stops.
+  ///
+  /// Access stops at `planRenewsAt`; this is the day the reader clicked
+  /// cancel, which is the one the newsroom needs to see churn as it
+  /// happens rather than a month later when the period runs out.
+  planCanceledAt   DateTime?
   /// Where the subscription came from. NULL on a free reader.
   planSource       PlanSource?
   /// Who gave it, on a manual grant. Kept so a gift has a name attached.
@@ -588,6 +607,9 @@ model Reader {
   /// not passed" — the shape of every subscription figure on the
   /// dashboard. Without this it is a full table scan on every load.
   @@index([plan, planRenewsAt])
+  /// "Who cancelled recently" — the churn figure on the dashboard and
+  /// the list behind it. Sorted and filtered by the same column.
+  @@index([planCanceledAt])
   /// Both of these exist in the database already, created by hand in the
   /// migrations that added the foreign keys. Declared here so the schema
   /// and the database agree — undeclared, the next `migrate dev` would

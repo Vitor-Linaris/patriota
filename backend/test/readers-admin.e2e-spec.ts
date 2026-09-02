@@ -363,6 +363,152 @@ describe('Readers admin (e2e)', () => {
     });
   });
 
+  describe('cancellations', () => {
+    /** A reader who cancelled `cancelledDaysAgo` ago, ending `endsInDays`. */
+    async function cancelledReader(opts: {
+      cancelledDaysAgo: number;
+      endsInDays: number;
+      source?: 'STRIPE' | 'MANUAL';
+    }) {
+      const r = await makeReader(app);
+      await prisma.reader.update({
+        where: { id: r.id },
+        data: {
+          plan: 'PREMIUM',
+          planSource: opts.source ?? 'STRIPE',
+          planStartedAt: new Date(Date.now() - 60 * DAY),
+          planRenewsAt: new Date(Date.now() + opts.endsInDays * DAY),
+          planCancelAtPeriodEnd: true,
+          planCanceledAt: new Date(Date.now() - opts.cancelledDaysAgo * DAY),
+        },
+      });
+      return r;
+    }
+
+    it('counts by the day they cancelled, not the day access stops', async () => {
+      // The two dates are usually a month apart. Counting by the end
+      // date would report the churn a month late — after the moment
+      // anybody could have done something about it.
+      await cancelledReader({ cancelledDaysAgo: 5, endsInDays: 25 });
+      await cancelledReader({ cancelledDaysAgo: 200, endsInDays: 165 });
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+
+      const res = await request(app.getHttpServer())
+        .get('/admin/readers/stats')
+        .set(bearer(admin))
+        .expect(200);
+
+      // Only the recent one. The other cancelled 200 days ago, even
+      // though its access has not run out yet.
+      expect(res.body.subscriptions.cancelledRecently).toBe(1);
+      expect(res.body.subscriptions.cancelledWindowDays).toBe(30);
+    });
+
+    it('keeps counting somebody whose access already ran out', async () => {
+      // A cancellation from three weeks ago whose period ended
+      // yesterday is still one of this month's cancellations. Dropping
+      // it the moment access lapses would make the figure shrink as the
+      // month went on — the opposite of what a churn number is for.
+      await cancelledReader({ cancelledDaysAgo: 21, endsInDays: -1 });
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+
+      const res = await request(app.getHttpServer())
+        .get('/admin/readers/stats')
+        .set(bearer(admin))
+        .expect(200);
+
+      expect(res.body.subscriptions.cancelledRecently).toBe(1);
+      // But they are NOT in the "still reading" figure.
+      expect(res.body.subscriptions.cancelledInGrace).toBe(0);
+    });
+
+    it('separates who is still reading from who is gone', async () => {
+      await cancelledReader({ cancelledDaysAgo: 2, endsInDays: 20 });
+      await cancelledReader({ cancelledDaysAgo: 3, endsInDays: -5 });
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+
+      const res = await request(app.getHttpServer())
+        .get('/admin/readers/stats')
+        .set(bearer(admin))
+        .expect(200);
+
+      expect(res.body.subscriptions.cancelledRecently).toBe(2);
+      expect(res.body.subscriptions.cancelledInGrace).toBe(1);
+    });
+
+    it('the card and the list it opens agree, over every window', async () => {
+      // The rule this codebase holds to: a figure that links somewhere
+      // must open exactly the rows it counted. Same helper, both sides.
+      await cancelledReader({ cancelledDaysAgo: 5, endsInDays: 25 });
+      await cancelledReader({ cancelledDaysAgo: 100, endsInDays: 20 });
+      await cancelledReader({ cancelledDaysAgo: 300, endsInDays: 15 });
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+
+      const listed = async (qs: string) => {
+        const r = await request(app.getHttpServer())
+          .get(`/admin/readers?${qs}&pageSize=100`)
+          .set(bearer(admin))
+          .expect(200);
+        return r.body.total as number;
+      };
+
+      const stats = await request(app.getHttpServer())
+        .get('/admin/readers/stats')
+        .set(bearer(admin))
+        .expect(200);
+
+      expect(await listed('cancelled=true&cancelledDays=30')).toBe(
+        stats.body.subscriptions.cancelledRecently,
+      );
+      expect(await listed('cancelled=true&cancelledDays=30')).toBe(1);
+      expect(await listed('cancelled=true&cancelledDays=180')).toBe(2);
+      expect(await listed('cancelled=true&cancelledDays=365')).toBe(3);
+      expect(await listed('inGrace=true')).toBe(
+        stats.body.subscriptions.cancelledInGrace,
+      );
+    });
+
+    it('refuses a window it does not offer', async () => {
+      // The DTO closes the set rather than taking any number: this is a
+      // scan over a column, and 100000 would be a full table read.
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+      await request(app.getHttpServer())
+        .get('/admin/readers?cancelled=true&cancelledDays=100000')
+        .set(bearer(admin))
+        .expect(400);
+    });
+
+    it('a gift is not a cancellation', async () => {
+      // A given subscription never renews either, but nobody cancelled
+      // it — it was handed over with an end date already on it. Letting
+      // it into the churn figure would report the newsroom's own
+      // generosity as people leaving.
+      const r = await makeReader(app);
+      await prisma.reader.update({
+        where: { id: r.id },
+        data: {
+          plan: 'PREMIUM',
+          planSource: 'MANUAL',
+          planStartedAt: new Date(),
+          planRenewsAt: new Date(Date.now() + 10 * DAY),
+          planCancelAtPeriodEnd: true,
+          planCanceledAt: null,
+        },
+      });
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+
+      const res = await request(app.getHttpServer())
+        .get('/admin/readers/stats')
+        .set(bearer(admin))
+        .expect(200);
+
+      expect(res.body.subscriptions.cancelledRecently).toBe(0);
+      expect(res.body.subscriptions.cancelledInGrace).toBe(0);
+      // It IS an active subscription, though.
+      expect(res.body.subscriptions.active).toBe(1);
+    });
+  });
+
   describe('filter composition', () => {
     it('search works alongside a date filter', async () => {
       // These used to fight over `where.OR`, so the search was dropped
@@ -582,9 +728,90 @@ describe('Readers admin (e2e)', () => {
     });
   });
 
+  describe('a gift never renews', () => {
+    it('marks a dated gift as ending, not renewing', async () => {
+      // There is no card behind a gift, so nothing would carry out a
+      // renewal. Without the flag the reader's page falls back to
+      // "Renova a X" and promises something nobody will do.
+      const reader = await makeReader(app);
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+      const until = new Date(Date.now() + 30 * DAY);
+
+      await request(app.getHttpServer())
+        .post(`/admin/readers/${reader.id}/subscription`)
+        .set(bearer(admin))
+        .send({ until: until.toISOString() })
+        .expect(200);
+
+      const row = await prisma.reader.findUnique({ where: { id: reader.id } });
+      expect(row!.planCancelAtPeriodEnd).toBe(true);
+      // And nobody cancelled it — it was handed over with an end on it.
+      expect(row!.planCanceledAt).toBeNull();
+    });
+
+    it('leaves an open-ended gift with nothing to announce', async () => {
+      const reader = await makeReader(app);
+      const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
+
+      await request(app.getHttpServer())
+        .post(`/admin/readers/${reader.id}/subscription`)
+        .set(bearer(admin))
+        .send({})
+        .expect(200);
+
+      const row = await prisma.reader.findUnique({ where: { id: reader.id } });
+      expect(row!.planRenewsAt).toBeNull();
+      // No end date, so there is no "ends on" to flag.
+      expect(row!.planCancelAtPeriodEnd).toBe(false);
+    });
+  });
+
   describe('what the reader sees of their own subscription', () => {
     const me = (r: Awaited<ReturnType<typeof makeReader>>) =>
       request(app.getHttpServer()).get('/reader/me').set(readerBearer(r));
+
+    it('tells them whether the date is a renewal or the end', async () => {
+      // The defect this fixes. A reader who cancelled was shown "Renova
+      // a 2 de outubro" — their own cancellation reported back to them
+      // as a charge they had not agreed to. planRenewsAt cannot answer
+      // it: the date is identical either way.
+      const cancelled = await makeReader(app);
+      const renewing = await makeReader(app);
+      const until = new Date(Date.now() + 20 * DAY);
+
+      await prisma.reader.update({
+        where: { id: cancelled.id },
+        data: {
+          plan: 'PREMIUM',
+          planSource: 'STRIPE',
+          planStatus: 'active', // Stripe leaves it active. That is the trap.
+          planRenewsAt: until,
+          planCancelAtPeriodEnd: true,
+          planCanceledAt: new Date(),
+        },
+      });
+      await prisma.reader.update({
+        where: { id: renewing.id },
+        data: {
+          plan: 'PREMIUM',
+          planSource: 'STRIPE',
+          planStatus: 'active',
+          planRenewsAt: until,
+        },
+      });
+
+      const a = await me(cancelled).expect(200);
+      const b = await me(renewing).expect(200);
+
+      // Same plan, same status, same date — and the flag is the only
+      // thing that separates them.
+      expect(a.body.planActive).toBe(true);
+      expect(b.body.planActive).toBe(true);
+      expect(a.body.planRenewsAt).toBe(b.body.planRenewsAt);
+      expect(a.body.planStatus).toBe(b.body.planStatus);
+      expect(a.body.planCancelAtPeriodEnd).toBe(true);
+      expect(b.body.planCancelAtPeriodEnd).toBe(false);
+    });
 
     it('never hands the reader their Stripe customer id', async () => {
       // They have no use for it, and it is the handle to a customer

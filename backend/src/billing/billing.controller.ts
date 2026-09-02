@@ -47,6 +47,27 @@ export class BillingController {
     return this.billing.createPortalSession(reader.id);
   }
 
+  /**
+   * Re-reads this reader's subscription from Stripe.
+   *
+   * Called by the subscription page as it renders. A webhook only
+   * reports changes from the moment it was wired up, so anything that
+   * happened before — a cancellation from last week, on a column added
+   * this week — is invisible until the subscription next changes. That
+   * would be a month of telling somebody their cancelled subscription
+   * renews.
+   *
+   * Safe to call on every load: one Stripe read, on a page nobody opens
+   * often, and it never throws — a slow Stripe must not take out the
+   * page that explains a person's own billing.
+   */
+  @ReaderAuth()
+  @Post('reader/billing/sync')
+  @HttpCode(HttpStatus.OK)
+  async sync(@CurrentReader() reader: ReaderPrincipal) {
+    return { synced: await this.billing.resyncFromStripe(reader.id) };
+  }
+
   // ── Stripe ────────────────────────────────────────────────────────
 
   /**

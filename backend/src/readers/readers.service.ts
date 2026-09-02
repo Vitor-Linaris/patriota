@@ -76,6 +76,47 @@ function expiringWhere(now: Date): Prisma.ReaderWhereInput {
   };
 }
 
+/**
+ * Who walked away, and when.
+ *
+ * By `planCanceledAt` — the day they clicked cancel — and NOT by the day
+ * their access stops. Those are different dates, often a month apart,
+ * and the newsroom needs the first one: churn is worth seeing while
+ * there is still time to write to the person, not after they are gone.
+ *
+ * Deliberately NOT limited to people who still have access. Somebody who
+ * cancelled three weeks ago and whose period ran out yesterday is still
+ * one of last month's cancellations — dropping them the moment their
+ * access lapses would make the figure quietly shrink as the month went
+ * on, which is the opposite of what a churn number is for.
+ */
+function cancelledWhere(now: Date, days: number): Prisma.ReaderWhereInput {
+  return { planCanceledAt: { gte: windowStart(now, days) } };
+}
+
+/** Cancelled, but still reading — the period they paid for is running. */
+function cancelledInGraceWhere(now: Date): Prisma.ReaderWhereInput {
+  return {
+    plan: 'PREMIUM',
+    planCancelAtPeriodEnd: true,
+    planCanceledAt: { not: null },
+    planRenewsAt: { gt: now },
+  };
+}
+
+/**
+ * How far back the cancellations list may look.
+ *
+ * A closed set rather than a free number: these become an index scan
+ * over a column somebody can point at the whole table with, and three
+ * windows cover what anybody actually asks — this month, this half-year,
+ * this year.
+ */
+export const CANCELLED_WINDOWS = [30, 180, 365] as const;
+export type CancelledWindow = (typeof CANCELLED_WINDOWS)[number];
+/** What the dashboard card shows without being asked. */
+export const CANCELLED_DEFAULT_DAYS: CancelledWindow = 30;
+
 const READER_VIEW = {
   id: true,
   email: true,
@@ -99,6 +140,8 @@ const READER_ROW = {
   plan: true,
   planStatus: true,
   planRenewsAt: true,
+  planCancelAtPeriodEnd: true,
+  planCanceledAt: true,
   planSource: true,
   planNote: true,
   planGrantedBy: { select: { id: true, name: true } },
@@ -159,6 +202,24 @@ export class ReadersService {
     }
     if (query.expiring === 'true') and.push(expiringWhere(now));
 
+    // Cancellations, over a window the caller chooses. The dashboard
+    // links here with the 30 days it shows; the page then offers 6
+    // months and a year for looking at the trend rather than the week.
+    if (query.cancelled === 'true') {
+      const days = Number(query.cancelledDays);
+      and.push(
+        cancelledWhere(
+          now,
+          (CANCELLED_WINDOWS as readonly number[]).includes(days)
+            ? days
+            : CANCELLED_DEFAULT_DAYS,
+        ),
+      );
+    }
+    // Cancelled and still inside the paid period — the ones there is
+    // still time to write to.
+    if (query.inGrace === 'true') and.push(cancelledInGraceWhere(now));
+
     const where: Prisma.ReaderWhereInput = and.length ? { AND: and } : {};
 
     const { skip, take } = toSkipTake(query);
@@ -215,6 +276,9 @@ export class ReadersService {
       newRecently,
       expiringSoon,
       expiring,
+      cancelledRecently,
+      cancelledInGrace,
+      cancelled,
     ] = await Promise.all([
       this.prisma.reader.count(),
       this.prisma.reader.groupBy({ by: ['plan'], _count: { _all: true } }),
@@ -242,6 +306,25 @@ export class ReadersService {
           email: true,
           planRenewsAt: true,
           planNote: true,
+        },
+      }),
+      this.prisma.reader.count({
+        where: cancelledWhere(now, CANCELLED_DEFAULT_DAYS),
+      }),
+      this.prisma.reader.count({ where: cancelledInGraceWhere(now) }),
+      this.prisma.reader.findMany({
+        where: cancelledWhere(now, CANCELLED_DEFAULT_DAYS),
+        // Most recent first: the newest cancellation is the one there is
+        // most still to do about.
+        orderBy: { planCanceledAt: 'desc' },
+        take: 5,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          planCanceledAt: true,
+          planRenewsAt: true,
+          planSource: true,
         },
       }),
     ]);
@@ -288,6 +371,37 @@ export class ReadersService {
         expiringSoon,
         expiryHorizonDays: EXPIRY_HORIZON_DAYS,
         expiring,
+        /**
+         * Churn. Counted by the day somebody CANCELLED, not the day
+         * their access runs out — those are different dates, and this
+         * is the one the newsroom can still do something about.
+         */
+        cancelledRecently,
+        cancelledWindowDays: CANCELLED_DEFAULT_DAYS,
+        /**
+         * Of those, the ones still reading: cancelled, but the period
+         * they paid for has not run out. The window in which a "fique
+         * connosco" mail can still land while they are a subscriber.
+         */
+        cancelledInGrace,
+        /**
+         * Each row carries whether they are still reading, and how many
+         * days are left, rather than the page working it out from the
+         * date. The clock that matters is this one — the browser's may
+         * be minutes or a timezone out — and a page that reads the
+         * clock while rendering is not a pure render.
+         */
+        cancelled: cancelled.map((r) => {
+          const left =
+            r.planRenewsAt === null
+              ? null
+              : Math.ceil((r.planRenewsAt.getTime() - now.getTime()) / DAY_MS);
+          return {
+            ...r,
+            stillReading: left !== null && left > 0,
+            daysLeft: left !== null && left > 0 ? left : null,
+          };
+        }),
       },
     };
   }
@@ -449,6 +563,13 @@ export class ReadersService {
         planRenewsAt: until,
         planStartedAt: new Date(),
         planSource: 'MANUAL',
+        // A gift never renews — there is no card behind it. Set so the
+        // reader's own page says "Termina a X" rather than promising a
+        // renewal that nothing would carry out. `until` may be null
+        // (open-ended gift), in which case there is no end to announce.
+        planCancelAtPeriodEnd: until !== null,
+        // Nobody cancelled this; it was given with an end already on it.
+        planCanceledAt: null,
         planGrantedById: staff.id,
         planNote: opts.note?.trim() || null,
       },

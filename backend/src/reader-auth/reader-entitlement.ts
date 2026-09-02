@@ -88,5 +88,13 @@ export function lapsedPlanData() {
     planSource: null,
     planGrantedById: null,
     planNote: null,
+    // The cancellation is spent once the period it applied to is over.
+    // Leaving the flag set would make a reader who resubscribes months
+    // later be told, from their first day back, that their new
+    // subscription will not renew.
+    planCancelAtPeriodEnd: false,
+    // `planCanceledAt` is deliberately NOT cleared here. It is when they
+    // walked away, and that stays true after the access ends — it is the
+    // only record of when the churn happened.
   };
 }
