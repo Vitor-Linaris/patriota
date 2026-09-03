@@ -50,11 +50,28 @@ interface MeWithPerms {
   permissions: string[];
 }
 
-interface CategoryApi {
+interface CategoryTreeApi {
   id: string;
   slug: string;
   name: string;
   color: string;
+  depth: number;
+  children: CategoryTreeApi[];
+}
+
+/**
+ * Parent before children, in tree order — the same order the drag-and-drop
+ * screen at /admin/categorias shows, so a "Sé" here sits right under the
+ * "Funchal" it belongs to instead of alphabetised into a different part
+ * of the list.
+ */
+function flattenCategoryTree(nodes: CategoryTreeApi[]): CategoryOption[] {
+  const out: CategoryOption[] = [];
+  for (const n of nodes) {
+    out.push({ id: n.id, name: n.name, slug: n.slug, color: n.color, depth: n.depth });
+    out.push(...flattenCategoryTree(n.children));
+  }
+  return out;
 }
 
 function toAdminArticle(a: ArticleApi): AdminArticle {
@@ -138,7 +155,15 @@ export default async function AdminArticlesPage({
 
   const [articlesRes, categoriesRes, meRes, statsRes] = await Promise.all([
     apiFetch(`/admin/articles?${listParams.toString()}`),
-    apiFetch("/admin/categories"),
+    // /admin/categories/tree, not /admin/categories: the latter is
+    // roots-only (a leftover from before the category tree existed —
+    // see the comment on CategoriesService.listAdmin()) and its
+    // `children` were being dropped on the floor below anyway. An
+    // article can be filed at any depth — category, subcategory, topic
+    // or subtopic — so the "Rubrica" picker needs the whole forest,
+    // hidden branches included, exactly like the drag-and-drop screen
+    // at /admin/categorias.
+    apiFetch("/admin/categories/tree"),
     apiFetch("/auth/me"),
     // Stats endpoint covers the WHOLE corpus regardless of paging or
     // filters — fixes "Publicados: 20" turning into "12" on page 2.
@@ -149,9 +174,7 @@ export default async function AdminArticlesPage({
     : { items: [], total: 0, page: 1, pageSize: PAGE_SIZE };
   const articles = articlesBody.items.map(toAdminArticle);
   const categories = categoriesRes.ok
-    ? ((await categoriesRes.json()) as CategoryApi[]).map<CategoryOption>(
-        (c) => ({ id: c.id, name: c.name, slug: c.slug, color: c.color }),
-      )
+    ? flattenCategoryTree((await categoriesRes.json()) as CategoryTreeApi[])
     : [];
   const me = meRes.ok ? ((await meRes.json()) as MeWithPerms) : null;
   const canPublish =

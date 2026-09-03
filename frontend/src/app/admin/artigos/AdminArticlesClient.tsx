@@ -81,6 +81,8 @@ export interface CategoryOption {
   name: string;
   slug: string;
   color: string;
+  /** 0 for a top-level category, 1 for a subcategory, and so on. */
+  depth: number;
 }
 
 const API_TO_UI: Record<ApiStatus, UiStatus> = {
@@ -787,17 +789,26 @@ function ArticleEditor({
               )}
               <div>
                 <label className="mb-1.5 block text-xs font-bold text-gray-500">
-                  Tempo de leitura (min)
+                  Tempo de leitura (min){" "}
+                  <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="number"
                   min={1}
-                  max={60}
-                  value={form.readMinutes}
+                  max={120}
+                  value={form.readMinutes || ""}
+                  // 0, not a silent 1: a cleared or invalid field has to
+                  // read as genuinely empty so handleSave's check below
+                  // can catch it and ask, instead of quietly writing a
+                  // number nobody chose.
                   onChange={(e) =>
-                    set({ readMinutes: Number(e.target.value) || 1 })
+                    set({ readMinutes: Number(e.target.value) || 0 })
                   }
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#0F2C6B] focus:outline-none"
+                  className={`w-full rounded-lg border px-3 py-2 text-sm focus:border-[#0F2C6B] focus:outline-none ${
+                    form.readMinutes < 1
+                      ? "border-red-300"
+                      : "border-gray-200"
+                  }`}
                 />
               </div>
             </div>
@@ -818,6 +829,12 @@ function ArticleEditor({
               >
                 {categories.map((c) => (
                   <option key={c.id} value={c.id}>
+                    {/* "—" repeated by depth, not indentation via CSS:
+                        a <select>'s own native <option> list ignores
+                        margin/padding, so the only way to show "Sé"
+                        nested under "Portugal › Madeira › Funchal" in
+                        a plain dropdown is inside the text itself. */}
+                    {c.depth > 0 ? `${"—".repeat(c.depth)} ` : ""}
                     {c.name}
                   </option>
                 ))}
@@ -1159,6 +1176,10 @@ export default function AdminArticlesClient({
     }
     if (!form.categoryId) {
       setEditorError("Escolha uma rubrica.");
+      return;
+    }
+    if (!form.readMinutes || form.readMinutes < 1) {
+      setEditorError("Indique o tempo de leitura.");
       return;
     }
     setEditorError(null);
