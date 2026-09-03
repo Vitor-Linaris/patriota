@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { CategoryTreeService } from '../categories/category-tree.service';
 import {
   toSkipTake,
   type PageQueryDto,
@@ -31,7 +32,10 @@ const ARTICLE_CARD = {
 
 @Injectable()
 export class ReaderLibraryService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tree: CategoryTreeService,
+  ) {}
 
   // ───────────────────────── favourite categories ─────────────────────────
 
@@ -63,6 +67,16 @@ export class ReaderLibraryService {
    * on the site at all. Offering to subscribe to something hidden from
    * the menu would be inviting people to a page they cannot reach.
    *
+   * Top-level sections only (`depth: 0`). Following now always means
+   * "this section and everything under it" — subsections are not a
+   * separate choice any more, they inherit whatever their root is
+   * subscribed to (see notifyTargets() in
+   * reader-notifications.service.ts, which already walked the article's
+   * category up to its ancestors for exactly this reason). Listing
+   * subsections here too would offer a choice that does not exist:
+   * following "Portugal › Madeira" was never narrower than following
+   * "Portugal", it was the same subscription with more steps.
+   *
    * A category the reader already follows is included even when it has
    * since been withdrawn, and marked — otherwise their own follow would
    * vanish off the page with no way to turn it off, and the e-mails
@@ -71,12 +85,9 @@ export class ReaderLibraryService {
   async listFollowableCategories(readerId: string) {
     const [cats, follows] = await Promise.all([
       this.prisma.category.findMany({
-        where: { followable: true, visible: true },
-        // Tree order: parents before their children, siblings as the
-        // newsroom arranged them. `path` sorts a tree correctly on its
-        // own — that is what a materialised path is for — but `order`
-        // lives inside it, so sort by depth and order within each level
-        // after the fact.
+        where: { followable: true, visible: true, depth: 0 },
+        // All at depth 0, so `path` alone (one segment each) is enough
+        // to sort them consistently.
         orderBy: [{ path: 'asc' }],
         select: {
           id: true,
@@ -84,8 +95,6 @@ export class ReaderLibraryService {
           name: true,
           color: true,
           icon: true,
-          depth: true,
-          parentId: true,
         },
       }),
       this.prisma.categoryFavorite.findMany({
@@ -101,8 +110,6 @@ export class ReaderLibraryService {
               name: true,
               color: true,
               icon: true,
-              depth: true,
-              parentId: true,
               followable: true,
               visible: true,
             },
@@ -152,8 +159,20 @@ export class ReaderLibraryService {
    *
    * `notify` is separate from the favourite itself: a reader can follow a
    * category for their dashboard while muting its e-mails.
+   *
+   * Resolved to its ROOT ancestor before anything else. Following is a
+   * root-level subscription now — a subsection is not a narrower one, it
+   * is covered by whichever root it sits under (notifyTargets() in
+   * reader-notifications.service.ts already walks an article's category
+   * up to the root when deciding who to mail). Normalising here, not
+   * only in the UI that calls this, means a stale client or a hand-built
+   * request with a subsection id still lands on the same row everyone
+   * else following that section has, instead of quietly creating a
+   * second, narrower subscription nothing else knows how to show.
    */
   async followCategory(readerId: string, categoryId: string, notify = true) {
+    categoryId = await this.resolveRootId(categoryId);
+
     const cat = await this.prisma.category.findUnique({
       where: { id: categoryId },
       select: { id: true, followable: true, visible: true },
@@ -184,8 +203,14 @@ export class ReaderLibraryService {
     return { following: true, notify };
   }
 
-  /** Also idempotent: unfollowing something you do not follow is fine. */
+  /**
+   * Also idempotent: unfollowing something you do not follow is fine.
+   * Resolved to root first, same reasoning as followCategory() above —
+   * unfollowing a subsection id must clear the root row, since that is
+   * the row that actually exists.
+   */
   async unfollowCategory(readerId: string, categoryId: string) {
+    categoryId = await this.resolveRootId(categoryId);
     await this.prisma.categoryFavorite.deleteMany({
       where: { readerId, categoryId },
     });
@@ -338,6 +363,14 @@ export class ReaderLibraryService {
    * Fetched client-side precisely so the SSR output stays identical for
    * every visitor — categoria/[slug] is prerendered, and per-user state
    * must never be baked into a prerendered page.
+   *
+   * The star follows the ROOT of the article's category, not the
+   * article's own (possibly deep) category. An article filed under
+   * "Portugal › Madeira › Funchal" already reaches a reader following
+   * "Portugal" — notifyTargets() in reader-notifications.service.ts
+   * walks the same chain the other way when deciding who to mail — so
+   * the button has to name and act on "Portugal", the thing a reader
+   * can actually subscribe to, not "Funchal", which was never on offer.
    */
   async articleState(readerId: string, articleId: string) {
     const article = await this.prisma.article.findUnique({
@@ -346,6 +379,17 @@ export class ReaderLibraryService {
     });
     if (!article) throw new NotFoundException('Notícia não encontrada.');
 
+    const root = await this.tree.getById(article.categoryId);
+    const rootId = root
+      ? (root.path.split('/').filter(Boolean)[0] ?? root.id)
+      : article.categoryId;
+    // Falls back to the article's own category+name when the tree
+    // cannot resolve it (a stale cache entry, a category deleted out
+    // from under an already-rendered page) — the button still works,
+    // it just names the article's direct section instead of its root.
+    const rootNode =
+      rootId === article.categoryId ? root : await this.tree.getById(rootId);
+
     const [favorite, categoryFavorite, comments, history] = await Promise.all([
       this.prisma.articleFavorite.findUnique({
         where: { readerId_articleId: { readerId, articleId } },
@@ -353,7 +397,7 @@ export class ReaderLibraryService {
       }),
       this.prisma.categoryFavorite.findUnique({
         where: {
-          readerId_categoryId: { readerId, categoryId: article.categoryId },
+          readerId_categoryId: { readerId, categoryId: rootId },
         },
         select: { notify: true },
       }),
@@ -368,7 +412,9 @@ export class ReaderLibraryService {
 
     return {
       articleId,
-      categoryId: article.categoryId,
+      categoryId: rootId,
+      categoryName: rootNode?.name ?? null,
+      categorySlug: rootNode?.slug ?? null,
       saved: favorite !== null,
       followingCategory: categoryFavorite !== null,
       categoryNotify: categoryFavorite?.notify ?? false,
@@ -376,6 +422,13 @@ export class ReaderLibraryService {
       inHistory: history !== null,
       progress: history?.progress ?? 0,
     };
+  }
+
+  /** The root ancestor id of any category id — itself, if already a root. */
+  private async resolveRootId(categoryId: string): Promise<string> {
+    const node = await this.tree.getById(categoryId);
+    if (!node) return categoryId;
+    return node.path.split('/').filter(Boolean)[0] ?? categoryId;
   }
 }
 

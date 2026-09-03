@@ -237,11 +237,6 @@ export default async function ContaDashboardPage() {
                 </div>
               </dl>
             </div>
-
-            <p className="mt-6 text-center text-[12px] text-slate-400">
-              Esta é a sua área de leitor. A área de administração do jornal é
-              separada e não tem qualquer ligação a esta conta.
-            </p>
           </div>
         </Container>
       </main>

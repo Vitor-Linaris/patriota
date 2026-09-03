@@ -566,48 +566,59 @@ function CategoryRow({
             </button>
           </div>
 
-          <div className="flex flex-col items-center gap-1">
-            <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400">
-              Seguir
-            </span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={cat.followable}
-              aria-label={
-                cat.followable
-                  ? "Retirar da lista que os leitores podem seguir"
-                  : "Permitir que os leitores sigam esta secção"
-              }
-              title={
-                !cat.visible
-                  ? "Está escondida do site, por isso não é oferecida a ninguém."
-                  : cat.followable
-                    ? "Os leitores podem segui-la e receber e-mail. Clique para retirar da lista."
-                    : "Ainda não é oferecida aos leitores. Clique quando estiver pronta."
-              }
-              onClick={onToggleFollowable}
-              // Hidden from the site means nobody is offered it whatever
-              // this says, so the switch would be claiming something
-              // untrue. Disabled rather than hidden: it keeps its place
-              // and the tooltip explains why.
-              disabled={pending || !cat.visible}
-              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[#0F2C6B]/30 disabled:opacity-40 ${
-                cat.followable && cat.visible
-                  ? "border-amber-600 bg-amber-500"
-                  : "border-gray-300 bg-gray-200"
-              }`}
-            >
-              <span
-                aria-hidden
-                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition-transform duration-200 ease-in-out ${
+          {/* Só nas secções de topo.
+              Seguir é uma subscrição à secção inteira: quem segue
+              "Portugal" recebe o que sair em Portugal › Madeira ›
+              Funchal › Sé, sem ter de seguir cada um. Um interruptor
+              numa subsecção não acrescentaria nada — ligá-lo não a
+              oferecia a ninguém (listFollowableCategories() só devolve
+              depth 0) e desligá-lo não impedia os avisos, que continuam
+              a chegar por via da raiz. Era um botão que prometia um
+              controlo inexistente, e por isso não está cá. */}
+          {cat.depth === 0 && (
+            <div className="flex flex-col items-center gap-1">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400">
+                Seguir
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={cat.followable}
+                aria-label={
+                  cat.followable
+                    ? "Retirar da lista que os leitores podem seguir"
+                    : "Permitir que os leitores sigam esta secção"
+                }
+                title={
+                  !cat.visible
+                    ? "Está escondida do site, por isso não é oferecida a ninguém."
+                    : cat.followable
+                      ? "Os leitores podem segui-la, e com ela tudo o que está por baixo. Clique para retirar da lista."
+                      : "Ainda não é oferecida aos leitores. Clique quando estiver pronta."
+                }
+                onClick={onToggleFollowable}
+                // Hidden from the site means nobody is offered it whatever
+                // this says, so the switch would be claiming something
+                // untrue. Disabled rather than hidden: it keeps its place
+                // and the tooltip explains why.
+                disabled={pending || !cat.visible}
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[#0F2C6B]/30 disabled:opacity-40 ${
                   cat.followable && cat.visible
-                    ? "translate-x-5"
-                    : "translate-x-0.5"
+                    ? "border-amber-600 bg-amber-500"
+                    : "border-gray-300 bg-gray-200"
                 }`}
-              />
-            </button>
-          </div>
+              >
+                <span
+                  aria-hidden
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition-transform duration-200 ease-in-out ${
+                    cat.followable && cat.visible
+                      ? "translate-x-5"
+                      : "translate-x-0.5"
+                  }`}
+                />
+              </button>
+            </div>
+          )}
 
           {editing ? (
             <>

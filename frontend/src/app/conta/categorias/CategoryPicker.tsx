@@ -9,9 +9,6 @@ export interface PickableCategory {
   name: string;
   color: string;
   icon: string;
-  /** 0 for a top section, 1 for a subsection, and so on. */
-  depth: number;
-  parentId: string | null;
   following: boolean;
   /** Only meaningful while following. */
   notify: boolean;
@@ -31,6 +28,14 @@ export interface PickableCategory {
  * to anybody following nothing, said "use the Seguir button on an
  * article" — sending the reader away to discover the feature by
  * accident. Here is the paper; pick.
+ *
+ * Top-level sections only — the backend (listFollowableCategories())
+ * only returns depth 0 rows. Subsections used to be listed too, each
+ * with its own follow button, which offered a choice that never
+ * existed: following "Portugal › Madeira" was the same subscription as
+ * following "Portugal", registered on a different node. Flattening the
+ * list to sections a reader can actually subscribe to on their own is
+ * the fix, not a missing indent.
  *
  * Following and e-mail are separate switches on purpose: a reader may
  * want a section on their account without a message every time it
@@ -122,96 +127,101 @@ export function CategoryPicker({ initial }: { initial: PickableCategory[] }) {
             : "Nenhuma secção corresponde a essa procura."}
         </p>
       ) : (
-        <ul className="flex flex-col gap-2">
+        // Grelha, não uma lista vertical — só há 22 secções de topo hoje,
+        // mas cada uma que a redacção abrir alonga uma lista de uma só
+        // coluna até virar um scroll infindável. Três colunas no
+        // desktop encaixam o mesmo número de secções em um terço da
+        // altura; menos colunas conforme o ecrã estreita, uma coluna só
+        // no telemóvel, onde três cartões espremidos ficariam
+        // ilegíveis.
+        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {shown.map((c) => (
             <li
               key={c.id}
-              // Indented by depth, so "Portugal › Madeira › Funchal"
-              // reads as a hierarchy rather than as three unrelated
-              // names of decreasing importance.
-              style={{
-                marginLeft:
-                  query.trim() === "" && !onlyFollowed
-                    ? `${Math.min(c.depth, 3) * 16}px`
-                    : 0,
-              }}
-              className={`flex flex-wrap items-center gap-3 rounded-[12px] border bg-white px-4 py-3 ${
+              className={`flex flex-col gap-3 rounded-[12px] border bg-white p-4 ${
                 c.following ? "border-patriota-pure/40" : "border-slate-200"
               }`}
             >
-              <span
-                aria-hidden
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[15px]"
-                style={{ backgroundColor: `${c.color}1a`, color: c.color }}
-              >
-                {c.icon}
-              </span>
-
-              <div className="min-w-0 flex-1">
-                <Link
-                  href={`/categoria/${c.slug}`}
-                  className="text-[15px] font-bold text-slate-900 transition hover:text-patriota-pure"
+              <div className="flex items-center gap-3">
+                <span
+                  aria-hidden
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[15px]"
+                  style={{ backgroundColor: `${c.color}1a`, color: c.color }}
                 >
-                  {c.name}
-                </Link>
-                {!c.available && (
-                  <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
-                    já não é oferecida
-                  </span>
-                )}
-                {failed === c.id && (
-                  <span className="ml-2 text-[12px] font-semibold text-red-600">
-                    Não foi possível guardar. Tente de novo.
-                  </span>
-                )}
+                  {c.icon}
+                </span>
+
+                <div className="min-w-0 flex-1">
+                  <Link
+                    href={`/categoria/${c.slug}`}
+                    className="block truncate text-[15px] font-bold text-slate-900 transition hover:text-patriota-pure"
+                  >
+                    {c.name}
+                  </Link>
+                  {!c.available && (
+                    <span className="mt-0.5 inline-block rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
+                      já não é oferecida
+                    </span>
+                  )}
+                </div>
               </div>
 
-              {/* E-mail only makes sense while following, so it appears
-                  with the follow rather than sitting there greyed out on
-                  every row of the catalogue. */}
-              {c.following && (
-                <label className="flex cursor-pointer items-center gap-2 text-[13px] text-slate-600">
-                  <input
-                    type="checkbox"
-                    checked={c.notify}
-                    disabled={busy === c.id}
-                    onChange={(e) =>
-                      void change(c, {
-                        following: true,
-                        notify: e.target.checked,
-                      })
-                    }
-                    className="h-4 w-4 accent-patriota-pure"
-                  />
-                  E-mails
-                </label>
+              {failed === c.id && (
+                <p className="text-[12px] font-semibold text-red-600">
+                  Não foi possível guardar. Tente de novo.
+                </p>
               )}
 
-              <button
-                type="button"
-                disabled={busy === c.id}
-                onClick={() =>
-                  void change(c, {
-                    following: !c.following,
-                    // Following from here opts into e-mail, which is
-                    // what somebody ticking "seguir" on a news site
-                    // expects; the switch beside it turns that off
-                    // without giving up the section.
-                    notify: !c.following,
-                  })
-                }
-                className={`shrink-0 rounded-[8px] px-3 py-1.5 text-[13px] font-semibold transition disabled:opacity-50 ${
-                  c.following
-                    ? "border border-slate-300 text-slate-600 hover:border-slate-400 hover:text-slate-900"
-                    : "bg-patriota-pure text-white hover:brightness-110"
-                }`}
-              >
-                {busy === c.id
-                  ? "…"
-                  : c.following
-                    ? "A seguir"
-                    : "Seguir"}
-              </button>
+              <div className="flex items-center justify-between gap-2">
+                {/* E-mail only makes sense while following, so it appears
+                    with the follow rather than sitting there greyed out
+                    on every card of the catalogue. */}
+                {c.following ? (
+                  <label className="flex cursor-pointer items-center gap-2 text-[13px] text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={c.notify}
+                      disabled={busy === c.id}
+                      onChange={(e) =>
+                        void change(c, {
+                          following: true,
+                          notify: e.target.checked,
+                        })
+                      }
+                      className="h-4 w-4 accent-patriota-pure"
+                    />
+                    E-mails
+                  </label>
+                ) : (
+                  <span />
+                )}
+
+                <button
+                  type="button"
+                  disabled={busy === c.id}
+                  onClick={() =>
+                    void change(c, {
+                      following: !c.following,
+                      // Following from here opts into e-mail, which is
+                      // what somebody ticking "seguir" on a news site
+                      // expects; the switch beside it turns that off
+                      // without giving up the section.
+                      notify: !c.following,
+                    })
+                  }
+                  className={`shrink-0 rounded-[8px] px-3 py-1.5 text-[13px] font-semibold transition disabled:opacity-50 ${
+                    c.following
+                      ? "border border-slate-300 text-slate-600 hover:border-slate-400 hover:text-slate-900"
+                      : "bg-patriota-pure text-white hover:brightness-110"
+                  }`}
+                >
+                  {busy === c.id
+                    ? "…"
+                    : c.following
+                      ? "A seguir"
+                      : "Seguir"}
+                </button>
+              </div>
             </li>
           ))}
         </ul>

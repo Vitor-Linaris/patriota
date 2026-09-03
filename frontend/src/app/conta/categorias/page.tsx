@@ -32,12 +32,15 @@ export default async function CategoriasPage() {
         // Says what the follow actually does now. Seguir "Portugal"
         // passou a trazer o que sai no Funchal e na Sé, e um leitor que
         // não soubesse disso leria os e-mails extra como spam.
+        //
+        // Já não convida a seguir uma subsecção à parte — essa opção
+        // deixou de existir aqui. A lista só mostra secções de topo; o
+        // "seguir só a subsecção" que este texto oferecia antes já não
+        // é algo que o leitor consiga fazer nesta página.
         <p className="mb-5 rounded-[8px] border border-slate-200 bg-slate-50 px-4 py-3 text-[13px] leading-relaxed text-slate-600">
           Seguir uma secção inclui as suas subsecções. Quem segue{" "}
           <strong className="font-semibold text-slate-800">Portugal</strong>{" "}
-          recebe também o que sai em Portugal › Madeira › Funchal. Para
-          receber apenas um tema mais específico, siga essa subsecção
-          directamente.
+          recebe também o que sai em Portugal › Madeira › Funchal.
         </p>
       )}
 

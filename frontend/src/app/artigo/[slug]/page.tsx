@@ -211,7 +211,6 @@ export default async function ArticlePage({
                     <ReaderActions
                       articleId={article.id}
                       slug={article.slug}
-                      categoryName={article.category.name}
                     />
                   )}
 
