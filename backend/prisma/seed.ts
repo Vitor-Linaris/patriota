@@ -736,6 +736,126 @@ async function main() {
         '<p>A taxa de execução dos projetos vencedores continua, no entanto, abaixo dos 60% na maioria dos municípios.</p>',
       hoursAgo: 62,
     },
+    {
+      slug: 'governo-anuncia-plano-de-descentralizacao-para-2026',
+      category: 'portugal',
+      title: 'Governo anuncia plano de descentralização para 2026',
+      summary:
+        'Novas competências passam para as autarquias em áreas como habitação, transportes e ação social, com reforço de financiamento.',
+      content:
+        '<p>O Governo apresentou um plano de <strong>descentralização de competências</strong> que entra em vigor em 2026.</p>' +
+        '<p>As câmaras municipais passam a gerir diretamente fundos que hoje dependem de aprovação central em áreas como habitação e ação social.</p>' +
+        '<p>A Associação Nacional de Municípios saudou a medida, mas pede garantias sobre o financiamento a médio prazo.</p>',
+      hoursAgo: 3,
+    },
+    {
+      slug: 'parlamento-aprova-nova-lei-do-financiamento-partidario',
+      category: 'politica',
+      title: 'Parlamento aprova nova lei do financiamento partidário',
+      summary:
+        'O diploma reforça a fiscalização das contas dos partidos e baixa o limite de doações permitidas por pessoa singular.',
+      content:
+        '<p>A Assembleia da República aprovou uma nova lei do <strong>financiamento partidário</strong>, com os votos a favor de PS, PSD e Chega.</p>' +
+        '<p>O limite máximo de doações de particulares desce de 25 mil para 10 mil euros por ano.</p>' +
+        '<p>A Entidade das Contas e Financiamentos Políticos ganha novos poderes de auditoria em tempo real.</p>',
+      hoursAgo: 7,
+    },
+    {
+      slug: 'exportacoes-portuguesas-atingem-maximo-historico',
+      category: 'economia',
+      title: 'Exportações portuguesas atingem máximo histórico no terceiro trimestre',
+      summary:
+        'O calçado, os moldes e o setor automóvel lideram um crescimento que já supera os números pré-pandemia em todos os mercados.',
+      content:
+        '<p>As exportações portuguesas atingiram um <strong>máximo histórico</strong> no terceiro trimestre, segundo o INE.</p>' +
+        '<p>Alemanha, Espanha e França continuam a concentrar mais de metade do total exportado.</p>' +
+        '<p>Os industriais alertam, porém, para o efeito da valorização do euro nas encomendas para fora da zona europeia.</p>',
+      hoursAgo: 11,
+    },
+    {
+      slug: 'inquerito-revela-aumento-da-conflitualidade-laboral',
+      category: 'sociedade',
+      title: 'Inquérito revela aumento da conflitualidade laboral em 2025',
+      summary:
+        'O número de greves setoriais mais que duplicou face ao ano anterior, com a função pública e os transportes à cabeça.',
+      content:
+        '<p>Um inquérito da DGERT revela um <strong>aumento acentuado da conflitualidade laboral</strong> ao longo de 2025.</p>' +
+        '<p>Professores, enfermeiros e trabalhadores dos transportes protagonizaram as paralisações com maior adesão.</p>' +
+        '<p>Os sindicatos apontam a perda de poder de compra como principal motivo; o governo fala em negociação em curso.</p>',
+      hoursAgo: 16,
+    },
+    {
+      slug: 'investigacao-revela-rede-de-fraude-em-fundos-europeus',
+      category: 'investigacao',
+      title: 'Investigação revela rede de fraude em fundos europeus ligados à agricultura',
+      summary:
+        'Um ano de apuramento identificou candidaturas fictícias que desviaram mais de 8 milhões de euros em apoios ao regadio.',
+      content:
+        '<p>Uma investigação de um ano identificou uma <strong>rede de fraude em fundos europeus</strong> destinados a projetos de regadio.</p>' +
+        '<p>Foram identificadas dezenas de candidaturas com terrenos sobrepostos e obras nunca executadas.</p>' +
+        '<p>O Ministério Público já constituiu arguidos e pediu o congelamento de bens de três empresas.</p>',
+      hoursAgo: 23,
+    },
+    {
+      slug: 'cimeira-da-uniao-europeia-discute-alargamento-a-balcas',
+      category: 'mundo',
+      title: 'Cimeira da União Europeia discute calendário de alargamento aos Balcãs',
+      summary:
+        'Sérvia, Montenegro e Macedónia do Norte pressionam por uma data concreta de adesão, com Portugal entre os apoiantes.',
+      content:
+        '<p>Os líderes europeus reuniram-se para discutir o <strong>calendário de alargamento</strong> aos países dos Balcãs Ocidentais.</p>' +
+        '<p>Portugal juntou-se a um grupo de países que defende metas concretas até ao final da década.</p>' +
+        '<p>A Hungria mantém reservas e condiciona o avanço a garantias sobre o Estado de direito nos países candidatos.</p>',
+      hoursAgo: 29,
+    },
+    {
+      slug: 'centro-de-dados-de-ia-atrai-investimento-recorde',
+      category: 'tecnologia',
+      title: 'Novo centro de dados dedicado a IA atrai investimento recorde para Sines',
+      summary:
+        'O projeto de 1,2 mil milhões de euros promete criar 400 postos de trabalho especializados e reforçar a rede elétrica local.',
+      content:
+        '<p>Um consórcio internacional vai investir <strong>1,2 mil milhões de euros</strong> num centro de dados dedicado a inteligência artificial em Sines.</p>' +
+        '<p>O projeto aproveita a ligação ao cabo submarino atlântico e a proximidade de produção de energia renovável.</p>' +
+        '<p>A criação de 400 postos de trabalho especializados é apontada como o principal impacto direto na região.</p>',
+      hoursAgo: 36,
+    },
+    {
+      slug: 'sns-lanca-plano-para-reduzir-listas-de-espera-cirurgicas',
+      category: 'saude',
+      title: 'SNS lança plano para reduzir listas de espera cirúrgicas em 20%',
+      summary:
+        'A estratégia passa por reforçar as parcerias com hospitais privados e alargar o horário dos blocos operatórios públicos.',
+      content:
+        '<p>O Ministério da Saúde lançou um plano para reduzir as <strong>listas de espera cirúrgicas em 20%</strong> até ao final de 2026.</p>' +
+        '<p>A estratégia combina produção adicional nos hospitais públicos com parcerias pontuais com o setor privado.</p>' +
+        '<p>Ortopedia e oftalmologia são as especialidades com maior volume de doentes a aguardar cirurgia.</p>',
+      hoursAgo: 44,
+    },
+    {
+      slug: 'museu-nacional-recupera-colecao-de-arte-barroca',
+      category: 'cultura',
+      title: 'Museu Nacional recupera coleção de arte barroca há décadas em reserva',
+      summary:
+        'Mais de 40 peças restauradas voltam a estar expostas ao público numa mostra que assinala o centenário da instituição.',
+      content:
+        '<p>O Museu Nacional inaugura uma mostra com mais de 40 peças de <strong>arte barroca</strong> restauradas depois de décadas em reserva.</p>' +
+        '<p>O trabalho de restauro demorou três anos e contou com financiamento de mecenas privados.</p>' +
+        '<p>A exposição assinala o centenário da instituição e deverá estar patente até ao final do ano.</p>',
+      hoursAgo: 55,
+    },
+    {
+      slug: 'selecao-nacional-garante-apuramento-antecipado',
+      category: 'desporto',
+      title: 'Seleção nacional garante apuramento antecipado para o Mundial',
+      summary:
+        'Uma vitória fora de casa selou a qualificação com duas jornadas de antecedência, a melhor campanha de sempre da equipa.',
+      content:
+        '<p>A seleção nacional garantiu o <strong>apuramento antecipado</strong> para o Mundial com uma vitória fora de casa.</p>' +
+        '<p>É a melhor campanha de qualificação de sempre da equipa, com sete vitórias em oito jogos.</p>' +
+        '<p>O selecionador admite agora gerir esforços nos jogos que faltam, já sem pressão de resultado.</p>',
+      hoursAgo: 60,
+    },
   ];
 
   const photoAuthors = await prisma.user.findMany({
