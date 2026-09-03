@@ -28,9 +28,20 @@ const DEFAULTS: Record<SectionName, Record<string, unknown>> = {
     smtpUser: 'apikey',
     fromName: 'O Patriota Notícias',
     fromEmail: 'noreply@opatriota.pt',
-    emailComments: true,
-    emailSubscriptions: true,
-    emailArticlePublished: false,
+    // Interruptor geral dos avisos de artigo novo aos leitores. Ligado por
+    // omissão: desligado, um site acabado de instalar recolhe quem segue
+    // categorias, marca as notificações como pendentes e nunca envia nada
+    // — sem erro nenhum, em lado nenhum. A funcionalidade existe para ser
+    // usada; quem a quiser parar tem o interruptor à mão.
+    //
+    // A chave mantém o nome antigo de propósito: é o que está gravado nas
+    // linhas de Setting que já existem, e renomeá-la trocaria a definição
+    // de um site em produção pelo valor de omissão sem ninguém pedir.
+    emailArticlePublished: true,
+    // emailComments e emailSubscriptions viviam aqui e foram removidos:
+    // nada no backend alguma vez os leu. Eram dois interruptores que
+    // gravavam e não faziam absolutamente nada — pior que inúteis, porque
+    // prometiam à redacção um controlo que não existia.
   },
   seo: {
     metaTitle: 'O Patriota Notícias — Jornalismo independente',

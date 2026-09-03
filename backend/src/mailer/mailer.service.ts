@@ -160,10 +160,16 @@ export class MailerService {
     return { driver: driver.id, configured, isLog: driver.id === 'log' };
   }
 
-  /** Whether a toggle in /admin/configuracoes › Email allows this class of mail. */
-  async isEnabled(
-    key: 'emailComments' | 'emailSubscriptions' | 'emailArticlePublished',
-  ): Promise<boolean> {
+  /**
+   * Whether a toggle in /admin/configuracoes › Email allows this class of mail.
+   *
+   * One key, not three. `emailComments` and `emailSubscriptions` used to be
+   * listed here too, and nothing ever passed them — they were toggles that
+   * saved and did nothing. Narrowing the type to what is actually wired
+   * means the next dead switch cannot be added without the compiler asking
+   * what reads it.
+   */
+  async isEnabled(key: 'emailArticlePublished'): Promise<boolean> {
     try {
       const email = (await this.settings.get('email')) as Record<string, unknown>;
       return email[key] !== false;

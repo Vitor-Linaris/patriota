@@ -21,9 +21,10 @@ const DEFAULTS: SettingsBundle = {
     smtpUser: "",
     fromName: "O Patriota Notícias",
     fromEmail: "noreply@opatriota.pt",
-    emailComments: true,
-    emailSubscriptions: true,
-    emailArticlePublished: false,
+    // Espelha o default do backend (settings.service.ts): ligado, para
+    // que um site novo não fique a acumular notificações pendentes que
+    // nunca saem.
+    emailArticlePublished: true,
   },
   seo: {
     metaTitle: "O Patriota Notícias — Jornalismo independente",
