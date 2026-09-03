@@ -5,8 +5,15 @@ import { FaBookmark, FaRegBookmark, FaRegStar, FaStar } from "react-icons/fa6";
 import { ICON_BUTTON } from "./ShareButtons";
 
 interface ReaderState {
-  /** Comes back from the API so the category toggle needs no extra prop. */
+  /**
+   * The ROOT of the article's category, not the article's own — the API
+   * resolves it. An article filed under "Portugal › Madeira › Funchal"
+   * is already covered by following "Portugal" (see notifyTargets() in
+   * reader-notifications.service.ts), so this button has to name and
+   * act on "Portugal", the section a reader can actually subscribe to.
+   */
   categoryId: string;
+  categoryName: string | null;
   saved: boolean;
   followingCategory: boolean;
   commentCount: number;
@@ -27,11 +34,9 @@ interface ReaderState {
 export function ReaderActions({
   articleId,
   slug,
-  categoryName,
 }: {
   articleId: string;
   slug: string;
-  categoryName: string;
 }) {
   const [state, setState] = useState<ReaderState | null>(null);
   const [anonymous, setAnonymous] = useState(false);
@@ -161,15 +166,20 @@ export function ReaderActions({
         onClick={() => void toggle("category")}
         disabled={busy === "category"}
         aria-pressed={state.followingCategory}
+        // "a categoria X", sempre a raiz (state.categoryName já vem
+        // resolvida do backend) — nunca a subsecção do próprio artigo.
+        // Um artigo dentro de "Portugal › Madeira › Funchal" não passa
+        // a dizer "seguir Funchal": Funchal nunca esteve disponível
+        // para seguir sozinho, só a secção de topo estava.
         aria-label={
           state.followingCategory
-            ? `Deixar de seguir ${categoryName}`
-            : `Seguir ${categoryName}`
+            ? `Deixar de seguir a categoria ${state.categoryName ?? "desta notícia"}`
+            : `Seguir a categoria ${state.categoryName ?? "desta notícia"}`
         }
         title={
           state.followingCategory
-            ? `Deixar de seguir ${categoryName}`
-            : `Seguir ${categoryName}`
+            ? `Deixar de seguir a categoria ${state.categoryName ?? "desta notícia"}`
+            : `Seguir a categoria ${state.categoryName ?? "desta notícia"}`
         }
         className={`${ICON_BUTTON} disabled:opacity-60 ${
           state.followingCategory

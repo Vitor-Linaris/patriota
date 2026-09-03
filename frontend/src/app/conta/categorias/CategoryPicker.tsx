@@ -9,9 +9,6 @@ export interface PickableCategory {
   name: string;
   color: string;
   icon: string;
-  /** 0 for a top section, 1 for a subsection, and so on. */
-  depth: number;
-  parentId: string | null;
   following: boolean;
   /** Only meaningful while following. */
   notify: boolean;
@@ -31,6 +28,14 @@ export interface PickableCategory {
  * to anybody following nothing, said "use the Seguir button on an
  * article" — sending the reader away to discover the feature by
  * accident. Here is the paper; pick.
+ *
+ * Top-level sections only — the backend (listFollowableCategories())
+ * only returns depth 0 rows. Subsections used to be listed too, each
+ * with its own follow button, which offered a choice that never
+ * existed: following "Portugal › Madeira" was the same subscription as
+ * following "Portugal", registered on a different node. Flattening the
+ * list to sections a reader can actually subscribe to on their own is
+ * the fix, not a missing indent.
  *
  * Following and e-mail are separate switches on purpose: a reader may
  * want a section on their account without a message every time it
@@ -126,15 +131,6 @@ export function CategoryPicker({ initial }: { initial: PickableCategory[] }) {
           {shown.map((c) => (
             <li
               key={c.id}
-              // Indented by depth, so "Portugal › Madeira › Funchal"
-              // reads as a hierarchy rather than as three unrelated
-              // names of decreasing importance.
-              style={{
-                marginLeft:
-                  query.trim() === "" && !onlyFollowed
-                    ? `${Math.min(c.depth, 3) * 16}px`
-                    : 0,
-              }}
               className={`flex flex-wrap items-center gap-3 rounded-[12px] border bg-white px-4 py-3 ${
                 c.following ? "border-patriota-pure/40" : "border-slate-200"
               }`}
