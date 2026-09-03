@@ -48,11 +48,17 @@ export function MediaLibraryModal({
     let abort = false;
     setLoading(true);
     setError(null);
-    fetch("/api/admin/media/proxy?pageSize=200&kind=IMAGEM", {
+    // pageSize=100, not 200: PageQueryDto (shared across every admin
+    // list) caps it at 100 — asking for 200 always failed with a 400,
+    // which the modal just showed as "Erro: HTTP 400" and an empty
+    // grid, forever. 100 is the most this endpoint will ever hand back
+    // in one request, so it doubles as "no real pagination" the same
+    // way 200 was meant to.
+    fetch("/api/admin/media/proxy?pageSize=100&kind=IMAGEM", {
       // Images only. Both places this picker feeds — the cover and the
       // article body — insert an <img>, so a video chosen here would
       // render as a broken picture. Filtered by the server rather than
-      // here, because this fetches one page of 200 and stops: filtering
+      // here, because this fetches one page and stops: filtering
       // afterwards would let videos push images off the end of a list
       // that still looks complete.
       cache: "no-store",
