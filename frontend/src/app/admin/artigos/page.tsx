@@ -155,15 +155,17 @@ export default async function AdminArticlesPage({
 
   const [articlesRes, categoriesRes, meRes, statsRes] = await Promise.all([
     apiFetch(`/admin/articles?${listParams.toString()}`),
-    // /admin/categories/tree, not /admin/categories: the latter is
-    // roots-only (a leftover from before the category tree existed —
-    // see the comment on CategoriesService.listAdmin()) and its
-    // `children` were being dropped on the floor below anyway. An
-    // article can be filed at any depth — category, subcategory, topic
-    // or subtopic — so the "Rubrica" picker needs the whole forest,
-    // hidden branches included, exactly like the drag-and-drop screen
-    // at /admin/categorias.
-    apiFetch("/admin/categories/tree"),
+    // /admin/categories/options, gated on `artigos.ler` — NOT /tree,
+    // which needs `categorias.ver`. Filing an article under a section
+    // is part of writing it; managing the catalogue is another job
+    // entirely. Taking `categorias.ver` off a journalist used to leave
+    // this list empty and the editor insisting they "create a rubrica
+    // first" — something they had even less permission to do.
+    //
+    // It carries the whole forest, every depth and hidden branches
+    // included: an article can be filed at any level, and a section
+    // pulled off the public menu still has to be a valid home for one.
+    apiFetch("/admin/categories/options"),
     apiFetch("/auth/me"),
     // Stats endpoint covers the WHOLE corpus regardless of paging or
     // filters — fixes "Publicados: 20" turning into "12" on page 2.
