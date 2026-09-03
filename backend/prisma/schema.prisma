@@ -545,7 +545,16 @@ model Reader {
 
   // Notification preferences (global; per-category lives on CategoryFavorite)
   notifyNewArticles Boolean         @default(true)
-  digestFrequency   DigestFrequency @default(DIARIO)
+  /// IMEDIATO, not DIARIO. There is no UI anywhere for a reader to pick a
+  /// cadence — /conta/categorias offers a per-category "E-mails" tick and
+  /// nothing else — so this default is not one reader ever chose, it is
+  /// simply what everybody gets. Defaulting to the 08:00 daily digest meant
+  /// somebody who ticked "avisem-me" the moment a piece went out heard
+  /// nothing until the next morning, which reads as broken rather than as
+  /// a setting. IMEDIATO still batches (see the immediate tick in
+  /// reader-notifications.scheduler.ts) so a burst of publishing is one
+  /// e-mail, not one per article.
+  digestFrequency   DigestFrequency @default(IMEDIATO)
   /// One-click unsubscribe secret for the RFC 8058 List-Unsubscribe header,
   /// which must work with no session and no CSRF token. NO @default here on
   /// purpose: cuid is sequential enough to guess. The service generates it

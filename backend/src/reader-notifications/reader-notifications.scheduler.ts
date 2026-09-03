@@ -3,6 +3,20 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { ReaderNotificationsService } from './reader-notifications.service';
 
 /**
+ * How often the IMEDIATO batch goes out — the cadence almost every reader
+ * is on, since it is now the default (see Reader.digestFrequency).
+ *
+ * ⚠ TEMPORARIAMENTE A CADA MINUTO, PARA TESTES.
+ * O valor a usar em produção é EVERY_5_MINUTES: cinco minutos junta uma
+ * publicação em série de seis artigos num único e-mail e mantém o
+ * fornecedor de e-mail fora do caminho crítico do publish. Um minuto
+ * existe só para não estar à espera enquanto se testa a pipeline.
+ *
+ * Para repor, trocar esta constante — é o único sítio.
+ */
+const IMMEDIATE_CRON = CronExpression.EVERY_MINUTE;
+
+/**
  * Cron jobs for the category-notification pipeline.
  *
  * NOTE: this module must NOT call ScheduleModule.forRoot(). It is already
@@ -38,11 +52,14 @@ export class ReaderNotificationsScheduler {
   }
 
   /**
-   * Immediate readers. Five minutes rather than one: it coalesces a batch
-   * publish of six articles into a single e-mail and keeps the mail
-   * provider off the hot path.
+   * Immediate readers — the default cadence, and the one that matters.
+   *
+   * Batched rather than fired per article: a title publishing six pieces
+   * in a row that sends six separate messages is how a newsroom gets
+   * marked as spam by its own readers. See IMMEDIATE_CRON above for the
+   * interval, and for the note about it being turned down for testing.
    */
-  @Cron(CronExpression.EVERY_5_MINUTES)
+  @Cron(IMMEDIATE_CRON)
   async immediateTick(): Promise<void> {
     try {
       await this.notifications.deliver('IMEDIATO');

@@ -41,8 +41,14 @@ export interface EmailSettings {
   smtpUser: string;
   fromName: string;
   fromEmail: string;
-  emailComments: boolean;
-  emailSubscriptions: boolean;
+  /**
+   * Master switch for the new-article e-mails readers subscribe to.
+   *
+   * The key keeps its original name because that is what is stored in the
+   * Setting row; only the label changed. `emailComments` and
+   * `emailSubscriptions` sat beside it and were removed — no backend code
+   * ever read either one.
+   */
   emailArticlePublished: boolean;
 }
 
@@ -275,12 +281,6 @@ export default function AdminSettingsClient({
   // SMTP password is never sent from the server. Keep it local & opaque.
   const [fromName, setFromName] = useState(initial.email.fromName);
   const [fromEmail, setFromEmail] = useState(initial.email.fromEmail);
-  const [emailComments, setEmailComments] = useState(
-    initial.email.emailComments,
-  );
-  const [emailSubscriptions, setEmailSubscriptions] = useState(
-    initial.email.emailSubscriptions,
-  );
   const [emailArticlePublished, setEmailArticlePublished] = useState(
     initial.email.emailArticlePublished,
   );
@@ -354,8 +354,6 @@ export default function AdminSettingsClient({
           smtpUser,
           fromName,
           fromEmail,
-          emailComments,
-          emailSubscriptions,
           emailArticlePublished,
         };
       case "seo":
@@ -656,23 +654,32 @@ export default function AdminSettingsClient({
               <Field label="E-mail remetente">
                 <Input value={fromEmail} onChange={setFromEmail} mono placeholder="noreply@seusite.pt" />
               </Field>
+              {/* Um interruptor, não três.
+                  "Novos comentários" e "Novas subscrições" estavam aqui e
+                  não estavam ligados a nada — gravavam e o backend nunca
+                  os lia. E nenhum dos dois faz falta: os comentários novos
+                  aparecem na fila de moderação, e os assinantes têm um
+                  painel próprio com totais. */}
               <div className="mt-2 border-t border-gray-50 pt-4">
-                <p className="mb-3 text-sm font-bold text-gray-700">
-                  Notificações por e-mail
+                <p className="mb-1 text-sm font-bold text-gray-700">
+                  Notificações para leitores
                 </p>
-                {[
-                  { label: "Novos comentários", val: emailComments, set: setEmailComments },
-                  { label: "Novas subscrições", val: emailSubscriptions, set: setEmailSubscriptions },
-                  { label: "Artigo publicado (autores)", val: emailArticlePublished, set: setEmailArticlePublished },
-                ].map((n) => (
-                  <div
-                    key={n.label}
-                    className="flex items-center justify-between border-b border-gray-50 py-2.5 last:border-0"
-                  >
-                    <span className="text-sm text-gray-600">{n.label}</span>
-                    <Toggle checked={n.val} onChange={() => n.set((v) => !v)} />
-                  </div>
-                ))}
+                <p className="mb-3 text-xs leading-relaxed text-gray-500">
+                  Avisa por e-mail quem segue uma secção sempre que sai peça
+                  nova nela — só a quem ligou os e-mails dessa secção na sua
+                  área de leitor. Os envios são agrupados: tudo o que sair
+                  no mesmo intervalo segue numa só mensagem, em vez de um
+                  e-mail por artigo.
+                </p>
+                <div className="flex items-center justify-between py-2.5">
+                  <span className="text-sm text-gray-600">
+                    Avisar sobre artigos novos
+                  </span>
+                  <Toggle
+                    checked={emailArticlePublished}
+                    onChange={() => setEmailArticlePublished((v) => !v)}
+                  />
+                </div>
               </div>
               <SaveBar
                 onSave={handleSave}
