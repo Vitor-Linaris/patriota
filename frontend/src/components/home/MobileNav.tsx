@@ -172,7 +172,6 @@ function SectionRow({
 }) {
   const [expanded, setExpanded] = useState(false);
   const href = `/categoria/${category.slug}`;
-  const count = category.articleCountTotal || category.articleCount;
   // Clamped: depth 3 (subtópico) and beyond share the deepest step
   // rather than marching off the edge of a phone screen.
   const indent = Math.min(depth, 3) * 14;
@@ -191,11 +190,6 @@ function SectionRow({
         className={`flex items-center justify-between gap-3 rounded-lg py-2.5 pr-3 ${labelSize} ${labelWeight} text-slate-800 transition-colors hover:bg-patriota-pure hover:text-white`}
       >
         <span>{category.label}</span>
-        {count > 0 && (
-          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500">
-            {count}
-          </span>
-        )}
       </Link>
     );
   }

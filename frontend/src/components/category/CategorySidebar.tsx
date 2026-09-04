@@ -135,14 +135,8 @@ export async function CategorySidebar({
                   className="flex items-center justify-between px-5 py-3 text-[14px] transition hover:bg-slate-50"
                 >
                   <span className="font-semibold text-slate-800">{c.label}</span>
-                  <span className="flex items-center gap-3 text-[12px] text-slate-500">
-                    <span>
-                      {c.articleCountTotal}{" "}
-                      {c.articleCountTotal === 1 ? "artigo" : "artigos"}
-                    </span>
-                    <span aria-hidden className="text-slate-400">
-                      →
-                    </span>
+                  <span aria-hidden className="text-slate-400">
+                    →
                   </span>
                 </Link>
               </li>

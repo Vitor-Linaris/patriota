@@ -355,9 +355,6 @@ export function SearchModal({ open, onClose }: SearchModalProps) {
                           <span className="font-semibold text-slate-800">
                             {t.label}
                           </span>
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500">
-                            {t.articleCount}
-                          </span>
                         </button>
                       </li>
                     ))}
