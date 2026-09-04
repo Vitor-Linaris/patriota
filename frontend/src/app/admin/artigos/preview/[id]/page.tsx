@@ -63,12 +63,16 @@ const STATUS_LABEL: Record<ArticlePreview["status"], string> = {
   ARQUIVADO: "Arquivado",
 };
 
+// timeZone pinned — see TopBar.tsx's formatToday() for why: without it,
+// Intl uses the RUNTIME's timezone, which is Portugal's for our readers
+// regardless of which machine renders this.
 const dateFmt = new Intl.DateTimeFormat("pt-PT", {
   day: "2-digit",
   month: "long",
   year: "numeric",
   hour: "2-digit",
   minute: "2-digit",
+  timeZone: "Europe/Lisbon",
 });
 
 function formatDate(iso: string | null): string {

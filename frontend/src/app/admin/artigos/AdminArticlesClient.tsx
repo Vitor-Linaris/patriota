@@ -143,10 +143,16 @@ const FILTERS: { key: UiStatus | "todos"; label: string }[] = [
 ];
 
 const intFmt = new Intl.NumberFormat("pt-PT");
+// timeZone pinned on purpose — see the comment on formatToday() in
+// TopBar.tsx for why: without it, Intl uses the RUNTIME's timezone,
+// which differs between the server (container) and the browser, and
+// a date near midnight renders on a different calendar day on each,
+// failing hydration.
 const dateFmt = new Intl.DateTimeFormat("pt-PT", {
   day: "2-digit",
   month: "short",
   year: "numeric",
+  timeZone: "Europe/Lisbon",
 });
 
 function formatDate(iso: string | null): string {

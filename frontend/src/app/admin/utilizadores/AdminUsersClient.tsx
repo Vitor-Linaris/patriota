@@ -89,9 +89,13 @@ const STATUS_LABEL: Record<
   inactive: { label: "Inactivo", color: "bg-gray-100 text-gray-500" },
 };
 
+// timeZone pinned — see formatToday() in TopBar.tsx for why: this is a
+// client component, so a server/browser timezone mismatch here fails
+// hydration, not just displays the wrong day.
 const dateFmt = new Intl.DateTimeFormat("pt-PT", {
   month: "short",
   year: "numeric",
+  timeZone: "Europe/Lisbon",
 });
 
 function formatJoined(iso: string): string {

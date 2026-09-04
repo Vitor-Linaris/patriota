@@ -2,9 +2,11 @@ import Link from "next/link";
 import type { SubscriptionStats } from "./leitores/AdminReadersClient";
 
 const intFmt = new Intl.NumberFormat("pt-PT");
+// timeZone pinned — see TopBar.tsx's formatToday() for why.
 const DAY_MONTH = new Intl.DateTimeFormat("pt-PT", {
   day: "2-digit",
   month: "short",
+  timeZone: "Europe/Lisbon",
 });
 
 /**

@@ -52,10 +52,12 @@ interface MediaApi {
   >;
 }
 
+// timeZone pinned — see TopBar.tsx's formatToday() for why.
 const dateFmt = new Intl.DateTimeFormat("pt-PT", {
   day: "2-digit",
   month: "short",
   year: "numeric",
+  timeZone: "Europe/Lisbon",
 });
 
 function humanSize(bytes: number | null): string | undefined {

@@ -12,10 +12,12 @@ export const metadata = {
   robots: { index: false, follow: false },
 };
 
+// timeZone pinned — see TopBar.tsx's formatToday() for why.
 const LONG_DATE = new Intl.DateTimeFormat("pt-PT", {
   day: "numeric",
   month: "long",
   year: "numeric",
+  timeZone: "Europe/Lisbon",
 });
 
 /**

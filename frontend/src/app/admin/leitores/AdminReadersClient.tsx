@@ -106,10 +106,15 @@ const WINDOWS = [
   { days: 365, label: "1 ano" },
 ] as const;
 
+// timeZone pinned — see formatToday() in TopBar.tsx: without it, this
+// client component's server-rendered date can disagree with what the
+// browser renders on hydration, since Intl otherwise uses the runtime's
+// own timezone.
 const WHEN = new Intl.DateTimeFormat("pt-PT", {
   day: "2-digit",
   month: "2-digit",
   year: "numeric",
+  timeZone: "Europe/Lisbon",
 });
 
 const STATUS_LABEL: Record<AdminReader["status"], string> = {

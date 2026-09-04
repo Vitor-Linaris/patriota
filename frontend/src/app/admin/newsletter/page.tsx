@@ -37,10 +37,12 @@ const SUB_STATUS_API_TO_UI: Record<
   CANCELADO: "cancelado",
 };
 
+// timeZone pinned — see TopBar.tsx's formatToday() for why.
 const dateFmt = new Intl.DateTimeFormat("pt-PT", {
   day: "2-digit",
   month: "2-digit",
   year: "numeric",
+  timeZone: "Europe/Lisbon",
 });
 
 function toSubscriber(s: SubscriberApi): Subscriber {
