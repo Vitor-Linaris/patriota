@@ -127,6 +127,18 @@ export default async function Page({
     // API refuses scope=todas to anyone else regardless.
     apiFetch("/auth/me"),
   ]);
+  if (res.status === 403) {
+    return (
+      <AdminShell active="/admin/media">
+        <main className="bg-[#f6f7fb] p-8">
+          <h1 className="text-xl font-bold text-red-600">Sem acesso</h1>
+          <p className="mt-2 text-sm text-gray-500">
+            O seu papel não tem a permissão <code>media.carregar</code>.
+          </p>
+        </main>
+      </AdminShell>
+    );
+  }
   const body = res.ok
     ? ((await res.json()) as PageResult<MediaApi> & { quota?: MediaQuota })
     : {
@@ -140,9 +152,11 @@ export default async function Page({
     ? ((await totalRes.json()) as PageResult<MediaApi>).total
     : body.total;
   const me = meRes.ok
-    ? ((await meRes.json()) as { role?: string })
+    ? ((await meRes.json()) as { role?: string; permissions?: string[] })
     : {};
   const canSeeAll = me.role === "SUPER_ADMIN";
+  const canDelete =
+    me.role === "SUPER_ADMIN" || (me.permissions ?? []).includes("media.eliminar");
   const items = body.items.map(toMediaItem);
   const totalPages = Math.max(1, Math.ceil(body.total / PAGE_SIZE));
   return (
@@ -157,6 +171,7 @@ export default async function Page({
         searchQuery={q}
         scope={scope === "todas" ? "todas" : "minha"}
         canSeeAll={canSeeAll}
+        canDelete={canDelete}
       />
     </AdminShell>
   );

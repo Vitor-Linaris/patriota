@@ -97,6 +97,23 @@ export default async function ArticlePreviewPage({
 }) {
   const { id } = await params;
   const res = await apiFetch(`/admin/articles/${id}`);
+  // 403 gets its own message — "not found" would tell someone without
+  // artigos.ler that no such article exists, which is both untrue and
+  // unhelpful. Anything else (404, deleted id) falls through to notFound().
+  if (res.status === 403) {
+    return (
+      <AdminShell active="/admin/artigos">
+        <Container className="py-16 text-center">
+          <p className="text-sm font-semibold text-red-600">
+            Sem permissão para ver este artigo.
+          </p>
+          <p className="mt-2 text-sm text-gray-500">
+            Fala com um administrador se precisares de acesso.
+          </p>
+        </Container>
+      </AdminShell>
+    );
+  }
   if (!res.ok) notFound();
   const article = (await res.json()) as ArticlePreview;
   const authorInitials = initialsOf(article.author?.name ?? null);

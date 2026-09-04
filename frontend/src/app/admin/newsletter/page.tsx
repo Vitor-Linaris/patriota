@@ -76,6 +76,18 @@ export default async function Page({
     apiFetch(`/admin/newsletters/subscribers?${listParams.toString()}`),
     apiFetch("/admin/newsletters/subscribers/stats"),
   ]);
+  if (subRes.status === 403) {
+    return (
+      <AdminShell active="/admin/newsletter">
+        <main className="bg-[#f6f7fb] p-8">
+          <h1 className="text-xl font-bold text-red-600">Sem acesso</h1>
+          <p className="mt-2 text-sm text-gray-500">
+            O seu papel não tem a permissão <code>newsletter.listas</code>.
+          </p>
+        </main>
+      </AdminShell>
+    );
+  }
   const body = subRes.ok
     ? ((await subRes.json()) as PageResult<SubscriberApi>)
     : { items: [], total: 0, page: 1, pageSize: PAGE_SIZE };

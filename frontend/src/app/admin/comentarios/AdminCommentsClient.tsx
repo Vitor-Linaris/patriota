@@ -88,6 +88,8 @@ export default function AdminCommentsClient({
   currentPage,
   query,
   canBan,
+  canModerate,
+  canDelete,
 }: {
   items: ModerationComment[];
   total: number;
@@ -97,6 +99,10 @@ export default function AdminCommentsClient({
   query: string;
   /** leitores.suspender. Hides the control; the API enforces it anyway. */
   canBan: boolean;
+  /** comentarios.aprovar — Aprovar/Rejeitar/Spam. */
+  canModerate: boolean;
+  /** comentarios.eliminar. */
+  canDelete: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -217,36 +223,38 @@ export default function AdminCommentsClient({
           <span className="text-sm font-medium text-[#0F2C6B]">
             {selected.size} seleccionado{selected.size > 1 ? "s" : ""}
           </span>
-          <div className="ml-auto flex gap-2">
-            <button
-              type="button"
-              disabled={isPending}
-              onClick={() =>
-                run(() => bulkModerateAction([...selected], "APROVADO"))
-              }
-              className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
-            >
-              Aprovar
-            </button>
-            <button
-              type="button"
-              disabled={isPending}
-              onClick={() =>
-                run(() => bulkModerateAction([...selected], "REJEITADO"))
-              }
-              className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
-            >
-              Rejeitar
-            </button>
-            <button
-              type="button"
-              disabled={isPending}
-              onClick={() => run(() => bulkModerateAction([...selected], "SPAM"))}
-              className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
-            >
-              Spam
-            </button>
-          </div>
+          {canModerate && (
+            <div className="ml-auto flex gap-2">
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={() =>
+                  run(() => bulkModerateAction([...selected], "APROVADO"))
+                }
+                className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
+              >
+                Aprovar
+              </button>
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={() =>
+                  run(() => bulkModerateAction([...selected], "REJEITADO"))
+                }
+                className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+              >
+                Rejeitar
+              </button>
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={() => run(() => bulkModerateAction([...selected], "SPAM"))}
+                className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+              >
+                Spam
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -324,7 +332,7 @@ export default function AdminCommentsClient({
                 </div>
 
                 <div className="flex shrink-0 flex-col gap-1.5">
-                  {c.status !== "APROVADO" && (
+                  {canModerate && c.status !== "APROVADO" && (
                     <button
                       type="button"
                       disabled={isPending}
@@ -334,7 +342,7 @@ export default function AdminCommentsClient({
                       Aprovar
                     </button>
                   )}
-                  {c.status !== "REJEITADO" && (
+                  {canModerate && c.status !== "REJEITADO" && (
                     <button
                       type="button"
                       disabled={isPending}
@@ -344,7 +352,7 @@ export default function AdminCommentsClient({
                       Rejeitar
                     </button>
                   )}
-                  {c.status !== "SPAM" && (
+                  {canModerate && c.status !== "SPAM" && (
                     <button
                       type="button"
                       disabled={isPending}
@@ -354,14 +362,16 @@ export default function AdminCommentsClient({
                       Spam
                     </button>
                   )}
-                  <button
-                    type="button"
-                    disabled={isPending}
-                    onClick={() => run(() => deleteCommentAction(c.id))}
-                    className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
-                  >
-                    Eliminar
-                  </button>
+                  {canDelete && (
+                    <button
+                      type="button"
+                      disabled={isPending}
+                      onClick={() => run(() => deleteCommentAction(c.id))}
+                      className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
+                    >
+                      Eliminar
+                    </button>
+                  )}
 
                   {/* Separated from the comment actions above by a rule:
                       those three are about this comment, this one is
