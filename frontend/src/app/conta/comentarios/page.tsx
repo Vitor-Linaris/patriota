@@ -30,12 +30,14 @@ const WINDOWS = [
   { days: "", label: "Sempre" },
 ] as const;
 
+// timeZone pinned — see TopBar.tsx's formatToday() for why.
 const WHEN = new Intl.DateTimeFormat("pt-PT", {
   day: "numeric",
   month: "long",
   year: "numeric",
   hour: "2-digit",
   minute: "2-digit",
+  timeZone: "Europe/Lisbon",
 });
 
 const BADGE: Record<string, { label: string; cls: string }> = {

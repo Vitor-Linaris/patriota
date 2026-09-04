@@ -13,10 +13,12 @@ export interface ReaderArticleCard {
   category: { slug: string; name: string; color: string };
 }
 
+// timeZone pinned — see TopBar.tsx's formatToday() for why.
 const WHEN = new Intl.DateTimeFormat("pt-PT", {
   day: "numeric",
   month: "short",
   year: "numeric",
+  timeZone: "Europe/Lisbon",
 });
 
 /** Shared list item for saved articles and reading history. */

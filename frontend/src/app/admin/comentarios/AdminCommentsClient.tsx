@@ -52,18 +52,24 @@ const TABS = [
   { key: "SPAM", label: "Spam" },
 ] as const;
 
+// timeZone pinned on both — see formatToday() in TopBar.tsx for why:
+// without it, the server (container) and the browser can disagree on
+// which calendar day a timestamp near midnight falls on, and this is a
+// client component, so that disagreement fails hydration.
 const WHEN = new Intl.DateTimeFormat("pt-PT", {
   day: "2-digit",
   month: "2-digit",
   year: "numeric",
   hour: "2-digit",
   minute: "2-digit",
+  timeZone: "Europe/Lisbon",
 });
 
 const DAY_MONTH = new Intl.DateTimeFormat("pt-PT", {
   day: "2-digit",
   month: "short",
   year: "numeric",
+  timeZone: "Europe/Lisbon",
 });
 
 /**

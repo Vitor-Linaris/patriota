@@ -3,11 +3,13 @@ import { getReaderToken } from "@/lib/reader-api";
 import { listComments, type PublicComment } from "@/lib/public-api";
 import { CommentComposer } from "./CommentComposer";
 
+// timeZone pinned — see TopBar.tsx's formatToday() for why.
 const WHEN = new Intl.DateTimeFormat("pt-PT", {
   day: "numeric",
   month: "short",
   hour: "2-digit",
   minute: "2-digit",
+  timeZone: "Europe/Lisbon",
 });
 
 /**

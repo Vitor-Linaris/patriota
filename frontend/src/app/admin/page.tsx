@@ -50,11 +50,14 @@ const intFmt = new Intl.NumberFormat("pt-PT");
 
 function formatToday(): string {
   const now = new Date();
+  // timeZone pinned — see TopBar.tsx's formatToday() for why: this is
+  // the newsroom's "today", Portugal's, not whichever machine renders it.
   const long = new Intl.DateTimeFormat("pt-PT", {
     weekday: "long",
     day: "numeric",
     month: "long",
     year: "numeric",
+    timeZone: "Europe/Lisbon",
   }).format(now);
   // Capitalise first letter for visual parity with the previous mock.
   return long.charAt(0).toUpperCase() + long.slice(1);
