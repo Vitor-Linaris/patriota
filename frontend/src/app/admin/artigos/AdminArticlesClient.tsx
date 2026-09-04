@@ -57,6 +57,8 @@ export interface AdminArticle {
   metaTitle: string;
   metaDescription: string;
   coverImage: string;
+  /** A partner's video page, or a direct file URL. See VideoEmbed.tsx. */
+  videoEmbedUrl: string;
   /**
    * Edits parked on a live article: written by autosave or by "Guardar
    * alterações", not yet published. The fields above are what readers
@@ -191,6 +193,7 @@ interface EditorState {
   metaTitle: string;
   metaDescription: string;
   coverImage: string;
+  videoEmbedUrl: string;
   categoryId: string;
   rejectionReason: string | null;
   /**
@@ -217,6 +220,7 @@ function emptyEditor(categoryId: string): EditorState {
     metaTitle: "",
     metaDescription: "",
     coverImage: "",
+    videoEmbedUrl: "",
     categoryId,
     rejectionReason: null,
     scheduledAt: null,
@@ -256,6 +260,7 @@ function articleToEditor(a: AdminArticle): EditorState {
     metaTitle: pick("metaTitle", a.metaTitle),
     metaDescription: pick("metaDescription", a.metaDescription),
     coverImage: pick("coverImageUrl", a.coverImage),
+    videoEmbedUrl: pick("videoEmbedUrl", a.videoEmbedUrl ?? ""),
     categoryId: pick("categoryId", a.categoryId),
     rejectionReason: a.rejectionReason,
     scheduledAt: a.scheduledAt,
@@ -349,6 +354,7 @@ function ArticleEditor({
         metaTitle: form.metaTitle || undefined,
         metaDescription: form.metaDescription || undefined,
         coverImageUrl: form.coverImage || undefined,
+        videoEmbedUrl: form.videoEmbedUrl || undefined,
       },
       isLive,
     );
@@ -912,6 +918,29 @@ function ArticleEditor({
             />
           </div>
 
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+            <p className="mb-1 text-xs font-black uppercase tracking-wider text-gray-400">
+              Vídeo incorporado
+            </p>
+            <p className="mb-3 text-xs text-gray-400">
+              Um vídeo de um parceiro (ex.: cobertura ao vivo), a tocar logo
+              abaixo da imagem de capa. Opcional.
+            </p>
+            <input
+              value={form.videoEmbedUrl}
+              onChange={(e) => set({ videoEmbedUrl: e.target.value.trim() })}
+              placeholder="https://…"
+              inputMode="url"
+              className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:border-[#0F2C6B] focus:outline-none"
+            />
+            <p className="mt-1.5 text-[11px] leading-relaxed text-gray-400">
+              Cole o link da página do vídeo no site do parceiro, ou — se
+              souber inspeccionar a página e encontrar o ficheiro
+              (.mp4/.m3u8) — esse link directo funciona melhor.
+              YouTube/Vimeo também são reconhecidos automaticamente.
+            </p>
+          </div>
+
           <div className="space-y-2">
             <button
               type="button"
@@ -1251,6 +1280,7 @@ export default function AdminArticlesClient({
       metaTitle: form.metaTitle || undefined,
       metaDescription: form.metaDescription || undefined,
       coverImageUrl: form.coverImage || undefined,
+      videoEmbedUrl: form.videoEmbedUrl || undefined,
       scheduledAt: form.scheduledAt ?? undefined,
     };
 

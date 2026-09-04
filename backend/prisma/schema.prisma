@@ -394,6 +394,10 @@ model Article {
   metaTitle             String?
   metaDescription       String?
   coverImageUrl         String?
+  /// A partner's video page, or a direct file URL — embedded below the
+  /// cover image on the article page. See VideoEmbed.tsx (frontend) for
+  /// how the shape of the URL decides how it gets played.
+  videoEmbedUrl         String?
   scheduledAt           DateTime?
   publishedAt           DateTime?
   rejectionReason       String?

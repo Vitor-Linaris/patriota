@@ -29,6 +29,7 @@ interface ArticleApi {
   metaTitle: string | null;
   metaDescription: string | null;
   coverImageUrl: string | null;
+  videoEmbedUrl: string | null;
   scheduledAt: string | null;
   publishedAt: string | null;
   rejectionReason: string | null;
@@ -92,6 +93,7 @@ function toAdminArticle(a: ArticleApi): AdminArticle {
     metaTitle: a.metaTitle ?? "",
     metaDescription: a.metaDescription ?? "",
     coverImage: a.coverImageUrl ?? "",
+    videoEmbedUrl: a.videoEmbedUrl ?? "",
     scheduledAt: a.scheduledAt,
     draft: a.draft ?? null,
     draftUpdatedAt: a.draftUpdatedAt ?? null,

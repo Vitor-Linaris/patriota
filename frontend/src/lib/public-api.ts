@@ -54,6 +54,8 @@ export interface ArticleDetail extends ArticleSummary {
   paywalled?: boolean;
   /** The opening, when `content` was withheld. Whole blocks, valid HTML. */
   contentPreview?: string;
+  /** A partner's video page or a direct file URL — see VideoEmbed.tsx. */
+  videoEmbedUrl?: string | null;
 }
 
 export interface HomepageBundle {
