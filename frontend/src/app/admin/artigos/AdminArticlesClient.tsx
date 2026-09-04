@@ -820,13 +820,23 @@ function ArticleEditor({
             </p>
             <div>
               <label className="mb-1.5 block text-xs font-bold text-gray-500">
-                Rubrica
+                Rubrica <span className="text-red-500">*</span>
               </label>
               <select
                 value={form.categoryId}
                 onChange={(e) => set({ categoryId: e.target.value })}
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#0F2C6B] focus:outline-none"
+                className={`w-full rounded-lg border px-3 py-2 text-sm focus:border-[#0F2C6B] focus:outline-none ${
+                  form.categoryId ? "border-gray-200" : "border-red-300"
+                }`}
               >
+                {/* Sem value (""), não pré-seleccionado num artigo
+                    novo — ver o comentário em openNew(). Continua a
+                    aparecer aqui, escondido, num artigo já gravado com
+                    rubrica, para que o próprio valor guardado permaneça
+                    seleccionável mesmo que a opção pareça "em falta". */}
+                <option value="" disabled hidden>
+                  Selecione uma rubrica…
+                </option>
                 {categories.map((c) => (
                   <option key={c.id} value={c.id}>
                     {/* "—" repeated by depth, not indentation via CSS:
@@ -1158,7 +1168,13 @@ export default function AdminArticlesClient({
       alert("Crie uma rubrica antes de criar artigos.");
       return;
     }
-    setEditorState(emptyEditor(categories[0].id));
+    // "", not categories[0].id: a rubrica pré-escolhida sozinha nunca
+    // deixava "Escolha uma rubrica." disparar em handleSave — o campo
+    // já vinha sempre preenchido, por isso "obrigatório" não pegava em
+    // nada, e um artigo podia gravar-se na primeira categoria da lista
+    // sem ninguém a ter escolhido de propósito. Vazio à partida obriga
+    // a escolha real.
+    setEditorState(emptyEditor(""));
     setEditorError(null);
     setEditorOpen(true);
   };
