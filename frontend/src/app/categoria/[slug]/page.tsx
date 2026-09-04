@@ -66,7 +66,6 @@ export default async function CategoryPage({
   const featuredOnly = page === 1 && rawArticles.length > 0;
   const featured = featuredOnly ? rawArticles[0] : null;
   const rest = featuredOnly ? rawArticles.slice(1) : rawArticles;
-  const articleCount = total;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const listItems = rest.map((a, i) => ({
     number: i + 1,
@@ -108,8 +107,6 @@ export default async function CategoryPage({
           })),
         ]}
         subsections={category.children}
-        articleCount={articleCount}
-        directCount={category.articleCount}
       />
 
       <AdSlot ad={ads["category-leaderboard"]} />
@@ -148,14 +145,7 @@ export default async function CategoryPage({
 
               {/* List header */}
               <div className="mt-10 flex flex-wrap items-center justify-between gap-4">
-                <SectionMarker
-                  title="Todos os artigos"
-                  trailing={
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-[12px] font-semibold text-slate-700">
-                      {articleCount} {articleCount === 1 ? "artigo" : "artigos"}
-                    </span>
-                  }
-                />
+                <SectionMarker title="Todos os artigos" />
                 <div
                   role="tablist"
                   aria-label="Ordenar artigos"

@@ -23,6 +23,22 @@ type PublicTreeNode = Omit<CategoryTreeNode, 'path' | 'children'> & {
   children: PublicTreeNode[];
 };
 
+/**
+ * The little a "file this article under…" picker needs. Deliberately
+ * NOT PublicTreeNode: this one is served to people without
+ * `categorias.ver` (see the /admin/categories/options route), so it
+ * carries no article counts, no visibility flags and no descriptions —
+ * only enough to draw the dropdown and save a choice.
+ */
+export type PickerOptionNode = {
+  id: string;
+  slug: string;
+  name: string;
+  color: string;
+  depth: number;
+  children: PickerOptionNode[];
+};
+
 function baseSlug(input: string): string {
   return input
     .normalize('NFD')
@@ -127,6 +143,29 @@ export class CategoriesService {
   /** Nested roots, hidden categories included — this is the CMS view. */
   listTree() {
     return this.tree.getForest();
+  }
+
+  /**
+   * The same tree cut down to what a "file this article under…" picker
+   * needs: a name to show, an id to save, and the depth to indent by.
+   *
+   * Hidden categories stay in. A section pulled off the public menu is
+   * usually one being prepared or wound down, and an article still has
+   * to be filed somewhere while that is true — the alternative is a
+   * writer unable to save a piece because the section it belongs to was
+   * hidden this morning.
+   */
+  async listPickerOptions(): Promise<PickerOptionNode[]> {
+    const forest = await this.tree.getForest();
+    const strip = (n: CategoryTreeNode): PickerOptionNode => ({
+      id: n.id,
+      slug: n.slug,
+      name: n.name,
+      color: n.color,
+      depth: n.depth,
+      children: n.children.map(strip),
+    });
+    return forest.map(strip);
   }
 
   /**

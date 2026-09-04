@@ -38,11 +38,6 @@ export function CategoryPanel({ category }: { category: CategoryDef }) {
               className="group flex items-baseline justify-between gap-3 rounded-md px-2 py-1.5 text-[14px] text-slate-700 transition hover:bg-patriota-pure hover:text-white"
             >
               <span className="font-medium">{child.label}</span>
-              {child.articleCountTotal > 0 && (
-                <span className="text-[11px] text-slate-400 group-hover:text-white/75">
-                  {child.articleCountTotal}
-                </span>
-              )}
             </Link>
             {child.children.length > 0 && (
               <p className="px-2 pb-1 text-[11px] text-slate-400">
