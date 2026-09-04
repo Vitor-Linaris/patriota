@@ -174,6 +174,28 @@ export class ArticlesService {
     return a;
   }
 
+  /**
+   * Whether `user` may see the WHOLE article list, or only their own.
+   *
+   * editar_todos implies it — someone allowed to edit anyone's piece has
+   * no reason to be blind to its existence — and artigos.ler_todos exists
+   * for the opposite case: seeing everyone's work without being able to
+   * touch it (REVISOR reviewing what was submitted, ANALISTA reading
+   * numbers across the corpus). Without either, artigos.ler only ever
+   * meant "read what I'm shown", and what a JORNALISTA with just
+   * editar_proprios was shown used to be literally everyone's drafts —
+   * every colleague's unpublished work, visible to every other colleague,
+   * for no reason tied to their job.
+   */
+  private async canSeeAllArticles(user: ActingUser): Promise<boolean> {
+    if (user.role === 'SUPER_ADMIN') return true;
+    const perms = await this.rbac.getPermissionsForRole(user.role);
+    return (
+      perms.includes('artigos.editar_todos') ||
+      perms.includes('artigos.ler_todos')
+    );
+  }
+
   private async assertCanEdit(
     article: { authorId: string },
     user: ActingUser,
@@ -215,22 +237,30 @@ export class ArticlesService {
 
   // ── admin ──────────────────────────────────────────────────────────
   /**
-   * Returns total counts by status across the ENTIRE article corpus,
-   * regardless of any filters applied to the list view. Used by the
-   * admin /admin/artigos stats row so the numbers don't shrink to
-   * just the visible page (e.g. "33 total → 20 on page 1 → 13 on
-   * page 2" was the bug we're fixing).
+   * Returns total counts by status across the ENTIRE article corpus
+   * this user can see, regardless of any filters applied to the list
+   * view. Used by the admin /admin/artigos stats row so the numbers
+   * don't shrink to just the visible page (e.g. "33 total → 20 on page
+   * 1 → 13 on page 2" was the bug we're fixing).
+   *
+   * Scoped to `user`'s own articles unless canSeeAllArticles() — the
+   * header row otherwise claimed "57 artigos" over a list that, after
+   * the same scoping in list() below, showed three.
    *
    * Single query via `groupBy` is preferred over multiple counts:
    * Postgres scans the table once with a HashAggregate.
    */
-  async getStats() {
+  async getStats(user: ActingUser) {
+    const where = (await this.canSeeAllArticles(user))
+      ? {}
+      : { authorId: user.id };
     const [groups, viewsAgg] = await Promise.all([
       this.prisma.article.groupBy({
         by: ['status'],
+        where,
         _count: { _all: true },
       }),
-      this.prisma.article.aggregate({ _sum: { views: true } }),
+      this.prisma.article.aggregate({ where, _sum: { views: true } }),
     ]);
     const byStatus: Record<string, number> = {
       RASCUNHO: 0,
@@ -253,9 +283,14 @@ export class ArticlesService {
 
   async list(
     query: ListArticlesQueryDto,
+    user: ActingUser,
   ): Promise<PageResult<unknown>> {
     const { skip, take } = toSkipTake(query);
     const where: Record<string, unknown> = {};
+    // Own articles only, unless editar_todos or ler_todos — see
+    // canSeeAllArticles(). Without it, artigos.ler used to mean "read
+    // literally everyone's drafts", which nobody had actually asked for.
+    if (!(await this.canSeeAllArticles(user))) where.authorId = user.id;
     if (query.status?.length) where.status = { in: query.status };
     if (query.category) {
       // Opt-in in the CMS — see includeDescendants on the DTO.

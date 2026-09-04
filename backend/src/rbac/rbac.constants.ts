@@ -46,6 +46,12 @@ export const MODULES: ModuleDef[] = [
     permissions: [
       { key: 'artigos.ler', label: 'Ler artigos', description: 'Visualizar artigos publicados' },
       { key: 'artigos.criar', label: 'Criar artigos', description: 'Criar e editar rascunhos' },
+      {
+        key: 'artigos.ler_todos',
+        label: 'Ver todos',
+        description:
+          'Ver a lista de artigos de todos os utilizadores, não só os próprios (sem poder editá-los)',
+      },
       { key: 'artigos.editar_proprios', label: 'Editar próprios', description: 'Editar apenas próprios artigos' },
       { key: 'artigos.editar_todos', label: 'Editar todos', description: 'Editar artigos de outros utilizadores' },
       { key: 'artigos.submeter', label: 'Submeter para revisão', description: 'Enviar rascunho para a fila de aprovação' },
@@ -309,6 +315,10 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, string[]> = {
   ],
   REVISOR: [
     'artigos.ler',
+    // Reviewing is inherently other people's work — a REVISOR with only
+    // editar_proprios would only ever see the pieces they wrote
+    // themselves, never the ones submitted for review by anyone else.
+    'artigos.ler_todos',
     'artigos.editar_proprios',
     'artigos.submeter',
     'comentarios.ver',
@@ -332,5 +342,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, string[]> = {
     'analytics.avancadas',
     'analytics.exportar',
     'artigos.ler',
+    // Analytics is across the whole corpus by nature — an ANALISTA
+    // limited to their own articles (they don't author any) would see
+    // an empty list instead of the numbers they're here to read.
+    'artigos.ler_todos',
   ],
 };

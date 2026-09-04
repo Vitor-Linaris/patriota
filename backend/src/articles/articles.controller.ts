@@ -45,18 +45,18 @@ export class ArticlesController {
   // ── Admin ─────────────────────────────────────────────────────────
   @Get('admin/articles')
   @RequirePermissions('artigos.ler')
-  list(@Query() query: ListArticlesQueryDto) {
-    return this.service.list(query);
+  list(@Query() query: ListArticlesQueryDto, @CurrentUser() user: AuthUser) {
+    return this.service.list(query, { id: user.id, role: user.role });
   }
 
-  // Counts across the WHOLE corpus, used by the stats row on
-  // /admin/artigos so the numbers don't reflect just the current
+  // Counts across the corpus THIS USER can see, used by the stats row
+  // on /admin/artigos so the numbers don't reflect just the current
   // pagination window. Note: placed BEFORE /:id so the static path
   // wins over the dynamic param.
   @Get('admin/articles/stats')
   @RequirePermissions('artigos.ler')
-  stats() {
-    return this.service.getStats();
+  stats(@CurrentUser() user: AuthUser) {
+    return this.service.getStats({ id: user.id, role: user.role });
   }
 
   /**

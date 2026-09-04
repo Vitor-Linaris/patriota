@@ -18,6 +18,8 @@ function makePrismaMock() {
       update: jest.fn(),
       delete: jest.fn(),
       count: jest.fn(),
+      groupBy: jest.fn(),
+      aggregate: jest.fn(),
     },
     category: { findUnique: jest.fn() },
   };
@@ -405,7 +407,10 @@ describe('ArticlesService', () => {
       prisma.article.findMany.mockResolvedValueOnce([]);
       prisma.article.count.mockResolvedValueOnce(0);
 
-      await service.list({ category: 'portugal' } as never);
+      await service.list({ category: 'portugal' } as never, {
+        id: 'u1',
+        role: 'SUPER_ADMIN',
+      });
 
       expect(prisma.article.findMany.mock.calls[0][0].where).toMatchObject({
         category: { slug: 'portugal' },
@@ -418,10 +423,10 @@ describe('ArticlesService', () => {
       prisma.article.findMany.mockResolvedValueOnce([]);
       prisma.article.count.mockResolvedValueOnce(0);
 
-      await service.list({
-        category: 'portugal',
-        includeDescendants: true,
-      } as never);
+      await service.list(
+        { category: 'portugal', includeDescendants: true } as never,
+        { id: 'u1', role: 'SUPER_ADMIN' },
+      );
 
       expect(prisma.article.findMany.mock.calls[0][0].where).toMatchObject({
         categoryId: { in: ['pt', 'ma'] },
@@ -433,14 +438,89 @@ describe('ArticlesService', () => {
       prisma.article.findMany.mockResolvedValueOnce([]);
       prisma.article.count.mockResolvedValueOnce(0);
 
-      await service.list({
-        category: 'portugal',
-        includeDescendants: true,
-      } as never);
+      await service.list(
+        { category: 'portugal', includeDescendants: true } as never,
+        { id: 'u1', role: 'SUPER_ADMIN' },
+      );
 
       expect(prisma.article.findMany.mock.calls[0][0].where).toMatchObject({
         category: { slug: 'portugal' },
       });
+    });
+
+    it('scopes to own articles without editar_todos or ler_todos', async () => {
+      rbac.getPermissionsForRole.mockResolvedValueOnce(['artigos.editar_proprios']);
+      prisma.article.findMany.mockResolvedValueOnce([]);
+      prisma.article.count.mockResolvedValueOnce(0);
+
+      await service.list({} as never, { id: 'u1', role: 'JORNALISTA' });
+
+      expect(prisma.article.findMany.mock.calls[0][0].where).toMatchObject({
+        authorId: 'u1',
+      });
+    });
+
+    it('does not scope to own articles with artigos.editar_todos', async () => {
+      rbac.getPermissionsForRole.mockResolvedValueOnce(['artigos.editar_todos']);
+      prisma.article.findMany.mockResolvedValueOnce([]);
+      prisma.article.count.mockResolvedValueOnce(0);
+
+      await service.list({} as never, { id: 'u1', role: 'EDITOR' });
+
+      expect(prisma.article.findMany.mock.calls[0][0].where).not.toHaveProperty(
+        'authorId',
+      );
+    });
+
+    it('does not scope to own articles with artigos.ler_todos', async () => {
+      rbac.getPermissionsForRole.mockResolvedValueOnce(['artigos.ler_todos']);
+      prisma.article.findMany.mockResolvedValueOnce([]);
+      prisma.article.count.mockResolvedValueOnce(0);
+
+      await service.list({} as never, { id: 'u1', role: 'REVISOR' });
+
+      expect(prisma.article.findMany.mock.calls[0][0].where).not.toHaveProperty(
+        'authorId',
+      );
+    });
+
+    it('never scopes SUPER_ADMIN, regardless of rbac', async () => {
+      prisma.article.findMany.mockResolvedValueOnce([]);
+      prisma.article.count.mockResolvedValueOnce(0);
+
+      await service.list({} as never, { id: 'u1', role: 'SUPER_ADMIN' });
+
+      expect(rbac.getPermissionsForRole).not.toHaveBeenCalled();
+      expect(prisma.article.findMany.mock.calls[0][0].where).not.toHaveProperty(
+        'authorId',
+      );
+    });
+  });
+
+  describe('getStats()', () => {
+    it('scopes to own articles without editar_todos or ler_todos', async () => {
+      rbac.getPermissionsForRole.mockResolvedValueOnce([]);
+      prisma.article.groupBy.mockResolvedValueOnce([]);
+      prisma.article.aggregate.mockResolvedValueOnce({ _sum: { views: null } });
+
+      await service.getStats({ id: 'u1', role: 'JORNALISTA' });
+
+      expect(prisma.article.groupBy.mock.calls[0][0].where).toEqual({
+        authorId: 'u1',
+      });
+      expect(prisma.article.aggregate.mock.calls[0][0].where).toEqual({
+        authorId: 'u1',
+      });
+    });
+
+    it('does not scope with artigos.ler_todos', async () => {
+      rbac.getPermissionsForRole.mockResolvedValueOnce(['artigos.ler_todos']);
+      prisma.article.groupBy.mockResolvedValueOnce([]);
+      prisma.article.aggregate.mockResolvedValueOnce({ _sum: { views: null } });
+
+      await service.getStats({ id: 'u1', role: 'ANALISTA' });
+
+      expect(prisma.article.groupBy.mock.calls[0][0].where).toEqual({});
     });
   });
 
