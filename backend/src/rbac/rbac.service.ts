@@ -15,6 +15,42 @@ import {
   Role,
 } from './rbac.constants';
 
+/**
+ * Drops permissions that are no longer in the catalogue.
+ *
+ * A key retired from MODULES stays behind in whatever RolePermissions
+ * rows already had it — nothing goes back to clean them. That was
+ * harmless for authorisation (a guard only ever asks for keys that
+ * exist), but it broke the permissions screen outright: the matrix
+ * handed the browser the stale keys, the browser sent them back on
+ * save, and updateRolePermissions() rejected the lot as unknown. The
+ * screen saves EVERY role on each click, so one stale row — publicidade
+ * .ver and publicidade.editar, on EDITOR_CHEFE — was enough to make
+ * every change to every role fail, with an error naming permissions the
+ * administrator had never touched.
+ *
+ * Filtered on the way OUT rather than accepted on the way in: refusing
+ * unknown keys on write is a real guard against typos and bad clients,
+ * and worth keeping. The bug was an API that served something it would
+ * not take back.
+ */
+function known(permissions: string[]): string[] {
+  return permissions.filter((p) => ALL_PERMISSIONS.includes(p));
+}
+
+/**
+ * The same, for the plan catalogue. Separate function rather than a
+ * parameter, for the reason updatePlanPermissions() already gives:
+ * sharing one check between the two catalogues is how
+ * "assinantes.ler_exclusivos" ends up validated against the staff list.
+ *
+ * No plan key has been retired yet, so this filters nothing today. It is
+ * here because the roles side above only became a bug the day one was.
+ */
+function knownPlan(permissions: string[]): string[] {
+  return permissions.filter((p) => ALL_PLAN_PERMISSIONS.includes(p));
+}
+
 export interface MatrixResponse {
   roles: { key: Role; label: string }[];
   modules: typeof MODULES;
@@ -117,7 +153,7 @@ export class RbacService implements OnModuleInit {
   async getPermissionsForRole(role: Role): Promise<string[]> {
     if (role === 'SUPER_ADMIN') return [...ALL_PERMISSIONS];
     const row = await this.prisma.rolePermissions.findUnique({ where: { role } });
-    return row?.permissions ?? DEFAULT_ROLE_PERMISSIONS[role];
+    return known(row?.permissions ?? DEFAULT_ROLE_PERMISSIONS[role]);
   }
 
   /**
@@ -136,7 +172,7 @@ export class RbacService implements OnModuleInit {
     const row = await this.prisma.planPermissions.findUnique({
       where: { plan },
     });
-    return row?.permissions ?? DEFAULT_PLAN_PERMISSIONS[plan];
+    return knownPlan(row?.permissions ?? DEFAULT_PLAN_PERMISSIONS[plan]);
   }
 
   async getMatrix(): Promise<MatrixResponse> {
@@ -146,8 +182,10 @@ export class RbacService implements OnModuleInit {
         r,
         r === 'SUPER_ADMIN'
           ? [...ALL_PERMISSIONS]
-          : rows.find((x) => x.role === r)?.permissions ??
-            DEFAULT_ROLE_PERMISSIONS[r],
+          : known(
+              rows.find((x) => x.role === r)?.permissions ??
+                DEFAULT_ROLE_PERMISSIONS[r],
+            ),
       ]),
     ) as Record<Role, string[]>;
 
@@ -163,8 +201,10 @@ export class RbacService implements OnModuleInit {
     const planCurrent = Object.fromEntries(
       PLAN_ORDER.map((p) => [
         p,
-        planRows.find((x) => x.plan === p)?.permissions ??
-          DEFAULT_PLAN_PERMISSIONS[p],
+        knownPlan(
+          planRows.find((x) => x.plan === p)?.permissions ??
+            DEFAULT_PLAN_PERMISSIONS[p],
+        ),
       ]),
     ) as Record<ReaderPlan, string[]>;
 
