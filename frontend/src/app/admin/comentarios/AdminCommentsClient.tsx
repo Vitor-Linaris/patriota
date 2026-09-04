@@ -273,10 +273,15 @@ export default function AdminCommentsClient({
                 />
 
                 <div className="min-w-0 flex-1">
-                  {/* Which article this is a comment ON — first thing in
-                      the card, styled as a heading rather than a footnote
-                      link, so it doesn't take reading the whole comment
-                      to know what it is about. */}
+                  {/* Three labelled fields — Artigo / Utilizador /
+                      Comentário — rather than three unlabelled lines that
+                      only read as what they are once you already know the
+                      layout. Same micro-label style as "Motivo" in
+                      DeleteCommentDialog, so the vocabulary matches across
+                      this screen. */}
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                    Artigo
+                  </p>
                   <div className="flex flex-wrap items-center gap-2">
                     <Link
                       href={`/artigo/${c.article.slug}#comentarios`}
@@ -292,7 +297,10 @@ export default function AdminCommentsClient({
                     )}
                   </div>
 
-                  <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
+                  <p className="mt-2.5 text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                    Utilizador
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
                     <span className="font-bold text-gray-800">
                       {c.reader.name ?? "Leitor"}
                     </span>
@@ -322,9 +330,12 @@ export default function AdminCommentsClient({
                     )}
                   </div>
 
+                  <p className="mt-2.5 text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                    Comentário
+                  </p>
                   {/* Plain text. Never dangerouslySetInnerHTML — the body
                       is reader-supplied. */}
-                  <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-gray-700">
+                  <p className="mt-0.5 whitespace-pre-line text-sm leading-relaxed text-gray-700">
                     {c.body}
                   </p>
 
