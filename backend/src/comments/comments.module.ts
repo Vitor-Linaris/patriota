@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { CommentsService } from './comments.service';
+import { CommentMailService } from './comment-mail.service';
 import { CommentsController } from './comments.controller';
 import { ReaderAuthModule } from '../reader-auth/reader-auth.module';
 import { ActivityLogModule } from '../activity-log/activity-log.module';
@@ -14,7 +15,7 @@ import { ActivityLogModule } from '../activity-log/activity-log.module';
  */
 @Module({
   imports: [ReaderAuthModule, ActivityLogModule],
-  providers: [CommentsService],
+  providers: [CommentsService, CommentMailService],
   controllers: [CommentsController],
   exports: [CommentsService],
 })

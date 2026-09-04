@@ -5,7 +5,9 @@ import AdminCommentsClient, {
   type CommentStats,
 } from "./AdminCommentsClient";
 
-const STATUSES = ["PENDENTE", "APROVADO", "REJEITADO", "SPAM"] as const;
+// REJEITADO/SPAM dropped — see the comment on TABS in
+// AdminCommentsClient.tsx.
+const STATUSES = ["PENDENTE", "APROVADO", "ELIMINADO"] as const;
 
 export default async function Page({
   searchParams,

@@ -7,12 +7,12 @@ import {
   approveCommentAction,
   bulkModerateAction,
   deleteCommentAction,
-  rejectCommentAction,
-  spamCommentAction,
+  permanentlyDeleteCommentAction,
   suspendReaderAction,
   unsuspendReaderAction,
 } from "./actions";
 import { BanReaderDialog } from "@/components/admin/BanReaderDialog";
+import { DeleteCommentDialog } from "@/components/admin/DeleteCommentDialog";
 
 export interface ModerationComment {
   id: string;
@@ -45,11 +45,16 @@ export interface CommentStats {
   REPORTADOS: number;
 }
 
+// REJEITADO/SPAM dropped from the tab bar on purpose — the newsroom only
+// wants Aprovar and Eliminar in the day-to-day queue. Comments already in
+// one of those two states from before this change keep their status
+// (nothing here migrates them) but are no longer reachable through a tab;
+// CommentStats still carries both counts for anyone who queries the API
+// directly.
 const TABS = [
   { key: "PENDENTE", label: "Pendentes" },
   { key: "APROVADO", label: "Aprovados" },
-  { key: "REJEITADO", label: "Rejeitados" },
-  { key: "SPAM", label: "Spam" },
+  { key: "ELIMINADO", label: "Eliminados" },
 ] as const;
 
 // timeZone pinned on both — see formatToday() in TopBar.tsx for why:
@@ -118,6 +123,7 @@ export default function AdminCommentsClient({
   const [banning, setBanning] = useState<ModerationComment["reader"] | null>(
     null,
   );
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(total / 20));
 
@@ -241,24 +247,6 @@ export default function AdminCommentsClient({
               >
                 Aprovar
               </button>
-              <button
-                type="button"
-                disabled={isPending}
-                onClick={() =>
-                  run(() => bulkModerateAction([...selected], "REJEITADO"))
-                }
-                className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
-              >
-                Rejeitar
-              </button>
-              <button
-                type="button"
-                disabled={isPending}
-                onClick={() => run(() => bulkModerateAction([...selected], "SPAM"))}
-                className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
-              >
-                Spam
-              </button>
             </div>
           )}
         </div>
@@ -335,6 +323,16 @@ export default function AdminCommentsClient({
                       </span>
                     )}
                   </div>
+
+                  {/* The reason typed into DeleteCommentDialog — also what
+                      was mailed to the author, so the moderator reviewing
+                      "Eliminados" sees the same words. */}
+                  {c.status === "ELIMINADO" && c.moderationNote && (
+                    <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
+                      <span className="font-bold">Motivo: </span>
+                      {c.moderationNote}
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex shrink-0 flex-col gap-1.5">
@@ -348,31 +346,30 @@ export default function AdminCommentsClient({
                       Aprovar
                     </button>
                   )}
-                  {canModerate && c.status !== "REJEITADO" && (
+                  {canDelete && c.status === "ELIMINADO" && (
                     <button
                       type="button"
                       disabled={isPending}
-                      onClick={() => run(() => rejectCommentAction(c.id))}
-                      className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+                      onClick={() => {
+                        if (
+                          !confirm(
+                            "Eliminar este comentário em definitivo? Esta acção não pode ser desfeita.",
+                          )
+                        ) {
+                          return;
+                        }
+                        run(() => permanentlyDeleteCommentAction(c.id));
+                      }}
+                      className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
                     >
-                      Rejeitar
+                      Eliminar em definitivo
                     </button>
                   )}
-                  {canModerate && c.status !== "SPAM" && (
+                  {canDelete && c.status !== "ELIMINADO" && (
                     <button
                       type="button"
                       disabled={isPending}
-                      onClick={() => run(() => spamCommentAction(c.id))}
-                      className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50"
-                    >
-                      Spam
-                    </button>
-                  )}
-                  {canDelete && (
-                    <button
-                      type="button"
-                      disabled={isPending}
-                      onClick={() => run(() => deleteCommentAction(c.id))}
+                      onClick={() => setDeleting(c.id)}
                       className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
                     >
                       Eliminar
@@ -420,6 +417,18 @@ export default function AdminCommentsClient({
             const id = banning.id;
             setBanning(null);
             run(() => suspendReaderAction(id, duration, opts));
+          }}
+        />
+      )}
+
+      {deleting && (
+        <DeleteCommentDialog
+          busy={isPending}
+          onCancel={() => setDeleting(null)}
+          onConfirm={(reason) => {
+            const id = deleting;
+            setDeleting(null);
+            run(() => deleteCommentAction(id, reason));
           }}
         />
       )}

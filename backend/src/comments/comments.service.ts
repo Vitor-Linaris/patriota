@@ -7,6 +7,7 @@ import {
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
+import { CommentMailService } from './comment-mail.service';
 import {
   toSkipTake,
   type PageQueryDto,
@@ -64,6 +65,7 @@ export class CommentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly activity: ActivityLogService,
+    private readonly mail: CommentMailService,
   ) {}
 
   /**
@@ -463,7 +465,8 @@ export class CommentsService {
         id: true,
         body: true,
         articleId: true,
-        article: { select: { title: true } },
+        article: { select: { title: true, slug: true } },
+        reader: { select: { email: true, name: true } },
       },
     });
     if (!existing) throw new NotFoundException('Comentário não encontrado.');
@@ -479,6 +482,28 @@ export class CommentsService {
     });
 
     await this.recount(existing.articleId);
+
+    // Fire-and-forget, same reason as everywhere else mail goes out from
+    // a moderation action: a slow ESP must not turn a successful approve
+    // or removal into a failed request for the moderator. Only these two
+    // statuses mail the author — REJEITADO/SPAM are queue-internal, not
+    // things the person who wrote the comment is told about.
+    if (status === 'APROVADO') {
+      void this.mail.sendApproved(
+        existing.reader.email,
+        existing.reader.name,
+        existing.article.title,
+        existing.article.slug,
+        existing.body,
+      );
+    } else if (status === 'ELIMINADO' && note) {
+      void this.mail.sendRemoved(
+        existing.reader.email,
+        existing.reader.name,
+        existing.article.title,
+        note,
+      );
+    }
 
     const action =
       status === 'APROVADO'
@@ -498,6 +523,58 @@ export class CommentsService {
     });
 
     return { id: commentId, status };
+  }
+
+  /**
+   * The actual row, gone — as opposed to moderate(id, 'ELIMINADO', …),
+   * which only hides it. Two guards, both load-bearing:
+   *
+   * - Must already be ELIMINADO. A moderator reaching for this button
+   *   directly would skip the reason-and-e-mail step that soft removal
+   *   requires — this makes that the only door in.
+   * - Must have no replies. `parentId` cascades: deleting a comment with
+   *   replies would take them with it, even ones still APROVADO, and
+   *   collapse the thread around the hole — exactly what the ELIMINADO
+   *   status exists to avoid (see purgeByReader() above). Such a comment
+   *   stays in "Eliminados" — hidden from the public thread already,
+   *   just not erased from the database.
+   */
+  async hardDelete(commentId: string, staff: ActingStaff) {
+    const existing = await this.prisma.comment.findUnique({
+      where: { id: commentId },
+      select: {
+        id: true,
+        status: true,
+        articleId: true,
+        body: true,
+        article: { select: { title: true } },
+        _count: { select: { replies: true } },
+      },
+    });
+    if (!existing) throw new NotFoundException('Comentário não encontrado.');
+    if (existing.status !== 'ELIMINADO') {
+      throw new BadRequestException(
+        'Elimine o comentário primeiro (com motivo) antes de o remover em definitivo.',
+      );
+    }
+    if (existing._count.replies > 0) {
+      throw new BadRequestException(
+        'Este comentário tem respostas e não pode ser eliminado em definitivo — apagá-lo apagaria as respostas com ele. Fica em "Eliminados".',
+      );
+    }
+
+    await this.prisma.comment.delete({ where: { id: commentId } });
+    await this.recount(existing.articleId);
+
+    void this.activity.record({
+      userId: staff.id,
+      action: 'comment_deleted_permanently',
+      targetType: 'comment',
+      targetId: commentId,
+      targetLabel: `${existing.article.title} — ${existing.body.slice(0, 60)}`,
+    });
+
+    return { id: commentId };
   }
 
   async bulkModerate(ids: string[], status: CommentStatus, staff: ActingStaff) {

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { MailerService } from '../mailer/mailer.service';
 import type { ReaderAuthProvider } from '../../generated/prisma/enums';
 import {
+  readerSuspendedTemplate,
   registrationAttemptTemplate,
   resetPasswordTemplate,
   socialAccountNoticeTemplate,
@@ -80,5 +81,18 @@ export class ReaderMailService {
       providers,
     });
     await this.mailer.send({ to, ...rendered, tag: 'reader-exists' });
+  }
+
+  /** `message` is suspensionMessage() from reader-suspension.ts. */
+  async sendSuspended(
+    to: string,
+    name: string | null,
+    message: string,
+  ): Promise<void> {
+    const rendered = readerSuspendedTemplate(await this.context(), {
+      name,
+      message,
+    });
+    await this.mailer.send({ to, ...rendered, tag: 'reader-suspended' });
   }
 }

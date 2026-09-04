@@ -26,6 +26,7 @@ import type { ReaderPrincipal } from '../reader-auth/reader-auth.guard';
 import {
   BulkModerateDto,
   CreateCommentDto,
+  DeleteCommentDto,
   ListCommentsQueryDto,
   ListMyCommentsQueryDto,
   ModerateCommentDto,
@@ -167,10 +168,32 @@ export class CommentsController {
     return this.comments.moderate(id, 'SPAM', user, dto.note);
   }
 
+  /**
+   * Soft removal — sets ELIMINADO with a mandatory reason, which is also
+   * mailed to the comment's author (see CommentsService.moderate). The
+   * comment stays in the database, in the "Eliminados" tab, until
+   * destroyPermanently() below is used on it.
+   */
   @Delete('admin/comments/:id')
   @RequirePermissions('comentarios.eliminar')
   @HttpCode(HttpStatus.OK)
-  destroy(@Param('id') id: string, @CurrentUser() user: AuthUser) {
-    return this.comments.moderate(id, 'ELIMINADO', user);
+  destroy(
+    @Param('id') id: string,
+    @Body() dto: DeleteCommentDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.comments.moderate(id, 'ELIMINADO', user, dto.reason);
+  }
+
+  /**
+   * Erases the row for good. Only reachable from "Eliminados" — see the
+   * guards in CommentsService.hardDelete for why a comment has to be
+   * ELIMINADO (and reply-free) first.
+   */
+  @Delete('admin/comments/:id/permanent')
+  @RequirePermissions('comentarios.eliminar')
+  @HttpCode(HttpStatus.OK)
+  destroyPermanently(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.comments.hardDelete(id, user);
   }
 }

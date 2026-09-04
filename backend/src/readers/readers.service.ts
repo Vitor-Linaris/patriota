@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { CommentsService, type ActingStaff } from '../comments/comments.service';
+import { ReaderMailService } from '../reader-auth/reader-mail.service';
 import {
   toSkipTake,
   type PageResult,
@@ -16,6 +17,7 @@ import type { Prisma } from '../../generated/prisma/client';
 import {
   isSuspended,
   suspensionEndsAt,
+  suspensionMessage,
   type SuspensionDuration,
 } from '../reader-auth/reader-suspension';
 import {
@@ -157,6 +159,7 @@ export class ReadersService {
     private readonly prisma: PrismaService,
     private readonly activity: ActivityLogService,
     private readonly comments: CommentsService,
+    private readonly readerMail: ReaderMailService,
   ) {}
 
   /**
@@ -452,6 +455,17 @@ export class ReadersService {
     const purged = opts.purgeComments
       ? await this.comments.purgeByReader(readerId, staff)
       : 0;
+
+    // Never awaited into the response — a slow or failing mail send must
+    // not turn a successful ban into a 500 for the moderator.
+    void this.readerMail.sendSuspended(
+      updated.email,
+      updated.name,
+      suspensionMessage({
+        suspendedUntil: updated.suspendedUntil,
+        suspensionReason: updated.suspensionReason,
+      }),
+    );
 
     const label = until
       ? `até ${until.toISOString().slice(0, 10)}`

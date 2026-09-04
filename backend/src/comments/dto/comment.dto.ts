@@ -74,6 +74,19 @@ export class ModerateCommentDto {
   note?: string;
 }
 
+/**
+ * The reason is required here, unlike ModerateCommentDto.note — it is
+ * both stored on the row and mailed to the comment's author, so an admin
+ * cannot remove a comment silently the way approving one is allowed to be.
+ */
+export class DeleteCommentDto {
+  @IsString()
+  @Length(3, 280, {
+    message: 'Escreva um motivo com pelo menos 3 caracteres.',
+  })
+  reason!: string;
+}
+
 export class BulkModerateDto {
   @IsArray()
   @ArrayNotEmpty()
