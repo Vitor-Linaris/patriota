@@ -42,6 +42,7 @@ import { FacebookOAuthStrategy } from './oauth/facebook.strategy';
   controllers: [ReaderAuthController, ReaderAccountController, OAuthController],
   exports: [
     ReaderAuthService,
+    ReaderMailService,
     ReaderTokenService,
     ReaderAuthGuard,
     OptionalReaderAuthGuard,

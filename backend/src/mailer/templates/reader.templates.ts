@@ -205,3 +205,37 @@ export function registrationAttemptTemplate(
     ].join('\n'),
   };
 }
+
+/**
+ * Sent the moment a moderator bans a reader.
+ *
+ * `message` is suspensionMessage() from reader-suspension.ts — the exact
+ * duration-and-reason text already shown to the reader when they next
+ * try to sign in, reused here so the mail and the sign-in page never
+ * say two different things about the same ban.
+ */
+export function readerSuspendedTemplate(
+  ctx: TemplateContext,
+  data: { name: string | null; message: string },
+): RenderedMail {
+  return {
+    subject: `A sua conta foi suspensa — ${ctx.siteName}`,
+    html: renderLayout({
+      siteName: ctx.siteName,
+      preheader: 'A sua conta foi suspensa por incumprimento das regras de comentários.',
+      heading: 'A sua conta foi suspensa',
+      bodyHtml: `
+        <p style="margin:0 0 12px;">${greeting(data.name)}</p>
+        <p style="margin:0;">${escapeHtml(data.message)}</p>`,
+      footerHtml:
+        'Se acha que isto foi um engano, pode responder a este e-mail.',
+    }),
+    text: [
+      greeting(data.name).replace(/<[^>]*>/g, ''),
+      '',
+      data.message,
+      '',
+      'Se acha que isto foi um engano, pode responder a este e-mail.',
+    ].join('\n'),
+  };
+}

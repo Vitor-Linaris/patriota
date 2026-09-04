@@ -33,19 +33,43 @@ export async function approveCommentAction(id: string, note?: string) {
   return post(`/admin/comments/${id}/approve`, note ? { note } : {});
 }
 
-export async function rejectCommentAction(id: string, note?: string) {
-  return post(`/admin/comments/${id}/reject`, note ? { note } : {});
-}
-
-export async function spamCommentAction(id: string) {
-  return post(`/admin/comments/${id}/spam`);
-}
-
-export async function deleteCommentAction(id: string): Promise<ActionResult> {
-  const res = await apiFetch(`/admin/comments/${id}`, { method: "DELETE" });
+/**
+ * Soft removal — sets the comment to "Eliminado" with a mandatory reason,
+ * which the API also mails to the comment's author. It is NOT permanent:
+ * see permanentlyDeleteCommentAction below.
+ */
+export async function deleteCommentAction(
+  id: string,
+  reason: string,
+): Promise<ActionResult> {
+  const res = await apiFetch(`/admin/comments/${id}`, {
+    method: "DELETE",
+    body: JSON.stringify({ reason }),
+  });
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { message?: string };
     return { ok: false as const, error: data.message ?? "Falha ao eliminar." };
+  }
+  await refresh();
+  return { ok: true as const };
+}
+
+/**
+ * Erases the row for good. Only offered from the "Eliminados" tab — the
+ * API refuses this on a comment that was not already soft-deleted first.
+ */
+export async function permanentlyDeleteCommentAction(
+  id: string,
+): Promise<ActionResult> {
+  const res = await apiFetch(`/admin/comments/${id}/permanent`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { message?: string };
+    return {
+      ok: false as const,
+      error: data.message ?? "Falha ao eliminar em definitivo.",
+    };
   }
   await refresh();
   return { ok: true as const };
@@ -83,9 +107,11 @@ export async function unsuspendReaderAction(
   return { ok: true as const };
 }
 
-export async function bulkModerateAction(
-  ids: string[],
-  status: "APROVADO" | "REJEITADO" | "SPAM" | "ELIMINADO",
-) {
+/**
+ * Only "APROVADO" is offered from the UI — a bulk "Eliminar" would need
+ * one reason per comment, which does not fit a multi-select action, so
+ * that stays a per-row flow (see deleteCommentAction).
+ */
+export async function bulkModerateAction(ids: string[], status: "APROVADO") {
   return post(`/admin/comments/bulk`, { ids, status });
 }
