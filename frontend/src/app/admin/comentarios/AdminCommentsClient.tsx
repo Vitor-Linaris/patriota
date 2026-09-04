@@ -273,7 +273,26 @@ export default function AdminCommentsClient({
                 />
 
                 <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                  {/* Which article this is a comment ON — first thing in
+                      the card, styled as a heading rather than a footnote
+                      link, so it doesn't take reading the whole comment
+                      to know what it is about. */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Link
+                      href={`/artigo/${c.article.slug}#comentarios`}
+                      target="_blank"
+                      className="text-sm font-bold text-[#0F2C6B] transition hover:underline"
+                    >
+                      {c.article.title}
+                    </Link>
+                    {c.moderatedBy && (
+                      <span className="text-xs text-gray-400">
+                        · moderado por {c.moderatedBy.name ?? "—"}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
                     <span className="font-bold text-gray-800">
                       {c.reader.name ?? "Leitor"}
                     </span>
@@ -308,21 +327,6 @@ export default function AdminCommentsClient({
                   <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-gray-700">
                     {c.body}
                   </p>
-
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                    <Link
-                      href={`/artigo/${c.article.slug}#comentarios`}
-                      target="_blank"
-                      className="font-medium text-[#0F2C6B] transition hover:underline"
-                    >
-                      {c.article.title}
-                    </Link>
-                    {c.moderatedBy && (
-                      <span className="text-gray-400">
-                        · moderado por {c.moderatedBy.name ?? "—"}
-                      </span>
-                    )}
-                  </div>
 
                   {/* The reason typed into DeleteCommentDialog — also what
                       was mailed to the author, so the moderator reviewing
