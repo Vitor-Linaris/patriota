@@ -94,6 +94,18 @@ export default async function AdminUsersPage({
     // don't shrink when paginating or searching.
     apiFetch("/admin/users/stats"),
   ]);
+  if (res.status === 403) {
+    return (
+      <AdminShell active="/admin/utilizadores">
+        <main className="bg-[#f6f7fb] p-8">
+          <h1 className="text-xl font-bold text-red-600">Sem acesso</h1>
+          <p className="mt-2 text-sm text-gray-500">
+            O seu papel não tem a permissão <code>utilizadores.ver</code>.
+          </p>
+        </main>
+      </AdminShell>
+    );
+  }
   const body = res.ok
     ? ((await res.json()) as PageResult<UserApi>)
     : { items: [], total: 0, page: 1, pageSize: PAGE_SIZE };

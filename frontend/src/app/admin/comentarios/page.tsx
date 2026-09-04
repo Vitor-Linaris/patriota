@@ -33,6 +33,18 @@ export default async function Page({
     apiFetch("/auth/me"),
   ]);
 
+  if (listRes.status === 403) {
+    return (
+      <AdminShell active="/admin/comentarios">
+        <main className="bg-[#f6f7fb] p-8">
+          <h1 className="text-xl font-bold text-red-600">Sem acesso</h1>
+          <p className="mt-2 text-sm text-gray-500">
+            O seu papel não tem a permissão <code>comentarios.ver</code>.
+          </p>
+        </main>
+      </AdminShell>
+    );
+  }
   const list = listRes.ok
     ? ((await listRes.json()) as { items: ModerationComment[]; total: number })
     : { items: [], total: 0 };

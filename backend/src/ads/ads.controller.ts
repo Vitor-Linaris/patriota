@@ -59,7 +59,14 @@ export class AdsController {
     private readonly media: MediaService,
   ) {}
 
+  // No decorator here meant no guard at all: RolesGuard only checks
+  // anything when @Roles or @RequirePermissions is present, so this
+  // endpoint was reachable by ANY authenticated staff member — a
+  // REVISOR or ANALISTA included — regardless of role. Same permission
+  // as update(), matching what the admin nav already gates this page
+  // behind.
   @Get('admin/ads')
+  @RequirePermissions('configuracoes.editar')
   list() {
     return this.service.list();
   }

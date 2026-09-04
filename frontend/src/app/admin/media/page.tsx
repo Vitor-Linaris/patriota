@@ -127,6 +127,18 @@ export default async function Page({
     // API refuses scope=todas to anyone else regardless.
     apiFetch("/auth/me"),
   ]);
+  if (res.status === 403) {
+    return (
+      <AdminShell active="/admin/media">
+        <main className="bg-[#f6f7fb] p-8">
+          <h1 className="text-xl font-bold text-red-600">Sem acesso</h1>
+          <p className="mt-2 text-sm text-gray-500">
+            O seu papel não tem a permissão <code>media.carregar</code>.
+          </p>
+        </main>
+      </AdminShell>
+    );
+  }
   const body = res.ok
     ? ((await res.json()) as PageResult<MediaApi> & { quota?: MediaQuota })
     : {

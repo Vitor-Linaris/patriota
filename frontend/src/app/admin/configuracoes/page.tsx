@@ -83,6 +83,18 @@ export default async function Page() {
     // JSON blob goes to everybody with configuracoes.aceder.
     apiFetch("/admin/settings/mailer"),
   ]);
+  if (res.status === 403) {
+    return (
+      <AdminShell active="/admin/configuracoes">
+        <main className="bg-[#f6f7fb] p-8">
+          <h1 className="text-xl font-bold text-red-600">Sem acesso</h1>
+          <p className="mt-2 text-sm text-gray-500">
+            O seu papel não tem a permissão <code>configuracoes.aceder</code>.
+          </p>
+        </main>
+      </AdminShell>
+    );
+  }
   const data = res.ok
     ? ((await res.json()) as Partial<SettingsBundle>)
     : {};
