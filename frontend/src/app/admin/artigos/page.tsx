@@ -102,6 +102,7 @@ function toAdminArticle(a: ArticleApi): AdminArticle {
     categoryId: a.categoryId,
     categoryName: a.category?.name ?? "—",
     categoryColor: a.category?.color ?? "#6b7280",
+    authorId: a.author?.id ?? "",
     authorName: a.author?.name ?? a.author?.email ?? "—",
   };
 }
@@ -171,6 +172,18 @@ export default async function AdminArticlesPage({
     // filters — fixes "Publicados: 20" turning into "12" on page 2.
     apiFetch("/admin/articles/stats"),
   ]);
+  if (articlesRes.status === 403) {
+    return (
+      <AdminShell active="/admin/artigos">
+        <main className="bg-[#f6f7fb] p-8">
+          <h1 className="text-xl font-bold text-red-600">Sem acesso</h1>
+          <p className="mt-2 text-sm text-gray-500">
+            O seu papel não tem a permissão <code>artigos.ler</code>.
+          </p>
+        </main>
+      </AdminShell>
+    );
+  }
   const articlesBody = articlesRes.ok
     ? ((await articlesRes.json()) as PageResult<ArticleApi>)
     : { items: [], total: 0, page: 1, pageSize: PAGE_SIZE };
@@ -186,6 +199,19 @@ export default async function AdminArticlesPage({
   const canApprove =
     me?.role === "SUPER_ADMIN" ||
     me?.permissions?.includes("artigos.aprovar") ||
+    false;
+  // Mirrors assertCanEdit() in articles.service.ts: SUPER_ADMIN and
+  // editar_todos may edit anyone's piece; editar_proprios only the
+  // author's own. Both gate the row's "Editar" button so it never
+  // offers something the backend will then refuse with a 403.
+  const canEditAll =
+    me?.role === "SUPER_ADMIN" ||
+    me?.permissions?.includes("artigos.editar_todos") ||
+    false;
+  const canEditOwn = me?.permissions?.includes("artigos.editar_proprios") || false;
+  const canDelete =
+    me?.role === "SUPER_ADMIN" ||
+    me?.permissions?.includes("artigos.eliminar") ||
     false;
   const totalPages = Math.max(1, Math.ceil(articlesBody.total / PAGE_SIZE));
   const stats = statsRes.ok
@@ -230,6 +256,10 @@ export default async function AdminArticlesPage({
         categories={categories}
         canPublish={canPublish}
         canApprove={canApprove}
+        canEditAll={canEditAll}
+        canEditOwn={canEditOwn}
+        canDelete={canDelete}
+        myUserId={me?.id ?? ""}
         initialEditArticle={initialEditArticle}
       />
     </AdminShell>

@@ -48,9 +48,17 @@ const LEVEL_LABEL = ["Categoria", "Subcategoria", "Tópico", "Subtópico"];
 
 interface Props {
   initial: TreeNode[];
+  canCreate: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
 }
 
-export default function AdminCategoriesClient({ initial }: Props) {
+export default function AdminCategoriesClient({
+  initial,
+  canCreate,
+  canEdit,
+  canDelete,
+}: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -247,13 +255,15 @@ export default function AdminCategoriesClient({ initial }: Props) {
             Até {MAX_DEPTH + 1} níveis.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setNewParent(null)}
-          className="shrink-0 rounded-lg bg-[#0F2C6B] px-5 py-2 text-sm font-bold text-white transition-colors hover:bg-[#1A3A7A]"
-        >
-          + Nova categoria
-        </button>
+        {canCreate && (
+          <button
+            type="button"
+            onClick={() => setNewParent(null)}
+            className="shrink-0 rounded-lg bg-[#0F2C6B] px-5 py-2 text-sm font-bold text-white transition-colors hover:bg-[#1A3A7A]"
+          >
+            + Nova categoria
+          </button>
+        )}
       </div>
 
       {error && (
@@ -319,6 +329,9 @@ export default function AdminCategoriesClient({ initial }: Props) {
                     )
                   }
                   onAddChild={() => setNewParent(cat)}
+                  canCreate={canCreate}
+                  canEdit={canEdit}
+                  canDelete={canDelete}
                   collapsible={hasChildren(items, cat.id)}
                   collapsed={collapsed.has(cat.id)}
                   onToggleCollapse={() => toggleCollapse(cat.id)}
@@ -378,6 +391,9 @@ function CategoryRow({
   onToggleVisible,
   onToggleFollowable,
   onAddChild,
+  canCreate,
+  canEdit,
+  canDelete,
   collapsible,
   collapsed,
   onToggleCollapse,
@@ -395,6 +411,9 @@ function CategoryRow({
   onToggleVisible: () => void;
   onToggleFollowable: () => void;
   onAddChild: () => void;
+  canCreate: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
   collapsible: boolean;
   collapsed: boolean;
   onToggleCollapse: () => void;
@@ -550,7 +569,7 @@ function CategoryRow({
                   : "Escondida do site. Clique para mostrar."
               }
               onClick={onToggleVisible}
-              disabled={pending}
+              disabled={pending || !canEdit}
               className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[#0F2C6B]/30 disabled:opacity-50 ${
                 cat.visible
                   ? "border-green-600 bg-green-500"
@@ -601,7 +620,7 @@ function CategoryRow({
                 // this says, so the switch would be claiming something
                 // untrue. Disabled rather than hidden: it keeps its place
                 // and the tooltip explains why.
-                disabled={pending || !cat.visible}
+                disabled={pending || !cat.visible || !canEdit}
                 className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[#0F2C6B]/30 disabled:opacity-40 ${
                   cat.followable && cat.visible
                     ? "border-amber-600 bg-amber-500"
@@ -640,35 +659,41 @@ function CategoryRow({
             </>
           ) : (
             <>
-              <button
-                type="button"
-                onClick={onAddChild}
-                disabled={atMaxDepth}
-                title={
-                  atMaxDepth
-                    ? `Profundidade máxima de ${MAX_DEPTH + 1} níveis atingida`
-                    : `Nova subcategoria em ${cat.name}`
-                }
-                className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs font-semibold text-gray-500 hover:border-[#0F2C6B]/30 hover:text-[#0F2C6B] disabled:cursor-not-allowed disabled:opacity-30"
-              >
-                + sub
-              </button>
-              <button
-                type="button"
-                onClick={onStartEdit}
-                className="rounded-lg border border-[#0F2C6B]/20 px-2.5 py-1.5 text-xs font-semibold text-[#0F2C6B] hover:bg-[#0F2C6B]/5"
-              >
-                Editar
-              </button>
-              <button
-                type="button"
-                onClick={onDelete}
-                disabled={pending}
-                aria-label={`Eliminar ${cat.name}`}
-                className="rounded-lg border border-gray-100 px-2 py-1.5 text-xs text-gray-300 transition-colors hover:border-red-200 hover:text-red-600"
-              >
-                ✕
-              </button>
+              {canCreate && (
+                <button
+                  type="button"
+                  onClick={onAddChild}
+                  disabled={atMaxDepth}
+                  title={
+                    atMaxDepth
+                      ? `Profundidade máxima de ${MAX_DEPTH + 1} níveis atingida`
+                      : `Nova subcategoria em ${cat.name}`
+                  }
+                  className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs font-semibold text-gray-500 hover:border-[#0F2C6B]/30 hover:text-[#0F2C6B] disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  + sub
+                </button>
+              )}
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={onStartEdit}
+                  className="rounded-lg border border-[#0F2C6B]/20 px-2.5 py-1.5 text-xs font-semibold text-[#0F2C6B] hover:bg-[#0F2C6B]/5"
+                >
+                  Editar
+                </button>
+              )}
+              {canDelete && (
+                <button
+                  type="button"
+                  onClick={onDelete}
+                  disabled={pending}
+                  aria-label={`Eliminar ${cat.name}`}
+                  className="rounded-lg border border-gray-100 px-2 py-1.5 text-xs text-gray-300 transition-colors hover:border-red-200 hover:text-red-600"
+                >
+                  ✕
+                </button>
+              )}
             </>
           )}
         </div>

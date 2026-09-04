@@ -73,6 +73,7 @@ export interface AdminArticle {
   categoryId: string;
   categoryName: string;
   categoryColor: string;
+  authorId: string;
   authorName: string;
 }
 
@@ -959,6 +960,10 @@ export default function AdminArticlesClient({
   categories,
   canPublish,
   canApprove,
+  canEditAll,
+  canEditOwn,
+  canDelete,
+  myUserId,
   initialEditArticle,
 }: {
   initialArticles: AdminArticle[];
@@ -983,6 +988,13 @@ export default function AdminArticlesClient({
   categories: CategoryOption[];
   canPublish: boolean;
   canApprove: boolean;
+  /** artigos.editar_todos (or SUPER_ADMIN) — may edit anyone's piece. */
+  canEditAll: boolean;
+  /** artigos.editar_proprios — may edit only articles they authored. */
+  canEditOwn: boolean;
+  canDelete: boolean;
+  /** Current user's id, to test authorship for canEditOwn. */
+  myUserId: string;
   /** When the URL carries `?edit=<id>`, the server pre-loaded that
    *  article so we can open the editor on first render. Deep links
    *  from /admin/media use this. */
@@ -1485,14 +1497,16 @@ export default function AdminArticlesClient({
             >
               Arquivar
             </button>
-            <button
-              type="button"
-              onClick={deleteSelected}
-              disabled={pending}
-              className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-50"
-            >
-              Eliminar
-            </button>
+            {canDelete && (
+              <button
+                type="button"
+                onClick={deleteSelected}
+                disabled={pending}
+                className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+              >
+                Eliminar
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setSelected(new Set())}
@@ -1543,6 +1557,11 @@ export default function AdminArticlesClient({
             {filtered.map((a) => {
               const ui = API_TO_UI[a.status];
               const sc = STATUS_CONFIG[ui];
+              // Mirrors assertCanEdit() in articles.service.ts, so
+              // "Editar" never appears for a piece the backend would
+              // then refuse with 403.
+              const canEditRow =
+                canEditAll || (canEditOwn && a.authorId === myUserId);
               return (
                 <tr
                   key={a.id}
@@ -1691,21 +1710,25 @@ export default function AdminArticlesClient({
                       >
                         Ver
                       </a>
-                      <button
-                        type="button"
-                        onClick={() => openEdit(a)}
-                        className="whitespace-nowrap rounded-lg border border-[#0F2C6B]/20 px-2.5 py-1.5 text-[11px] font-semibold text-[#0F2C6B] transition-colors hover:bg-[#0F2C6B]/5"
-                      >
-                        Editar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => deleteOne(a.id)}
-                        disabled={pending}
-                        className="rounded-lg border border-gray-100 px-2.5 py-1.5 text-[11px] text-gray-400 transition-colors hover:border-red-200 hover:text-red-600 disabled:opacity-50"
-                      >
-                        ✕
-                      </button>
+                      {canEditRow && (
+                        <button
+                          type="button"
+                          onClick={() => openEdit(a)}
+                          className="whitespace-nowrap rounded-lg border border-[#0F2C6B]/20 px-2.5 py-1.5 text-[11px] font-semibold text-[#0F2C6B] transition-colors hover:bg-[#0F2C6B]/5"
+                        >
+                          Editar
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button
+                          type="button"
+                          onClick={() => deleteOne(a.id)}
+                          disabled={pending}
+                          className="rounded-lg border border-gray-100 px-2.5 py-1.5 text-[11px] text-gray-400 transition-colors hover:border-red-200 hover:text-red-600 disabled:opacity-50"
+                        >
+                          ✕
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

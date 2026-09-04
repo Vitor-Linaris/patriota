@@ -42,9 +42,13 @@ export default async function Page({
   const me = meRes.ok
     ? ((await meRes.json()) as { role?: string; permissions?: string[] })
     : {};
+  const isSuperAdmin = me.role === "SUPER_ADMIN";
   const canBan =
-    me.role === "SUPER_ADMIN" ||
-    (me.permissions ?? []).includes("leitores.suspender");
+    isSuperAdmin || (me.permissions ?? []).includes("leitores.suspender");
+  const canModerate =
+    isSuperAdmin || (me.permissions ?? []).includes("comentarios.aprovar");
+  const canDelete =
+    isSuperAdmin || (me.permissions ?? []).includes("comentarios.eliminar");
 
   return (
     <AdminShell active="/admin/comentarios">
@@ -56,6 +60,8 @@ export default async function Page({
         currentPage={currentPage}
         query={q ?? ""}
         canBan={canBan}
+        canModerate={canModerate}
+        canDelete={canDelete}
       />
     </AdminShell>
   );

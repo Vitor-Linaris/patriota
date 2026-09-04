@@ -84,6 +84,7 @@ export default function AdminMediaClient({
   searchQuery,
   scope,
   canSeeAll,
+  canDelete,
 }: {
   initialItems: MediaItem[];
   /** Items in the CURRENT page + search filter. */
@@ -101,6 +102,8 @@ export default function AdminMediaClient({
   scope: "minha" | "todas";
   /** Whether "toda a equipa" is on offer at all — SUPER_ADMIN only. */
   canSeeAll: boolean;
+  /** media.eliminar. The service also checks ownership server-side. */
+  canDelete: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -1027,13 +1030,15 @@ export default function AdminMediaClient({
                   label="Copiar URL"
                   className="flex-1 rounded-lg border border-[#0F2C6B]/20 py-2 text-xs font-bold text-[#0F2C6B] transition-colors hover:bg-[#0F2C6B]/5 disabled:opacity-100"
                 />
-                <button
-                  type="button"
-                  onClick={() => setDeleteConfirm(selected.id)}
-                  className="rounded-lg border border-red-100 px-3 py-2 text-xs font-bold text-red-500 transition-colors hover:bg-red-50"
-                >
-                  🗑
-                </button>
+                {canDelete && (
+                  <button
+                    type="button"
+                    onClick={() => setDeleteConfirm(selected.id)}
+                    className="rounded-lg border border-red-100 px-3 py-2 text-xs font-bold text-red-500 transition-colors hover:bg-red-50"
+                  >
+                    🗑
+                  </button>
+                )}
               </div>
             </div>
           </div>

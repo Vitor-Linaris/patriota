@@ -140,9 +140,11 @@ export default async function Page({
     ? ((await totalRes.json()) as PageResult<MediaApi>).total
     : body.total;
   const me = meRes.ok
-    ? ((await meRes.json()) as { role?: string })
+    ? ((await meRes.json()) as { role?: string; permissions?: string[] })
     : {};
   const canSeeAll = me.role === "SUPER_ADMIN";
+  const canDelete =
+    me.role === "SUPER_ADMIN" || (me.permissions ?? []).includes("media.eliminar");
   const items = body.items.map(toMediaItem);
   const totalPages = Math.max(1, Math.ceil(body.total / PAGE_SIZE));
   return (
@@ -157,6 +159,7 @@ export default async function Page({
         searchQuery={q}
         scope={scope === "todas" ? "todas" : "minha"}
         canSeeAll={canSeeAll}
+        canDelete={canDelete}
       />
     </AdminShell>
   );
