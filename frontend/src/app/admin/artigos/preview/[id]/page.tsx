@@ -6,6 +6,7 @@ import { EssentialBox } from "@/components/article/EssentialBox";
 import { ContextBox } from "@/components/article/ContextBox";
 import { Blockquote } from "@/components/article/Blockquote";
 import { AuthorBio } from "@/components/article/AuthorBio";
+import { VideoEmbed } from "@/components/article/VideoEmbed";
 import { apiFetch } from "@/lib/api";
 import { imageVariant } from "@/lib/images";
 import { adminMediaUrl } from "@/lib/media-preview";
@@ -39,6 +40,7 @@ interface ArticlePreview {
   context: { columns: { label: string; body: string }[] } | null;
   pullQuote: { quote: string; cite: string } | null;
   coverImageUrl: string | null;
+  videoEmbedUrl: string | null;
   scheduledAt: string | null;
   publishedAt: string | null;
   rejectionReason: string | null;
@@ -266,6 +268,10 @@ export default async function ArticlePreviewPage({
                   className="aspect-[16/9] w-full rounded-lg object-cover"
                 />
               </figure>
+            )}
+
+            {article.videoEmbedUrl && (
+              <VideoEmbed url={article.videoEmbedUrl} />
             )}
 
             {article.content ? (

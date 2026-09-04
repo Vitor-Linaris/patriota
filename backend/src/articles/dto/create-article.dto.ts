@@ -8,10 +8,12 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  IsUrl,
   Length,
   Matches,
   Max,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -114,6 +116,25 @@ export class CreateArticleDto {
   @IsOptional()
   @IsString()
   coverImageUrl?: string;
+
+  /**
+   * A partner's video page or a direct file URL, embedded below the cover
+   * image. See VideoEmbed.tsx on the frontend for how the URL shape is
+   * turned into a player — this only checks that it IS a URL.
+   *
+   * @ValidateIf, not @IsOptional() alone: that only skips validation for
+   * null/undefined, not "" — and "" is exactly what clearing the field
+   * sends. @IsUrl() would otherwise refuse the very request that clears
+   * it, the same way coverImageUrl is allowed to clear to "".
+   */
+  @IsOptional()
+  @ValidateIf((o: CreateArticleDto) => !!o.videoEmbedUrl)
+  @IsUrl(
+    { protocols: ['http', 'https'], require_protocol: true },
+    { message: 'Introduza um URL de vídeo válido (http:// ou https://).' },
+  )
+  @Length(0, 2000)
+  videoEmbedUrl?: string;
 
   @IsOptional()
   @IsDateString()

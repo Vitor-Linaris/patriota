@@ -16,6 +16,7 @@ import { ShareButtons, ICON_BUTTON } from "@/components/article/ShareButtons";
 import { ReaderActions } from "@/components/article/ReaderActions";
 import { ArticleComments } from "@/components/article/ArticleComments";
 import { Paywall } from "@/components/article/Paywall";
+import { VideoEmbed } from "@/components/article/VideoEmbed";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { getAncestors } from "@/lib/categories";
 import { FEATURES } from "@/lib/features";
@@ -237,6 +238,10 @@ export default async function ArticlePage({
                     className="aspect-[16/9] w-full rounded-lg object-cover"
                   />
                 </figure>
+              )}
+
+              {article.videoEmbedUrl && (
+                <VideoEmbed url={article.videoEmbedUrl} />
               )}
 
               {/* Body.

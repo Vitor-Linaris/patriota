@@ -100,6 +100,7 @@ const PUBLIC_ARTICLE_SELECT = {
 const PUBLIC_ARTICLE_DETAIL_SELECT = {
   ...PUBLIC_ARTICLE_SELECT,
   content: true,
+  videoEmbedUrl: true,
   author: { select: { id: true, name: true } },
 } as const;
 
@@ -363,6 +364,7 @@ export class ArticlesService {
           metaTitle: dto.metaTitle,
           metaDescription: dto.metaDescription,
           coverImageUrl: dto.coverImageUrl,
+          videoEmbedUrl: dto.videoEmbedUrl,
           scheduledAt: dto.scheduledAt ? new Date(dto.scheduledAt) : null,
           categoryId: dto.categoryId,
           authorId: user.id,
@@ -462,6 +464,7 @@ export class ArticlesService {
     'metaTitle',
     'metaDescription',
     'coverImageUrl',
+    'videoEmbedUrl',
     'categoryId',
   ] as const;
 

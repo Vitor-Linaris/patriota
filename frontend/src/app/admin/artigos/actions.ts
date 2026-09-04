@@ -33,6 +33,8 @@ export interface ArticleFormPayload {
   metaTitle?: string;
   metaDescription?: string;
   coverImageUrl?: string;
+  /** A partner's video page, or a direct file URL. See VideoEmbed.tsx. */
+  videoEmbedUrl?: string;
   /** ISO 8601 (UTC). Required when status === "AGENDADO". */
   scheduledAt?: string;
 }
