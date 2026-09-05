@@ -2,6 +2,7 @@ import { ConflictException, ForbiddenException, Injectable, Logger } from '@nest
 import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ReaderTokenService } from '../reader-token.service';
+import { ReaderMailService } from '../reader-mail.service';
 import type { ReaderAuthProvider } from '../../../generated/prisma/enums';
 import {
   isSuspended,
@@ -28,6 +29,7 @@ export class OAuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tokens: ReaderTokenService,
+    private readonly mail: ReaderMailService,
   ) {}
 
   /**
@@ -194,6 +196,12 @@ export class OAuthService {
     });
 
     this.logger.log(`Created reader ${created.id} via ${profile.provider}.`);
+    // Fire-and-forget, same as every other mail dispatched from a
+    // moderation or auth action: a slow ESP must not turn a successful
+    // sign-in into a failed one. Only THIS branch — never the existing-
+    // identity login above, and never the account-linking branch, which
+    // is an existing reader gaining a second way in, not a new one.
+    void this.mail.sendWelcome(email, profile.name);
     return { accessToken: await this.tokens.sign(created) };
   }
 

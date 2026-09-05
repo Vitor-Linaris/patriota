@@ -72,13 +72,22 @@ export class ReaderAuthController {
     return this.auth.login(dto.email, dto.password);
   }
 
-  /** Consumes the link and returns a session, so the reader lands logged in. */
+  /**
+   * Consumes the link and returns a session, so the reader lands logged
+   * in. Also the moment a normal-signup account is welcomed — see the
+   * comment on welcomeTemplate() for why it lives here and not at
+   * register(). The token is single-use (ReaderAuthService.verifyEmail
+   * throws on a re-used or already-verified one), so this fires exactly
+   * once per account.
+   */
   @ReaderPublic()
   @Post('public/reader/verify-email')
   @Throttle({ default: { ttl: 3_600_000, limit: 20 } })
   @HttpCode(HttpStatus.OK)
-  verifyEmail(@Body() dto: VerifyEmailDto) {
-    return this.auth.verifyEmail(dto.token);
+  async verifyEmail(@Body() dto: VerifyEmailDto) {
+    const session = await this.auth.verifyEmail(dto.token);
+    await this.mail.sendWelcome(session.reader.email, session.reader.name);
+    return session;
   }
 
   @ReaderPublic()

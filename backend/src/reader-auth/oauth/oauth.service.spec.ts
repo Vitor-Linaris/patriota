@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { ConflictException } from '@nestjs/common';
 import { OAuthService, type OAuthProfile } from './oauth.service';
 import { ReaderTokenService } from '../reader-token.service';
+import { ReaderMailService } from '../reader-mail.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
 function makePrismaMock() {
@@ -27,9 +28,11 @@ function profile(over: Partial<OAuthProfile> = {}): OAuthProfile {
 describe('OAuthService', () => {
   let service: OAuthService;
   let prisma: ReturnType<typeof makePrismaMock>;
+  let mail: { sendWelcome: jest.Mock };
 
   beforeEach(async () => {
     prisma = makePrismaMock();
+    mail = { sendWelcome: jest.fn() };
     const moduleRef = await Test.createTestingModule({
       providers: [
         OAuthService,
@@ -38,6 +41,7 @@ describe('OAuthService', () => {
           provide: ReaderTokenService,
           useValue: { sign: jest.fn().mockResolvedValue('signed.jwt') },
         },
+        { provide: ReaderMailService, useValue: mail },
       ],
     }).compile();
     service = moduleRef.get(OAuthService);
@@ -55,6 +59,9 @@ describe('OAuthService', () => {
       expect(out.accessToken).toBe('signed.jwt');
       expect(prisma.reader.findUnique).not.toHaveBeenCalled();
       expect(prisma.reader.create).not.toHaveBeenCalled();
+      // A login is not a new account — welcoming them again would be
+      // exactly the "why am I getting this" mail this design avoids.
+      expect(mail.sendWelcome).not.toHaveBeenCalled();
     });
 
     it('refuses a suspended reader, saying so', async () => {
@@ -119,6 +126,9 @@ describe('OAuthService', () => {
 
       expect(out.accessToken).toBe('signed.jwt');
       expect(prisma.$transaction).toHaveBeenCalled();
+      // Linking is an EXISTING reader gaining a second way in, not a new
+      // account — no welcome mail for it.
+      expect(mail.sendWelcome).not.toHaveBeenCalled();
     });
 
     it('Google refuses when GOOGLE has not verified the address', async () => {
@@ -224,6 +234,14 @@ describe('OAuthService', () => {
         ConflictException,
       );
       expect(prisma.reader.create).not.toHaveBeenCalled();
+    });
+
+    it('welcomes the reader — the one branch that creates a new account', async () => {
+      await service.signIn(profile({ email: 'nova@example.com', name: 'Nova' }));
+      expect(mail.sendWelcome).toHaveBeenCalledWith(
+        'nova@example.com',
+        'Nova',
+      );
     });
   });
 

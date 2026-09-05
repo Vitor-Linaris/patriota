@@ -7,6 +7,7 @@ import {
   resetPasswordTemplate,
   socialAccountNoticeTemplate,
   verifyEmailTemplate,
+  welcomeTemplate,
   type TemplateContext,
 } from '../mailer/templates/reader.templates';
 
@@ -81,6 +82,17 @@ export class ReaderMailService {
       providers,
     });
     await this.mailer.send({ to, ...rendered, tag: 'reader-exists' });
+  }
+
+  /**
+   * Sent once per account, at whichever moment actually finishes
+   * creating it — see the comment on welcomeTemplate() for why that is
+   * verifyEmail() for a normal signup, but account-creation itself for
+   * Google/Facebook.
+   */
+  async sendWelcome(to: string, name: string | null): Promise<void> {
+    const rendered = welcomeTemplate(await this.context(), { name });
+    await this.mailer.send({ to, ...rendered, tag: 'reader-welcome' });
   }
 
   /** `message` is suspensionMessage() from reader-suspension.ts. */
