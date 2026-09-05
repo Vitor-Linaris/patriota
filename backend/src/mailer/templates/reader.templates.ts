@@ -207,6 +207,59 @@ export function registrationAttemptTemplate(
 }
 
 /**
+ * Sent the moment an account becomes real — not at registration, and not
+ * at the OAuth callback either, but at whichever of those two moments
+ * actually finishes creating a usable reader:
+ *
+ *   - Normal signup: register() only starts the process — the address is
+ *     unproven until verifyEmail() succeeds, so THAT is the account's
+ *     real birth. Sending this alongside the verification mail instead
+ *     would put two mails in the same inbox at once, one of them about
+ *     an account that cannot do anything yet.
+ *   - Google/Facebook: there is no separate verification step — the
+ *     provider already vouched for the address — so this goes out the
+ *     moment OAuthService creates the row, and only on that branch
+ *     (never on an existing-identity login or an account-linking one).
+ */
+export function welcomeTemplate(
+  ctx: TemplateContext,
+  data: { name: string | null },
+): RenderedMail {
+  const url = `${ctx.siteUrl}/conta`;
+  return {
+    subject: `Bem-vindo(a) ao ${ctx.siteName}`,
+    html: renderLayout({
+      siteName: ctx.siteName,
+      preheader: 'A sua conta está pronta — siga temas, guarde notícias, comente.',
+      heading: `Bem-vindo(a) ao ${ctx.siteName}`,
+      bodyHtml: `
+        <p style="margin:0 0 12px;">${greeting(data.name)}</p>
+        <p style="margin:0 0 12px;">
+          A sua conta está activa. A partir de agora pode:
+        </p>
+        <ul style="margin:0 0 12px;padding-left:20px;color:#334155;">
+          <li style="margin-bottom:6px;">Seguir as categorias que lhe interessam e receber um aviso quando sair notícia nova</li>
+          <li style="margin-bottom:6px;">Guardar notícias para ler mais tarde</li>
+          <li style="margin-bottom:6px;">Comentar nas notícias</li>
+        </ul>
+        <p style="margin:0;">Tudo isto fica reunido na sua área de conta.</p>`,
+      cta: { label: 'Ir para a minha conta', url },
+    }),
+    text: [
+      greeting(data.name).replace(/<[^>]*>/g, ''),
+      '',
+      'A sua conta está activa. A partir de agora pode:',
+      '- Seguir as categorias que lhe interessam e receber um aviso quando sair notícia nova',
+      '- Guardar notícias para ler mais tarde',
+      '- Comentar nas notícias',
+      '',
+      'A sua área de conta:',
+      url,
+    ].join('\n'),
+  };
+}
+
+/**
  * Sent the moment a moderator bans a reader.
  *
  * `message` is suspensionMessage() from reader-suspension.ts — the exact
