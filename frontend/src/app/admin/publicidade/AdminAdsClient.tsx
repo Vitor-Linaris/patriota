@@ -8,6 +8,7 @@ import { Toggle } from "@/components/admin/Toggle";
 import { parseAdSize } from "@/lib/ads";
 import { deleteAdImageAction } from "./actions";
 import { adminMediaUrl } from "@/lib/media-preview";
+import { ScriptedHtml } from "@/components/ads/ScriptedHtml";
 
 const pageGroups = ["Homepage", "Artigo", "Categoria"];
 
@@ -37,11 +38,15 @@ function PreviewPanel({ ad }: { ad: Ad }) {
     : { aspectRatio: "16 / 9" };
 
   if (ad.type === "html" && ad.htmlCode) {
+    // ScriptedHtml so the preview matches what the public site
+    // actually does (see AdSlot.tsx / ScriptedHtml.tsx) — an admin
+    // checking whether their AdSense code works should see the real
+    // behaviour, not a version that silently skips every <script>.
     return (
-      <div
+      <ScriptedHtml
+        html={ad.htmlCode}
         style={aspectStyle}
         className="w-full overflow-hidden rounded-lg border border-gray-200 bg-white"
-        dangerouslySetInnerHTML={{ __html: ad.htmlCode }}
       />
     );
   }
