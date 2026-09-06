@@ -373,7 +373,10 @@ export default async function ArticlePage({
 
             {/* Sidebar */}
             <div className="col-span-1 lg:col-span-4">
-              <ArticleSidebar ad={ads["article-sidebar"]} />
+              <ArticleSidebar
+                ad={ads["article-sidebar"]}
+                adBelowNewsletter={ads["article-sidebar-bottom"]}
+              />
             </div>
           </div>
         </Container>
@@ -381,7 +384,7 @@ export default async function ArticlePage({
 
       <AdSlot ad={ads["article-prefooter"]} />
 
-      <SiteFooter />
+      <SiteFooter stickyAd={ads["article-sticky"]} />
     </div>
   );
 }

@@ -2,56 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-
-const STORAGE_KEY = "patriota:cookie-consent";
-
-/**
- * Days the user's choice is remembered before we re-ask. The
- * standard for non-essential cookies in the EU is 6 months — long
- * enough not to nag returning readers, short enough to comply with
- * RGPD guidance ("renewed within reasonable interval"). Most major
- * Portuguese / European publishers use 6 to 12 months.
- *
- * The user originally suggested 48 hours, but in practice that
- * means a regular reader sees the banner every other visit which
- * trains them to dismiss it without reading — defeats the purpose.
- * Easy to override here if needed.
- */
-const EXPIRY_DAYS = 180;
-
-interface StoredConsent {
-  acceptedAt: number;
-}
-
-function readConsent(): StoredConsent | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<StoredConsent>;
-    if (typeof parsed.acceptedAt !== "number") return null;
-    // Expired? Clear the slate and let the banner show again.
-    const expiresAt = parsed.acceptedAt + EXPIRY_DAYS * 86_400 * 1000;
-    if (Date.now() > expiresAt) {
-      window.localStorage.removeItem(STORAGE_KEY);
-      return null;
-    }
-    return parsed as StoredConsent;
-  } catch {
-    return null;
-  }
-}
-
-function persistConsent(): void {
-  try {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ acceptedAt: Date.now() } satisfies StoredConsent),
-    );
-  } catch {
-    /* private-mode / quota — accept the loss, banner will reappear */
-  }
-}
+import { persistConsent, readConsent } from "@/lib/cookie-consent";
 
 /**
  * Cookie consent banner. Slides in from the bottom on first visit,

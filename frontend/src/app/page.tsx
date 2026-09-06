@@ -48,7 +48,10 @@ export default async function HomePage() {
               <InvestigationSection items={home.investigation} />
             </div>
             <div className="col-span-1 lg:col-span-4">
-              <Sidebar ad={ads["homepage-sidebar"]} />
+              <Sidebar
+                ad={ads["homepage-sidebar"]}
+                adBelowNewsletter={ads["homepage-sidebar-bottom"]}
+              />
             </div>
           </div>
         </Container>
@@ -57,7 +60,7 @@ export default async function HomePage() {
       {/* Pre-footer leaderboard (970×90). */}
       <AdSlot ad={ads["homepage-prefooter"]} />
 
-      <SiteFooter />
+      <SiteFooter stickyAd={ads["homepage-sticky"]} />
     </div>
   );
 }

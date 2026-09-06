@@ -4,6 +4,8 @@ import { Container } from "../Container";
 import { getSocialLinks, type SocialLinks } from "@/lib/public-api";
 import { getRootCategories } from "@/lib/categories";
 import { CookieConsent } from "./CookieConsent";
+import { StickyAdBanner } from "@/components/ads/StickyAdBanner";
+import type { Ad } from "@/lib/ads";
 
 interface FooterLink {
   label: string;
@@ -128,7 +130,13 @@ function SocialIcons({ links }: { links: SocialLinks }) {
   );
 }
 
-export async function SiteFooter() {
+export async function SiteFooter({
+  stickyAd,
+}: {
+  /** Homepage/Artigo's own "…-sticky" slot — omitted (or unconfigured)
+   *  renders nothing, same as every other AdSlot. */
+  stickyAd?: Ad | null;
+} = {}) {
   const [social, roots] = await Promise.all([
     getSocialLinks(),
     getRootCategories(),
@@ -197,6 +205,9 @@ export async function SiteFooter() {
     {/* Cookie consent banner — only on public pages (admin doesn't
         render SiteFooter). Self-managed via localStorage. */}
     <CookieConsent />
+    {/* Sticky footer ad — see StickyAdBanner.tsx for why it never
+        shows until the cookie banner above has been answered. */}
+    <StickyAdBanner ad={stickyAd} />
     </>
   );
 }
