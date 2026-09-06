@@ -1,5 +1,6 @@
 import { Container } from "../Container";
 import { parseAdSize, type Ad } from "@/lib/ads";
+import { ScriptedHtml } from "./ScriptedHtml";
 
 /**
  * Public-facing ad slot. Renders an image-with-link, an HTML/iframe
@@ -77,11 +78,16 @@ function renderAdContent(ad: Ad, maxWidthPx: number | null) {
     // control the height. We intentionally don't sanitize because
     // the admin is the only writer and the field is gated behind
     // RBAC (configuracoes.editar).
+    //
+    // ScriptedHtml, not a plain dangerouslySetInnerHTML: every ad
+    // network's embed code is markup PLUS <script> tags that do the
+    // actual work, and innerHTML never executes those — see the
+    // comment on ScriptedHtml for why.
     return (
-      <div
+      <ScriptedHtml
+        html={ad.htmlCode}
         style={wrapperStyle}
         className="mx-auto"
-        dangerouslySetInnerHTML={{ __html: ad.htmlCode }}
       />
     );
   }
