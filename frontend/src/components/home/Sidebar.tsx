@@ -85,8 +85,10 @@ export async function Sidebar({
         <NewsletterForm />
       </section>
 
-      {/* Sidebar ad slot (homepage-sidebar-bottom, 728×90 Leaderboard —
-          AdSlot scales it down to the column's actual width). */}
+      {/* Sidebar ad slot (homepage-sidebar-bottom, 300×600 Half Page —
+          tall, not wide: this column is ~300px, so a vertical format
+          reads correctly at that width instead of collapsing to a
+          sliver). */}
       <AdSlot ad={adBelowNewsletter} variant="none" />
     </aside>
   );
