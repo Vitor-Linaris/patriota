@@ -3,7 +3,13 @@ import { NewsletterForm } from "@/components/home/NewsletterForm";
 import { AdSlot } from "@/components/ads/AdSlot";
 import type { Ad } from "@/lib/ads";
 
-export function ArticleSidebar({ ad }: { ad?: Ad | null } = {}) {
+export function ArticleSidebar({
+  ad,
+  adBelowNewsletter,
+}: {
+  ad?: Ad | null;
+  adBelowNewsletter?: Ad | null;
+} = {}) {
   return (
     <aside className="flex flex-col gap-6">
       {/* Sidebar ad slot (article-sidebar, 300×250 IAB MPU). */}
@@ -67,6 +73,12 @@ export function ArticleSidebar({ ad }: { ad?: Ad | null } = {}) {
         </p>
         <NewsletterForm />
       </section>
+
+      {/* Sidebar ad slot (article-sidebar-bottom, 300×600 Half Page —
+          tall, not wide: this column is ~300px, so a vertical format
+          reads correctly at that width instead of collapsing to a
+          sliver). */}
+      <AdSlot ad={adBelowNewsletter} variant="none" />
     </aside>
   );
 }

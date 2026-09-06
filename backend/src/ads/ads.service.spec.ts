@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { AdsService } from './ads.service';
+import { AdsService, DEFAULT_ADS } from './ads.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediaService } from '../media/media.service';
 
@@ -29,7 +29,12 @@ describe('AdsService', () => {
 
   it('ensureDefaults() upserts the full set of known slots', async () => {
     await service.ensureDefaults();
-    expect(prisma.ad.upsert).toHaveBeenCalledTimes(11);
+    // Against the catalogue's own length, not a literal — the count is
+    // exactly what broke the first time a slot was added after this
+    // test was written, for a reason that had nothing to do with what
+    // the test actually checks (that every slot in the catalogue gets
+    // upserted, once each).
+    expect(prisma.ad.upsert).toHaveBeenCalledTimes(DEFAULT_ADS.length);
   });
 
   it('listByPage() filters by page + enabled', async () => {

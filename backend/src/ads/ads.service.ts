@@ -12,15 +12,28 @@ import { AdType } from '../../generated/prisma/enums';
  *   • Large Rectangle 336×280 — in-article body
  * Reference: https://iabtechlab.com/standards/iab-new-ad-portfolio/
  */
-const DEFAULT_ADS = [
+export const DEFAULT_ADS = [
   { id: 'homepage-leaderboard', name: 'Homepage — Topo', page: 'Homepage', position: 'Topo da página', size: '970×250', sizeLabel: 'Billboard' },
   { id: 'homepage-mid', name: 'Homepage — Intermédio conteúdo', page: 'Homepage', position: 'Meio da página', size: '728×90', sizeLabel: 'Leaderboard' },
   { id: 'homepage-sidebar', name: 'Homepage — Sidebar', page: 'Homepage', position: 'Coluna lateral', size: '300×250', sizeLabel: 'Medium Rectangle' },
+  // Abaixo do quadrado da Newsletter na coluna lateral — vertical de
+  // propósito. A coluna em si tem ~300px de largura (o mesmo que o
+  // Medium Rectangle logo acima); um formato horizontal como o
+  // Leaderboard encolhido a essa largura ficava com uns 37px de
+  // altura, quase invisível. Half Page é o tamanho "IAB oficial"
+  // pensado exactamente para uma coluna lateral estreita e comprida.
+  { id: 'homepage-sidebar-bottom', name: 'Homepage — Sidebar (abaixo da Newsletter)', page: 'Homepage', position: 'Coluna lateral, abaixo da Newsletter', size: '300×600', sizeLabel: 'Half Page' },
   { id: 'homepage-prefooter', name: 'Homepage — Pré-rodapé', page: 'Homepage', position: 'Antes do rodapé', size: '970×250', sizeLabel: 'Billboard' },
+  // Fixo no fundo do ecrã, por cima de tudo — ver StickyAdBanner.tsx.
+  // Só aparece depois de o leitor já ter respondido ao aviso de
+  // cookies, para nunca ficar em cima dele.
+  { id: 'homepage-sticky', name: 'Homepage — Banner fixo (rodapé do ecrã)', page: 'Homepage', position: 'Fixo no fundo do ecrã', size: '728×90', sizeLabel: 'Leaderboard' },
   { id: 'article-leaderboard', name: 'Artigo — Topo', page: 'Artigo', position: 'Topo da página', size: '970×250', sizeLabel: 'Billboard' },
   { id: 'article-incontent', name: 'Artigo — Dentro do conteúdo', page: 'Artigo', position: 'Meio do artigo', size: '336×280', sizeLabel: 'Large Rectangle' },
   { id: 'article-sidebar', name: 'Artigo — Sidebar', page: 'Artigo', position: 'Coluna lateral', size: '300×250', sizeLabel: 'Medium Rectangle' },
+  { id: 'article-sidebar-bottom', name: 'Artigo — Sidebar (abaixo da Newsletter)', page: 'Artigo', position: 'Coluna lateral, abaixo da Newsletter', size: '300×600', sizeLabel: 'Half Page' },
   { id: 'article-prefooter', name: 'Artigo — Pré-rodapé', page: 'Artigo', position: 'Antes do rodapé', size: '970×250', sizeLabel: 'Billboard' },
+  { id: 'article-sticky', name: 'Artigo — Banner fixo (rodapé do ecrã)', page: 'Artigo', position: 'Fixo no fundo do ecrã', size: '728×90', sizeLabel: 'Leaderboard' },
   { id: 'category-leaderboard', name: 'Categoria — Topo', page: 'Categoria', position: 'Topo da página', size: '970×250', sizeLabel: 'Billboard' },
   { id: 'category-sidebar', name: 'Categoria — Sidebar', page: 'Categoria', position: 'Coluna lateral', size: '300×250', sizeLabel: 'Medium Rectangle' },
   { id: 'category-prefooter', name: 'Categoria — Pré-rodapé', page: 'Categoria', position: 'Antes do rodapé', size: '970×250', sizeLabel: 'Billboard' },

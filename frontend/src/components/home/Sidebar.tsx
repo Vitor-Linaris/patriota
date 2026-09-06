@@ -15,7 +15,13 @@ function initialsOf(name: string | null): string {
     .join("");
 }
 
-export async function Sidebar({ ad }: { ad?: Ad | null } = {}) {
+export async function Sidebar({
+  ad,
+  adBelowNewsletter,
+}: {
+  ad?: Ad | null;
+  adBelowNewsletter?: Ad | null;
+} = {}) {
   // Pre-fetch both lists server-side; the client widget just toggles
   // between them — no extra round-trip on tab change.
   const [mostRead, recent, opinion] = await Promise.all([
@@ -78,6 +84,12 @@ export async function Sidebar({ ad }: { ad?: Ad | null } = {}) {
         </p>
         <NewsletterForm />
       </section>
+
+      {/* Sidebar ad slot (homepage-sidebar-bottom, 300×600 Half Page —
+          tall, not wide: this column is ~300px, so a vertical format
+          reads correctly at that width instead of collapsing to a
+          sliver). */}
+      <AdSlot ad={adBelowNewsletter} variant="none" />
     </aside>
   );
 }
