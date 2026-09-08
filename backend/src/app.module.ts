@@ -24,6 +24,7 @@ import { ReaderLibraryModule } from './reader-library/reader-library.module';
 import { CommentsModule } from './comments/comments.module';
 import { ReadersModule } from './readers/readers.module';
 import { BillingModule } from './billing/billing.module';
+import { PackagesModule } from './packages/packages.module';
 import { ReaderNotificationsModule } from './reader-notifications/reader-notifications.module';
 
 @Module({
@@ -76,6 +77,11 @@ import { ReaderNotificationsModule } from './reader-notifications/reader-notific
     CommentsModule,
     ReadersModule,
     BillingModule,
+    // Pacotes exclusivos. Registered explicitly even though BillingModule
+    // already imports it: the admin half is reachable with the reader
+    // feature switched off, and a module that only exists as somebody
+    // else's dependency is one refactor away from vanishing.
+    PackagesModule,
     ReaderNotificationsModule,
   ],
   controllers: [AppController],
