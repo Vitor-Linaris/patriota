@@ -374,6 +374,7 @@ export default async function ArticlePage({
             {/* Sidebar */}
             <div className="col-span-1 lg:col-span-4">
               <ArticleSidebar
+                articleId={article.id}
                 ad={ads["article-sidebar"]}
                 adBelowNewsletter={ads["article-sidebar-bottom"]}
               />

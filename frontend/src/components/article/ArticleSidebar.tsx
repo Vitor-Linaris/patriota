@@ -1,40 +1,26 @@
 import { FEATURES } from "@/lib/features";
 import { NewsletterForm } from "@/components/home/NewsletterForm";
 import { AdSlot } from "@/components/ads/AdSlot";
+import { TopicFollowCard } from "@/components/article/TopicFollowCard";
 import type { Ad } from "@/lib/ads";
 
 export function ArticleSidebar({
+  articleId,
   ad,
   adBelowNewsletter,
 }: {
+  articleId: string;
   ad?: Ad | null;
   adBelowNewsletter?: Ad | null;
-} = {}) {
+}) {
   return (
     <aside className="flex flex-col gap-6">
       {/* Sidebar ad slot (article-sidebar, 300×250 IAB MPU). */}
       <AdSlot ad={ad} variant="none" />
 
-      {/* Acompanhar tema — feature-flagged (requires reader accounts) */}
-      {FEATURES.topicFollow && (
-        <section className="rounded-lg bg-patriota-dark p-6 text-white shadow-sm">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-patriota-accent">
-            Acompanhar tema
-          </p>
-          <h2 className="mt-2 text-[18px] font-black leading-snug">
-            Receba alertas
-          </h2>
-          <p className="mt-2 text-[13px] text-white/70">
-            Avisamos quando este tema voltar a ser notícia.
-          </p>
-          <button
-            type="button"
-            className="mt-5 h-10 w-full rounded-md bg-patriota-accent text-[13px] font-bold text-patriota-ink transition hover:brightness-105"
-          >
-            Seguir tema
-          </button>
-        </section>
-      )}
+      {/* Acompanhar tema — feature-flagged (requires reader accounts).
+          Real follow/unfollow now, not a mock: see TopicFollowCard. */}
+      {FEATURES.topicFollow && <TopicFollowCard articleId={articleId} />}
 
       {/* Ouvir artigo — feature-flagged (requires TTS provider) */}
       {FEATURES.audioReader && (
