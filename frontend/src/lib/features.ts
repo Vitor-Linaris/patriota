@@ -68,6 +68,20 @@ export const FEATURES = {
    */
   subscriberPublishing:
     process.env.NEXT_PUBLIC_FEATURE_SUBSCRIBER_PUBLISHING === "true",
+
+  /**
+   * Pacotes exclusivos: /pacotes, /pacotes/[slug] and "Os meus pacotes".
+   *
+   * The storefront for sets of articles sold once-off. Its backend
+   * counterpart is FEATURE_PACKAGES — again without NEXT_PUBLIC_, and
+   * again only the PUBLIC and READER halves: /admin/pacotes is gated by
+   * the pacotes.* permissions instead, so a newsroom can build pacotes
+   * before the day the storefront opens.
+   *
+   * Whether a pacote shows a buy button is a separate question, answered
+   * by `billing` above plus the pacote actually having a Stripe Price.
+   */
+  packages: process.env.NEXT_PUBLIC_FEATURE_PACKAGES === "true",
 } as const;
 
 export type FeatureFlag = keyof typeof FEATURES;

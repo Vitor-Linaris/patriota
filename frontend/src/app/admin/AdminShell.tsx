@@ -34,6 +34,15 @@ const NAV: readonly NavItem[] = [
     requires: ["artigos.ler", "artigos.criar"],
   },
   {
+    // Sets of articles sold once-off. Sits next to Artigos rather than
+    // under Configurações because it is editorial work — choosing what
+    // goes together — that happens to have a price on it.
+    href: "/admin/pacotes",
+    label: "Pacotes",
+    icon: "◫",
+    requires: ["pacotes.ver"],
+  },
+  {
     href: "/admin/utilizadores",
     label: "Utilizadores",
     icon: "○",
