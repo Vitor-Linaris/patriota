@@ -1,7 +1,8 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { apiFetch } from "@/lib/api";
+import { PACKAGES_TAG } from "@/lib/packages";
 
 export interface PackageFormPayload {
   name?: string;
@@ -24,6 +25,17 @@ async function refresh(slug?: string) {
   revalidatePath("/pacotes");
   if (slug) revalidatePath(`/pacotes/${slug}`);
   revalidatePath("/");
+  // By TAG as well as by path, and the tag is the one that matters: the
+  // storefront listing is also read by the reader dashboard's access
+  // card, and paths cannot reach a cache entry shared across unrelated
+  // routes. Without this, publishing a pacote refreshed /pacotes and left
+  // /conta quoting a price from up to five minutes ago — or not showing
+  // the new pacote at all.
+  //
+  // updateTag rather than revalidateTag: this is a Server Action and the
+  // caller re-renders immediately after. Same reasoning as the categories
+  // admin next door.
+  updateTag(PACKAGES_TAG);
 }
 
 /** Shared shape: errors come back as data, never thrown. */

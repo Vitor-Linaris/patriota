@@ -61,6 +61,8 @@ export interface ReaderMe {
     artigos: number;
     comentarios: number;
     historico: number;
+    /** Pacotes actually PAID for. An abandoned checkout counts as none. */
+    pacotes: number;
   };
 }
 

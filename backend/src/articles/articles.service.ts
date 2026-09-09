@@ -324,6 +324,22 @@ export class ArticlesService {
         include: {
           category: { select: { slug: true, name: true, color: true } },
           author: { select: { id: true, name: true, email: true } },
+          // Which pacote holds this piece, for the badge on the row. An
+          // article in a pacote reads "PACOTE" rather than "EXCLUSIVO":
+          // both are paid, but they are paid for differently, and the
+          // editor needs to know which at a glance.
+          //
+          // Every pacote, not only published ones — a draft pacote is
+          // exactly what the editor is building, and a row that stayed
+          // silent about it until publication would be silent for the
+          // whole time it mattered.
+          packageEntries: {
+            take: 1,
+            orderBy: { addedAt: 'asc' },
+            select: {
+              package: { select: { id: true, name: true, status: true } },
+            },
+          },
         },
       }),
       this.prisma.article.count({ where }),

@@ -41,6 +41,10 @@ interface ArticleApi {
   categoryId: string;
   category: { slug: string; name: string; color: string } | null;
   author: { id: string; name: string | null; email: string } | null;
+  /** At most one — the API takes the earliest. See the badge on the row. */
+  packageEntries?: {
+    package: { id: string; name: string; status: string };
+  }[];
 }
 
 interface MeWithPerms {
@@ -106,6 +110,7 @@ function toAdminArticle(a: ArticleApi): AdminArticle {
     categoryColor: a.category?.color ?? "#6b7280",
     authorId: a.author?.id ?? "",
     authorName: a.author?.name ?? a.author?.email ?? "—",
+    packageName: a.packageEntries?.[0]?.package.name ?? null,
   };
 }
 

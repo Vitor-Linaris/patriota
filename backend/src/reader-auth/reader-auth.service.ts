@@ -512,6 +512,11 @@ export class ReaderAuthService {
             articleFavorites: true,
             comments: true,
             readingHistory: true,
+            // PAGO only. A PENDENTE row is an abandoned checkout, and
+            // counting it would tell somebody they own a pacote they
+            // never paid for — on the one screen where they come to find
+            // out what they have.
+            packagePurchases: { where: { status: 'PAGO' } },
           },
         },
       },
@@ -544,6 +549,7 @@ export class ReaderAuthService {
         artigos: _count.articleFavorites,
         comentarios: _count.comments,
         historico: _count.readingHistory,
+        pacotes: _count.packagePurchases,
       },
     };
   }

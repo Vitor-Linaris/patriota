@@ -10,6 +10,30 @@ export interface DigestArticle {
   content: string;
   categoryName: string;
   categorySlug: string;
+  /**
+   * The published pacote this article belongs to, if any.
+   *
+   * Changes what the item is FOR. An ordinary article's job in this
+   * e-mail is to be read, so it links to itself. An article inside a
+   * pacote cannot be read by most of the people receiving this — it is
+   * behind the paywall the pacote is the key to — so linking to it would
+   * send a reader to a wall. It links to the pacote instead, where there
+   * is a cover, a price and a way in.
+   */
+  pkg?: {
+    slug: string;
+    name: string;
+    priceCents: number;
+    currency: string;
+  } | null;
+}
+
+/** The price as a Portuguese reader reads it. */
+function formatPrice(cents: number, currency: string): string {
+  return new Intl.NumberFormat('pt-PT', {
+    style: 'currency',
+    currency,
+  }).format(cents / 100);
 }
 
 /** How much of the article a reader gets before the button takes over. */
@@ -71,10 +95,27 @@ export function digestTemplate(
     .map(([category, articles]) => {
       const items = articles
         .map((a) => {
-          const url = `${ctx.siteUrl}/artigo/${encodeURIComponent(a.slug)}`;
+          // Where the item points, and what it promises, both hinge on
+          // whether this piece is part of a pacote. See DigestArticle.pkg.
+          const url = a.pkg
+            ? `${ctx.siteUrl}/pacotes/${encodeURIComponent(a.pkg.slug)}`
+            : `${ctx.siteUrl}/artigo/${encodeURIComponent(a.slug)}`;
+          const cta = a.pkg
+            ? `Ver o pacote — ${formatPrice(a.pkg.priceCents, a.pkg.currency)}`
+            : 'Ler artigo completo';
+          // A line above the headline saying which pacote it joined, so
+          // the reader understands why the button says what it says
+          // before they get to the button.
+          const pkgLine = a.pkg
+            ? `<div style="margin-bottom:6px;font-size:11px;font-weight:700;
+                           letter-spacing:0.5px;text-transform:uppercase;color:#8B6900;">
+                 Novo no pacote ${escapeHtml(a.pkg.name)}
+               </div>`
+            : '';
           return `
         <tr>
           <td style="padding:0 0 22px;">
+            ${pkgLine}
             <a href="${url}"
                style="color:#0a1629;text-decoration:none;font-size:16px;
                       font-weight:700;line-height:1.4;">
@@ -88,7 +129,7 @@ export function digestTemplate(
                  style="display:inline-block;background:#2a467e;color:#ffffff;
                         text-decoration:none;font-weight:700;font-size:13px;
                         padding:10px 20px;border-radius:8px;">
-                Ler artigo completo
+                ${escapeHtml(cta)}
               </a>
             </div>
           </td>
@@ -155,9 +196,12 @@ export function digestTemplate(
       ...[...groups.entries()].flatMap(([category, articles]) => [
         category.toUpperCase(),
         ...articles.flatMap((a) => [
+          ...(a.pkg ? [`  [Novo no pacote ${a.pkg.name}]`] : []),
           `  ${a.title}`,
           `  ${excerptOf(a.content)}`,
-          `  Ler artigo completo: ${ctx.siteUrl}/artigo/${a.slug}`,
+          a.pkg
+            ? `  Ver o pacote (${formatPrice(a.pkg.priceCents, a.pkg.currency)}): ${ctx.siteUrl}/pacotes/${a.pkg.slug}`
+            : `  Ler artigo completo: ${ctx.siteUrl}/artigo/${a.slug}`,
           '',
         ]),
       ]),

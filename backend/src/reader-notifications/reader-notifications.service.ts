@@ -205,6 +205,29 @@ export class ReaderNotificationsService {
             content: true,
             publishedAt: true,
             category: { select: { slug: true, name: true } },
+            // The pacote this piece belongs to, if any — it changes where
+            // the e-mail's button points. Published pacotes only: a draft
+            // pacote has no page to send anybody to.
+            //
+            // Cheapest first, and only one. An article can sit in several
+            // pacotes, and an e-mail has room for one offer; the cheapest
+            // is the one most likely to be taken, and the one a reader is
+            // least likely to feel misled by after clicking.
+            packageEntries: {
+              where: { package: { status: 'PUBLICADO' } },
+              orderBy: { package: { priceCents: 'asc' } },
+              take: 1,
+              select: {
+                package: {
+                  select: {
+                    slug: true,
+                    name: true,
+                    priceCents: true,
+                    currency: true,
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -234,6 +257,7 @@ export class ReaderNotificationsService {
         content: r.article.content,
         categoryName: r.article.category.name,
         categorySlug: r.article.category.slug,
+        pkg: r.article.packageEntries[0]?.package ?? null,
       }));
 
       const rendered = digestTemplate(

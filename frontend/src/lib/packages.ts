@@ -57,6 +57,18 @@ export interface ReaderPackage {
   }[];
 }
 
+/**
+ * Cache tag for the storefront listing.
+ *
+ * The listing is read from more than one place — /pacotes and the reader
+ * dashboard's access card — so invalidating it by PATH is not enough:
+ * publishing a pacote would refresh the storefront and leave the
+ * dashboard quoting a price from up to five minutes ago, or missing the
+ * pacote entirely. A tag invalidates every consumer at once, wherever
+ * they are. Same pattern as CATEGORIES_TAG.
+ */
+export const PACKAGES_TAG = "packages";
+
 /** Cents as a Portuguese reader reads them. */
 export function formatPrice(cents: number, currency = "EUR"): string {
   return new Intl.NumberFormat("pt-PT", {
@@ -72,7 +84,7 @@ export function formatPrice(cents: number, currency = "EUR"): string {
 export async function listPackages(): Promise<PackageCard[]> {
   try {
     const res = await fetch(`${apiBaseUrl()}/public/packages`, {
-      next: { revalidate: 300 },
+      next: { tags: [PACKAGES_TAG], revalidate: 300 },
     });
     if (!res.ok) return [];
     return (await res.json()) as PackageCard[];

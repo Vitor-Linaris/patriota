@@ -7,6 +7,8 @@ import { SecondaryNav } from "@/components/home/SecondaryNav";
 import { SiteFooter } from "@/components/home/SiteFooter";
 import { FEATURES } from "@/lib/features";
 import { requireReader } from "@/lib/reader-api";
+import { listPackages } from "@/lib/packages";
+import { AccessCard } from "./AccessCard";
 
 export const metadata = {
   title: "A minha conta — O Patriota Notícias",
@@ -68,6 +70,12 @@ export default async function ContaDashboardPage() {
   const me = await requireReader("/conta");
   const displayName = me.name?.trim() || me.email.split("@")[0];
 
+  // What is on sale, so the access card can name a real pacote and a real
+  // price instead of an abstract "ver pacotes". Cached for five minutes by
+  // listPackages, and it returns [] rather than throwing — the dashboard
+  // must not fail because the storefront did.
+  const packages = FEATURES.packages ? await listPackages() : [];
+
   return (
     <div className="flex flex-1 flex-col bg-white text-slate-900">
       <TopBar />
@@ -121,6 +129,18 @@ export default async function ContaDashboardPage() {
                 </form>
               </div>
             </div>
+
+            {/* ── How they are reading ────────────────────────────── */}
+            {/* Above the counters, because it is the only thing here that
+                can change what a reader is able to read. The chip next to
+                their name says the same in three words and is easy to
+                look past. */}
+            <AccessCard
+              planActive={me.planActive}
+              ownedPackages={me.counts.pacotes ?? 0}
+              packages={packages}
+              billingLive={FEATURES.billing}
+            />
 
             {/* ── Unverified-email banner ─────────────────────────── */}
             {!me.emailVerifiedAt && (

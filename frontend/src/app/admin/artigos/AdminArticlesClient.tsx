@@ -78,6 +78,8 @@ export interface AdminArticle {
   categoryColor: string;
   authorId: string;
   authorName: string;
+  /** The pacote this piece belongs to, if any. Drives the row's badge. */
+  packageName?: string | null;
 }
 
 export interface CategoryOption {
@@ -1666,10 +1668,28 @@ export default function AdminArticlesClient({
                           {a.title}
                         </p>
                         <div className="mt-1 flex flex-wrap items-center gap-1">
-                          {a.exclusive && (
-                            <span className="inline-block rounded-full bg-[#FFCC66]/20 px-1.5 py-0.5 text-[9px] font-black text-[#8B6900]">
-                              EXCLUSIVO
+                          {/* PACOTE replaces EXCLUSIVO rather than
+                              joining it. Both mean "paid", so showing the
+                              two side by side would read as two
+                              restrictions where there is one — and the
+                              useful distinction is HOW it is paid for:
+                              an exclusive comes with the subscription, a
+                              pacote is bought on its own. The pacote name
+                              is in the tooltip, where a long dossier
+                              title cannot break the row. */}
+                          {a.packageName ? (
+                            <span
+                              title={`No pacote: ${a.packageName}`}
+                              className="inline-block rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-black text-violet-800"
+                            >
+                              PACOTE
                             </span>
+                          ) : (
+                            a.exclusive && (
+                              <span className="inline-block rounded-full bg-[#FFCC66]/20 px-1.5 py-0.5 text-[9px] font-black text-[#8B6900]">
+                                EXCLUSIVO
+                              </span>
+                            )
                           )}
                           {/* Shown for ANY parked edit, not just the
                               ones needing approval: the article row is
