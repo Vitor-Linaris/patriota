@@ -22,6 +22,7 @@ import { SetPackageArticlesDto } from './dto/set-package-articles.dto';
 import { ListPackagesQueryDto } from './dto/list-packages.query.dto';
 import { CheckoutPackageDto } from './dto/checkout-package.dto';
 import { GrantPackageDto } from './dto/grant-package.dto';
+import { AssignArticleDto } from './dto/assign-article.dto';
 import { PageQueryDto } from '../common/dto/pagination.dto';
 import { RequirePermissions } from '../auth/permissions.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -80,6 +81,29 @@ export class PackagesController {
   @RequirePermissions('pacotes.ver')
   options() {
     return this.packages.options();
+  }
+
+  /** Which pacotes hold this article — the article editor's "Pacote" field. */
+  @Get('admin/packages/for-article/:articleId')
+  @RequirePermissions('pacotes.ver')
+  forArticle(@Param('articleId') articleId: string) {
+    return this.packages.packagesForArticle(articleId);
+  }
+
+  /**
+   * File one article into one pacote from the article editor.
+   *
+   * A static path with the ids in the body, so it cannot be confused with
+   * `admin/packages/:id` however the routes are later reordered.
+   */
+  @Post('admin/packages/assign')
+  @RequirePermissions('pacotes.editar')
+  @HttpCode(HttpStatus.OK)
+  assign(@Body() dto: AssignArticleDto, @CurrentUser() user: AuthUser) {
+    return this.packages.assignArticle(dto.articleId, dto.packageId, {
+      id: user.id,
+      role: user.role,
+    });
   }
 
   @Get('admin/packages/purchases')

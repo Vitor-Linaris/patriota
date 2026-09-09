@@ -341,6 +341,104 @@ export class PackagesService {
     return this.findOneForAdmin(id);
   }
 
+  /**
+   * Which pacotes contain this article, for the "Pacote" field in the
+   * article editor.
+   *
+   * Returns a list, not one, because the data model allows an article in
+   * several pacotes — the multi-select on the pacote side can put it
+   * there. The editor's single <select> only offers to CHANGE the
+   * assignment when there is at most one; see assignArticle().
+   */
+  async packagesForArticle(articleId: string) {
+    const rows = await this.prisma.packageArticle.findMany({
+      where: { articleId },
+      select: {
+        package: { select: { id: true, name: true, status: true } },
+      },
+    });
+    return rows.map((r) => r.package);
+  }
+
+  /**
+   * File one article into one pacote — the article editor's side of the
+   * relationship.
+   *
+   * Refuses when the article already sits in more than one pacote. A
+   * single <select> cannot express "in two of them", so saving it would
+   * have to silently drop one, and the one it dropped would be whichever
+   * an editor deliberately added on the pacote screen. Better to say so
+   * and send them where the multi-select is.
+   *
+   * As everywhere else here, this touches PackageArticle only. Nobody's
+   * purchase snapshot is read or written.
+   */
+  async assignArticle(
+    articleId: string,
+    packageId: string | null,
+    user: ActingUser,
+  ) {
+    const article = await this.prisma.article.findUnique({
+      where: { id: articleId },
+      select: { id: true, title: true, status: true },
+    });
+    if (!article) throw new NotFoundException('Artigo não encontrado.');
+    if (
+      (FORBIDDEN_MEMBER_STATUSES as readonly string[]).includes(article.status)
+    ) {
+      throw new BadRequestException(
+        'Um artigo arquivado ou agendado não pode entrar num pacote.',
+      );
+    }
+
+    const current = await this.prisma.packageArticle.findMany({
+      where: { articleId },
+      select: { packageId: true },
+    });
+    if (current.length > 1) {
+      throw new ConflictException(
+        'Este artigo está em vários pacotes. Faça a gestão em /admin/pacotes.',
+      );
+    }
+    if (current[0]?.packageId === packageId) return { ok: true };
+
+    const target = packageId ? await this.loadOrThrow(packageId) : null;
+
+    await this.prisma.$transaction(async (tx) => {
+      if (current.length > 0) {
+        await tx.packageArticle.deleteMany({ where: { articleId } });
+      }
+      if (packageId) {
+        // Appended, not inserted: the pacote's own screen is where order
+        // is decided, and an article filed from the editor has no opinion
+        // about where in the sequence it belongs.
+        const last = await tx.packageArticle.findFirst({
+          where: { packageId },
+          orderBy: { position: 'desc' },
+          select: { position: true },
+        });
+        await tx.packageArticle.create({
+          data: {
+            packageId,
+            articleId,
+            position: (last?.position ?? -1) + 1,
+          },
+        });
+      }
+    });
+
+    void this.activity.record({
+      userId: user.id,
+      action: packageId ? 'article_assigned' : 'article_unassigned',
+      targetType: 'package',
+      targetId: packageId ?? current[0]?.packageId,
+      targetLabel: target
+        ? `${article.title} → ${target.name}`
+        : `${article.title} retirado do pacote`,
+    });
+    return { ok: true };
+  }
+
   // ── publish ────────────────────────────────────────────────────────
 
   /**

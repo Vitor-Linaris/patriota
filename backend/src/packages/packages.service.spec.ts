@@ -258,6 +258,90 @@ describe('PackagesService', () => {
     });
   });
 
+  describe('assignArticle()', () => {
+    beforeEach(() => {
+      prisma.article.findUnique = jest.fn().mockResolvedValue({
+        id: 'a1',
+        title: 'A peça',
+        status: 'RASCUNHO',
+      });
+      prisma.packageArticle.findMany = jest.fn().mockResolvedValue([]);
+      prisma.packageArticle.findFirst = jest.fn().mockResolvedValue(null);
+      prisma.packageArticle.create = jest.fn();
+      prisma.package.findUnique.mockResolvedValue({ id: 'p1', name: 'Pacote' });
+      prisma.$transaction = jest.fn((cb: (c: unknown) => unknown) =>
+        typeof cb === 'function'
+          ? cb({
+              packageArticle: {
+                deleteMany: prisma.packageArticle.deleteMany,
+                findFirst: prisma.packageArticle.findFirst,
+                create: prisma.packageArticle.create,
+              },
+            })
+          : Promise.resolve([]),
+      );
+    });
+
+    it('files a draft into a pacote, appended at the end', async () => {
+      prisma.packageArticle.findFirst.mockResolvedValueOnce({ position: 4 });
+      await service.assignArticle('a1', 'p1', editor);
+      expect(prisma.packageArticle.create).toHaveBeenCalledWith({
+        data: { packageId: 'p1', articleId: 'a1', position: 5 },
+      });
+    });
+
+    it('starts at 0 in an empty pacote', async () => {
+      await service.assignArticle('a1', 'p1', editor);
+      expect(prisma.packageArticle.create).toHaveBeenCalledWith({
+        data: { packageId: 'p1', articleId: 'a1', position: 0 },
+      });
+    });
+
+    it('takes the article out when packageId is null', async () => {
+      prisma.packageArticle.findMany.mockResolvedValueOnce([
+        { packageId: 'p1' },
+      ]);
+      await service.assignArticle('a1', null, editor);
+      expect(prisma.packageArticle.deleteMany).toHaveBeenCalledWith({
+        where: { articleId: 'a1' },
+      });
+      expect(prisma.packageArticle.create).not.toHaveBeenCalled();
+    });
+
+    it('refuses when the article is in several pacotes', async () => {
+      prisma.packageArticle.findMany.mockResolvedValueOnce([
+        { packageId: 'p1' },
+        { packageId: 'p2' },
+      ]);
+      // A single <select> cannot express "in two of them", so saving one
+      // value would silently drop a pacote somebody deliberately chose on
+      // the multi-select screen.
+      await expect(service.assignArticle('a1', 'p3', editor)).rejects.toThrow(
+        ConflictException,
+      );
+      expect(prisma.packageArticle.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('is a no-op when it is already in that pacote', async () => {
+      prisma.packageArticle.findMany.mockResolvedValueOnce([
+        { packageId: 'p1' },
+      ]);
+      await service.assignArticle('a1', 'p1', editor);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('refuses an archived or scheduled article', async () => {
+      prisma.article.findUnique.mockResolvedValueOnce({
+        id: 'a1',
+        title: 'Agendado',
+        status: 'AGENDADO',
+      });
+      await expect(service.assignArticle('a1', 'p1', editor)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+  });
+
   describe('remove()', () => {
     it('refuses to delete a pacote somebody paid for', async () => {
       prisma.package.findUnique.mockResolvedValue({ id: 'p1', name: 'Pacote' });

@@ -214,3 +214,34 @@ export async function deleteArticleAction(id: string) {
   await refresh();
   return { ok: true as const };
 }
+
+/**
+ * Files this article into a pacote, or takes it out (packageId null).
+ *
+ * The article editor's side of the pacote relationship — the direction
+ * the newsroom actually works in: a journalist writing for a dossier
+ * picks the pacote here and never opens /admin/pacotes.
+ *
+ * A 409 means the article is in more than one pacote, which a single
+ * <select> cannot express; the API's message says where to go instead and
+ * is passed through unchanged.
+ */
+export async function assignArticleToPackageAction(
+  articleId: string,
+  packageId: string | null,
+) {
+  const res = await apiFetch("/admin/packages/assign", {
+    method: "POST",
+    body: JSON.stringify({ articleId, packageId }),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { message?: string };
+    return {
+      ok: false as const,
+      error: body.message ?? "Falha ao atribuir o pacote.",
+    };
+  }
+  await refresh();
+  revalidatePath("/admin/pacotes");
+  return { ok: true as const };
+}
