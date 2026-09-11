@@ -24,6 +24,7 @@ import {
   updateArticleAction,
   type ArticleFormPayload,
 } from "./actions";
+import { ArticlePackageField } from "./ArticlePackageField";
 import { useAutosave } from "./useAutosave";
 import { AutosaveIndicator } from "./AutosaveIndicator";
 
@@ -77,6 +78,8 @@ export interface AdminArticle {
   categoryColor: string;
   authorId: string;
   authorName: string;
+  /** The pacote this piece belongs to, if any. Drives the row's badge. */
+  packageName?: string | null;
 }
 
 export interface CategoryOption {
@@ -277,6 +280,8 @@ function ArticleEditor({
   canPublish,
   pendingDraft,
   onDiscardDraft,
+  packages,
+  canEditPackages,
 }: {
   initial: EditorState;
   categories: CategoryOption[];
@@ -288,6 +293,10 @@ function ArticleEditor({
   /** Set when the article opened with edits already parked from before. */
   pendingDraft: { updatedAt: string | null; awaitingReview: boolean } | null;
   onDiscardDraft: () => void;
+  /** Pacotes this piece can be filed into. Empty = no pacotes.ver. */
+  packages: { id: string; name: string; status: string }[];
+  /** pacotes.editar — may CHANGE the assignment, not only see it. */
+  canEditPackages: boolean;
 }) {
   const [form, setForm] = useState<EditorState>(initial);
   const [tagInput, setTagInput] = useState("");
@@ -863,6 +872,20 @@ function ArticleEditor({
                 ))}
               </select>
             </div>
+
+            {/* The article editor's side of the pacote relationship — see
+                ArticlePackageField for why it is a single <select> and why
+                it saves itself instead of riding the article's payload.
+                Only for a SAVED article: a piece with no id yet has
+                nothing to file into anything. */}
+            {form.id && (
+              <ArticlePackageField
+                articleId={form.id}
+                packages={packages}
+                canEdit={canEditPackages}
+              />
+            )}
+
             <div>
               <label className="mb-1.5 block text-xs font-bold text-gray-500">
                 Tags
@@ -1000,6 +1023,8 @@ export default function AdminArticlesClient({
   canDelete,
   myUserId,
   initialEditArticle,
+  packages,
+  canEditPackages,
 }: {
   initialArticles: AdminArticle[];
   /** Matches the current view (page + filters) — drives the
@@ -1034,6 +1059,10 @@ export default function AdminArticlesClient({
    *  article so we can open the editor on first render. Deep links
    *  from /admin/media use this. */
   initialEditArticle?: AdminArticle | null;
+  /** Pacotes this piece can be filed into. Empty = no pacotes.ver. */
+  packages: { id: string; name: string; status: string }[];
+  /** pacotes.editar — may CHANGE the assignment, not only see it. */
+  canEditPackages: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -1378,6 +1407,8 @@ export default function AdminArticlesClient({
         canPublish={canPublish}
         pendingDraft={editorPendingDraft}
         onDiscardDraft={discardDraft}
+        packages={packages}
+        canEditPackages={canEditPackages}
       />
     );
   }
@@ -1637,10 +1668,28 @@ export default function AdminArticlesClient({
                           {a.title}
                         </p>
                         <div className="mt-1 flex flex-wrap items-center gap-1">
-                          {a.exclusive && (
-                            <span className="inline-block rounded-full bg-[#FFCC66]/20 px-1.5 py-0.5 text-[9px] font-black text-[#8B6900]">
-                              EXCLUSIVO
+                          {/* PACOTE replaces EXCLUSIVO rather than
+                              joining it. Both mean "paid", so showing the
+                              two side by side would read as two
+                              restrictions where there is one — and the
+                              useful distinction is HOW it is paid for:
+                              an exclusive comes with the subscription, a
+                              pacote is bought on its own. The pacote name
+                              is in the tooltip, where a long dossier
+                              title cannot break the row. */}
+                          {a.packageName ? (
+                            <span
+                              title={`No pacote: ${a.packageName}`}
+                              className="inline-block rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-black text-violet-800"
+                            >
+                              PACOTE
                             </span>
+                          ) : (
+                            a.exclusive && (
+                              <span className="inline-block rounded-full bg-[#FFCC66]/20 px-1.5 py-0.5 text-[9px] font-black text-[#8B6900]">
+                                EXCLUSIVO
+                              </span>
+                            )
                           )}
                           {/* Shown for ANY parked edit, not just the
                               ones needing approval: the article row is

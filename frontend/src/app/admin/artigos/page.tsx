@@ -41,6 +41,10 @@ interface ArticleApi {
   categoryId: string;
   category: { slug: string; name: string; color: string } | null;
   author: { id: string; name: string | null; email: string } | null;
+  /** At most one — the API takes the earliest. See the badge on the row. */
+  packageEntries?: {
+    package: { id: string; name: string; status: string };
+  }[];
 }
 
 interface MeWithPerms {
@@ -106,6 +110,7 @@ function toAdminArticle(a: ArticleApi): AdminArticle {
     categoryColor: a.category?.color ?? "#6b7280",
     authorId: a.author?.id ?? "",
     authorName: a.author?.name ?? a.author?.email ?? "—",
+    packageName: a.packageEntries?.[0]?.package.name ?? null,
   };
 }
 
@@ -156,7 +161,13 @@ export default async function AdminArticlesPage({
   if (q) listParams.set("q", q);
   if (status) listParams.set("status", status);
 
-  const [articlesRes, categoriesRes, meRes, statsRes] = await Promise.all([
+  const [
+    articlesRes,
+    categoriesRes,
+    meRes,
+    statsRes,
+    packagesRes,
+  ] = await Promise.all([
     apiFetch(`/admin/articles?${listParams.toString()}`),
     // /admin/categories/options, gated on `artigos.ler` — NOT /tree,
     // which needs `categorias.ver`. Filing an article under a section
@@ -173,6 +184,10 @@ export default async function AdminArticlesPage({
     // Stats endpoint covers the WHOLE corpus regardless of paging or
     // filters — fixes "Publicados: 20" turning into "12" on page 2.
     apiFetch("/admin/articles/stats"),
+    // The pacotes a piece can be filed into, straight from the editor —
+    // the direction the newsroom actually works in. Gated on pacotes.ver,
+    // so a role without it (REVISOR, MODERADOR) simply gets no field.
+    apiFetch("/admin/packages/options"),
   ]);
   if (articlesRes.status === 403) {
     return (
@@ -214,6 +229,24 @@ export default async function AdminArticlesPage({
   const canDelete =
     me?.role === "SUPER_ADMIN" ||
     me?.permissions?.includes("artigos.eliminar") ||
+    false;
+  // A 403 from /admin/packages/options is ordinary, not a failure: a
+  // REVISOR has no pacotes.ver. Empty list means no field.
+  const packages = packagesRes.ok
+    ? ((await packagesRes.json()) as {
+        id: string;
+        name: string;
+        status: string;
+      }[])
+    : [];
+  // Reading the field needs pacotes.ver (already true if the list came
+  // back); CHANGING it writes PackageArticle and needs pacotes.editar. A
+  // JORNALISTA has the first and not the second, so they see which pacote
+  // their piece belongs to without being able to move it — one switch on
+  // /admin/permissions changes that, with no code involved.
+  const canEditPackages =
+    me?.role === "SUPER_ADMIN" ||
+    me?.permissions?.includes("pacotes.editar") ||
     false;
   const totalPages = Math.max(1, Math.ceil(articlesBody.total / PAGE_SIZE));
   const stats = statsRes.ok
@@ -263,6 +296,8 @@ export default async function AdminArticlesPage({
         canDelete={canDelete}
         myUserId={me?.id ?? ""}
         initialEditArticle={initialEditArticle}
+        packages={packages}
+        canEditPackages={canEditPackages}
       />
     </AdminShell>
   );

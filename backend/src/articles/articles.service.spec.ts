@@ -7,6 +7,7 @@ import { MediaService } from '../media/media.service';
 import { RbacService } from '../rbac/rbac.service';
 import { CategoryTreeService } from '../categories/category-tree.service';
 import { ConfigService } from '@nestjs/config';
+import { PackageAccessService } from '../packages/package-access.service';
 
 function makePrismaMock() {
   return {
@@ -15,7 +16,11 @@ function makePrismaMock() {
       findUnique: jest.fn(),
       findFirst: jest.fn(),
       create: jest.fn(),
-      update: jest.fn(),
+      // Resolves by default because findPublicBySlug fires a
+      // view-count increment and forgets it: `void update(...).catch()`.
+      // An undefined return has no .catch and would take the paywall
+      // tests down for a reason that has nothing to do with them.
+      update: jest.fn().mockResolvedValue({}),
       delete: jest.fn(),
       count: jest.fn(),
       groupBy: jest.fn(),
@@ -29,7 +34,10 @@ describe('ArticlesService', () => {
   let service: ArticlesService;
   let prisma: ReturnType<typeof makePrismaMock>;
   let activity: { record: jest.Mock };
-  let rbac: { getPermissionsForRole: jest.Mock };
+  let rbac: {
+    getPermissionsForRole: jest.Mock;
+    getPermissionsForPlan: jest.Mock;
+  };
   let tree: {
     resolveSubtreeIds: jest.Mock;
     resolveSubtreeIdsById: jest.Mock;
@@ -37,12 +45,32 @@ describe('ArticlesService', () => {
   };
   /** Funnel ON by default here, matching the shipped default. */
   let funnel: string | undefined;
+  /** Paywall OFF by default here, also matching the shipped default. */
+  let paywall: string | undefined;
+  /**
+   * Both default to "no pacote involved", which is the state of the
+   * entire archive. The paywall tests that care override them.
+   */
+  let packageAccess: {
+    isSubscriptionExcluded: jest.Mock;
+    hasPurchased: jest.Mock;
+    ownsPackage: jest.Mock;
+  };
 
   beforeEach(async () => {
     prisma = makePrismaMock();
     activity = { record: jest.fn() };
-    rbac = { getPermissionsForRole: jest.fn().mockResolvedValue([]) };
+    rbac = {
+      getPermissionsForRole: jest.fn().mockResolvedValue([]),
+      getPermissionsForPlan: jest.fn().mockResolvedValue([]),
+    };
     funnel = undefined;
+    paywall = undefined;
+    packageAccess = {
+      isSubscriptionExcluded: jest.fn().mockResolvedValue(false),
+      hasPurchased: jest.fn().mockResolvedValue(false),
+      ownsPackage: jest.fn().mockResolvedValue(false),
+    };
     tree = {
       resolveSubtreeIds: jest.fn().mockResolvedValue([]),
       resolveSubtreeIdsById: jest.fn().mockResolvedValue([]),
@@ -56,7 +84,13 @@ describe('ArticlesService', () => {
         { provide: ActivityLogService, useValue: activity },
         { provide: RbacService, useValue: rbac },
         { provide: CategoryTreeService, useValue: tree },
-        { provide: ConfigService, useValue: { get: () => funnel } },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: (key: string) =>
+              key === 'FEATURE_PAYWALL' ? paywall : funnel,
+          },
+        },
         // Publishing an article publishes the images it uses. A double
         // rather than the real thing: these tests are about article
         // state, and the promotion has its own coverage.
@@ -64,6 +98,7 @@ describe('ArticlesService', () => {
           provide: MediaService,
           useValue: { promoteForPublication: jest.fn().mockResolvedValue(0) },
         },
+        { provide: PackageAccessService, useValue: packageAccess },
       ],
     }).compile();
     service = moduleRef.get(ArticlesService);
@@ -335,6 +370,121 @@ describe('ArticlesService', () => {
           where: { slug: 'missing', status: 'PUBLICADO' },
         }),
       );
+    });
+
+    // ── the pacote gate ──────────────────────────────────────────────
+    //
+    // Two failures to guard against, and they are not equally bad. The
+    // dangerous one is a reader getting `content` they did not pay for.
+    // The annoying one is a subscriber losing an article they should
+    // have. Both are pinned below.
+
+    const exclusive = {
+      id: 'a1',
+      slug: 'dossier',
+      content: '<p>corpo</p>'.repeat(40),
+      exclusive: true,
+    };
+    const subscriber = { id: 'r1', plan: 'PREMIUM' };
+    const freeReader = { id: 'r2', plan: 'GRATIS' };
+
+    /** The permission is what grants exclusives, never plan === PREMIUM. */
+    const grantExclusives = () =>
+      rbac.getPermissionsForPlan.mockResolvedValue([
+        'assinantes.ler_exclusivos',
+      ]);
+
+    it('serves an exclusive in full while the paywall is off', async () => {
+      prisma.article.findFirst.mockResolvedValueOnce(exclusive);
+      const out = await service.findPublicBySlug('dossier', freeReader);
+      expect(out).toHaveProperty('content');
+      // Nothing about pacotes is even asked: the paywall being off is an
+      // early return that must cost zero queries.
+      expect(packageAccess.hasPurchased).not.toHaveBeenCalled();
+      expect(packageAccess.isSubscriptionExcluded).not.toHaveBeenCalled();
+    });
+
+    it('costs an anonymous visitor no pacote queries at all', async () => {
+      paywall = 'true';
+      prisma.article.findFirst.mockResolvedValueOnce(exclusive);
+      const out = await service.findPublicBySlug('dossier');
+      expect(out).not.toHaveProperty('content');
+      expect(out).toHaveProperty('paywalled', true);
+      expect(packageAccess.hasPurchased).not.toHaveBeenCalled();
+      expect(packageAccess.isSubscriptionExcluded).not.toHaveBeenCalled();
+    });
+
+    it('lets a subscriber read an exclusive that no pacote holds apart', async () => {
+      paywall = 'true';
+      grantExclusives();
+      prisma.article.findFirst.mockResolvedValueOnce(exclusive);
+      const out = await service.findPublicBySlug('dossier', subscriber);
+      expect(out).toHaveProperty('content');
+      // The purchase lookup is not reached — the plan already answered.
+      expect(packageAccess.hasPurchased).not.toHaveBeenCalled();
+    });
+
+    it('THE INVERSION: a pacote sold apart beats the subscription', async () => {
+      paywall = 'true';
+      grantExclusives();
+      packageAccess.isSubscriptionExcluded.mockResolvedValue(true);
+      prisma.article.findFirst.mockResolvedValueOnce(exclusive);
+
+      const out = await service.findPublicBySlug('dossier', subscriber);
+
+      expect(out).not.toHaveProperty('content');
+      expect(out).toHaveProperty('paywalled', true);
+    });
+
+    it('and the same subscriber reads it once they have bought the pacote', async () => {
+      paywall = 'true';
+      grantExclusives();
+      packageAccess.isSubscriptionExcluded.mockResolvedValue(true);
+      packageAccess.hasPurchased.mockResolvedValue(true);
+      prisma.article.findFirst.mockResolvedValueOnce(exclusive);
+
+      const out = await service.findPublicBySlug('dossier', subscriber);
+      expect(out).toHaveProperty('content');
+    });
+
+    it('lets a free reader through on a purchase alone, with no plan', async () => {
+      paywall = 'true';
+      packageAccess.hasPurchased.mockResolvedValue(true);
+      prisma.article.findFirst.mockResolvedValueOnce(exclusive);
+
+      const out = await service.findPublicBySlug('dossier', freeReader);
+
+      expect(out).toHaveProperty('content');
+      expect(packageAccess.hasPurchased).toHaveBeenCalledWith('r2', 'a1');
+    });
+
+    it('cuts a free reader who bought nothing, and omits content entirely', async () => {
+      paywall = 'true';
+      prisma.article.findFirst.mockResolvedValueOnce(exclusive);
+
+      const out = await service.findPublicBySlug('dossier', freeReader);
+
+      // `in`, not a truthiness check: the key must be ABSENT, because the
+      // frontend does `content ?? contentPreview` and an empty string
+      // would win that and ship a blank article.
+      expect('content' in out).toBe(false);
+      expect(out).toHaveProperty('contentPreview');
+    });
+
+    it('never paywalls a free article, whatever pacote holds it', async () => {
+      paywall = 'true';
+      packageAccess.isSubscriptionExcluded.mockResolvedValue(true);
+      prisma.article.findFirst.mockResolvedValueOnce({
+        ...exclusive,
+        exclusive: false,
+      });
+
+      const out = await service.findPublicBySlug('dossier', freeReader);
+
+      // Membership only ever redirects who may read an ALREADY exclusive
+      // article. If this ever fails, building a pacote around published
+      // free articles silently takes them off the site.
+      expect(out).toHaveProperty('content');
     });
   });
 

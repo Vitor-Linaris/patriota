@@ -5,6 +5,7 @@ import { TopBar } from "@/components/home/TopBar";
 import { SiteHeader } from "@/components/home/SiteHeader";
 import { SecondaryNav } from "@/components/home/SecondaryNav";
 import { SiteFooter } from "@/components/home/SiteFooter";
+import { FEATURES } from "@/lib/features";
 
 const SECTIONS = [
   { href: "/conta", label: "Resumo", glyph: "▦" },
@@ -13,6 +14,15 @@ const SECTIONS = [
   { href: "/conta/comentarios", label: "Comentários", glyph: "❝" },
   { href: "/conta/historico", label: "Histórico", glyph: "◷" },
   { href: "/conta/assinatura", label: "Assinatura", glyph: "★" },
+  {
+    // Sets of articles bought outright, as distinct from the
+    // subscription above: one is what you pay for every month, the other
+    // is what you already own. Hidden with the storefront.
+    href: "/conta/pacotes",
+    label: "Pacotes",
+    glyph: "◫",
+    flag: "packages",
+  },
 ] as const;
 
 /**
@@ -45,7 +55,9 @@ export function ContaShell({
         <Container>
           <div className="mx-auto max-w-4xl">
             <nav className="flex flex-wrap gap-2" aria-label="A minha conta">
-              {SECTIONS.map((s) => {
+              {SECTIONS.filter(
+                (s) => !("flag" in s) || FEATURES[s.flag],
+              ).map((s) => {
                 const on = s.href === active;
                 return (
                   <Link

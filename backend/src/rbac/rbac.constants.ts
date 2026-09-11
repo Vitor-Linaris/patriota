@@ -160,6 +160,30 @@ export const MODULES: ModuleDef[] = [
       { key: 'publicidade.eliminar_imagem', label: 'Eliminar imagem de publicidade', description: 'Apagar de vez o ficheiro de um banner — não é possível recuperar' },
     ],
   },
+  {
+    key: 'pacotes',
+    label: 'Pacotes exclusivos',
+    permissions: [
+      { key: 'pacotes.ver', label: 'Ver pacotes', description: 'Ver a lista de pacotes e o que cada um contém' },
+      { key: 'pacotes.criar', label: 'Criar pacote', description: 'Criar um pacote novo, ainda em rascunho' },
+      { key: 'pacotes.editar', label: 'Editar pacote', description: 'Nome, preço, capa e que artigos entram no pacote' },
+      // Split from `editar` because it is a different kind of act, the
+      // same reasoning as publicidade.eliminar_imagem above. This click
+      // publishes the draft articles inside the pacote AND creates a
+      // real Price on a real Stripe product — it puts a number on
+      // something the public can pay. Guarded a second time in the
+      // service, which also requires artigos.publicar: publishing a
+      // pacote full of drafts must not be a side door around the
+      // article publishing right.
+      { key: 'pacotes.publicar', label: 'Publicar pacote', description: 'Publica os artigos em rascunho do pacote e põe-no à venda' },
+      { key: 'pacotes.eliminar', label: 'Eliminar pacote', description: 'Apagar um pacote — recusado se já tiver compras' },
+      { key: 'pacotes.ver_compras', label: 'Ver compras', description: 'Quem comprou que pacote e por quanto' },
+      // NOT on EDITOR, same rule as leitores.oferecer_assinatura: these
+      // two move money.
+      { key: 'pacotes.oferecer', label: 'Oferecer pacote', description: 'Dar acesso a um pacote sem pagamento' },
+      { key: 'pacotes.revogar_compra', label: 'Revogar compra', description: 'Retirar o acesso após um reembolso' },
+    ],
+  },
 ];
 
 export const ALL_PERMISSIONS: string[] = MODULES.flatMap((m) =>
@@ -304,6 +328,17 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, string[]> = {
     'media.carregar',
     'media.editar_metadados',
     'analytics.basicas',
+    'pacotes.ver',
+    'pacotes.criar',
+    'pacotes.editar',
+    // Safe to grant here because the service ALSO requires
+    // artigos.publicar to publish a pacote containing drafts, and an
+    // EDITOR already has that. Someone who has this and not
+    // artigos.publicar gets a 403 naming the articles they cannot
+    // publish, not a side door.
+    'pacotes.publicar',
+    // NOT pacotes.eliminar / oferecer / revogar_compra / ver_compras:
+    // those either destroy a paid-for record or give away money.
   ],
   JORNALISTA: [
     'artigos.ler',
@@ -312,6 +347,12 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, string[]> = {
     'artigos.submeter',
     'categorias.ver',
     'media.carregar',
+    // Read-only on purpose. The "Pacote" field in the article editor
+    // shows a journalist which pacote their piece belongs to; changing
+    // it writes PackageArticle and needs pacotes.editar. If the newsroom
+    // wants journalists filing their own work into pacotes, that is one
+    // switch on /admin/permissions, not a code change.
+    'pacotes.ver',
   ],
   REVISOR: [
     'artigos.ler',
@@ -346,5 +387,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, string[]> = {
     // limited to their own articles (they don't author any) would see
     // an empty list instead of the numbers they're here to read.
     'artigos.ler_todos',
+    // Revenue per pacote is a number, and numbers are their job.
+    // Read-only: no criar/editar/publicar.
+    'pacotes.ver',
+    'pacotes.ver_compras',
   ],
 };

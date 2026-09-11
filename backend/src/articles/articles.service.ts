@@ -21,6 +21,7 @@ import {
 import type { Role } from '../rbac/rbac.constants';
 import { previewOf } from './paywall';
 import { MediaService } from '../media/media.service';
+import { PackageAccessService } from '../packages/package-access.service';
 
 interface ActingUser {
   id: string;
@@ -60,8 +61,12 @@ function isPrismaCode(e: unknown, code: string): boolean {
  * createdAt, updatedAt, scheduledAt.
  *
  * Adding a column to Article does not add it here. That is the point.
+ *
+ * Exported so the pacote endpoints project through the SAME object rather
+ * than a copy. A copy is a select that drifts, and the day it drifts is
+ * the day /public/packages starts publishing `draft`.
  */
-const PUBLIC_ARTICLE_SELECT = {
+export const PUBLIC_ARTICLE_SELECT = {
   id: true,
   slug: true,
   title: true,
@@ -113,6 +118,7 @@ export class ArticlesService {
     private readonly tree: CategoryTreeService,
     private readonly config: ConfigService,
     private readonly media: MediaService,
+    private readonly packageAccess: PackageAccessService,
   ) {}
 
   // ── helpers ────────────────────────────────────────────────────────
@@ -318,6 +324,22 @@ export class ArticlesService {
         include: {
           category: { select: { slug: true, name: true, color: true } },
           author: { select: { id: true, name: true, email: true } },
+          // Which pacote holds this piece, for the badge on the row. An
+          // article in a pacote reads "PACOTE" rather than "EXCLUSIVO":
+          // both are paid, but they are paid for differently, and the
+          // editor needs to know which at a glance.
+          //
+          // Every pacote, not only published ones — a draft pacote is
+          // exactly what the editor is building, and a row that stayed
+          // silent about it until publication would be silent for the
+          // whole time it mattered.
+          packageEntries: {
+            take: 1,
+            orderBy: { addedAt: 'asc' },
+            select: {
+              package: { select: { id: true, name: true, status: true } },
+            },
+          },
         },
       }),
       this.prisma.article.count({ where }),
@@ -890,7 +912,15 @@ export class ArticlesService {
     return perms.includes('assinantes.ler_exclusivos');
   }
 
-  async findPublicBySlug(slug: string, reader?: { plan: string }) {
+  /**
+   * `reader.id` is needed as well as `plan` now: the plan answers "does
+   * this person subscribe", and pacotes ask the separate per-article
+   * question "did THIS person buy it", which only an id can answer.
+   */
+  async findPublicBySlug(
+    slug: string,
+    reader?: { id: string; plan: string },
+  ) {
     const a = await this.prisma.article.findFirst({
       where: { slug, status: 'PUBLICADO' },
       select: PUBLIC_ARTICLE_DETAIL_SELECT,
@@ -901,15 +931,45 @@ export class ArticlesService {
       .update({ where: { id: a.id }, data: { views: { increment: 1 } } })
       .catch(() => undefined);
 
-    if (!this.paywallEnabled || !a.exclusive) return a;
-    if (await this.mayReadExclusive(reader)) return a;
+    // The gate. Ordered to minimise round-trips, not to read prettily:
+    // each early return below is a case that costs zero extra queries.
 
-    // `content` is DESTRUCTURED OUT, not blanked. An empty string would
-    // still be a key in the JSON, and the next person to write
-    // `article.content ?? article.contentPreview` would find the empty
-    // string truthy-adjacent and ship a blank article. It simply is not
-    // there.
-    const { content, ...rest } = a;
+    // A pacote does NOT paywall a free article. Membership only ever
+    // redirects who may read an ALREADY exclusive one — making membership
+    // itself paywalling would take live free articles off the site the
+    // moment an editor built a pacote around them, by accident.
+    if (!this.paywallEnabled || !a.exclusive) return a;
+
+    // Anonymous: no plan and no purchases, so both queries below could
+    // only confirm what is already known.
+    if (!reader) return this.paywalled(a);
+
+    if (await this.mayReadExclusive(reader)) {
+      // …but the plan now LOSES to a pacote sold outside the
+      // subscription. This is the one inversion pacotes introduce; see
+      // package-access.ts for why it is "every" and not "any".
+      if (!(await this.packageAccess.isSubscriptionExcluded(a.id))) return a;
+    }
+
+    // Bought it. One index-only lookup, reached by a free reader and by a
+    // subscriber the step above excluded — the two people for whom a
+    // pacote is the only way in.
+    if (await this.packageAccess.hasPurchased(reader.id, a.id)) return a;
+
+    return this.paywalled(a);
+  }
+
+  /**
+   * The cut response.
+   *
+   * `content` is DESTRUCTURED OUT, not blanked. An empty string would
+   * still be a key in the JSON, and the next person to write
+   * `article.content ?? article.contentPreview` would find the empty
+   * string truthy-adjacent and ship a blank article. It simply is not
+   * there.
+   */
+  private paywalled<T extends { content: string }>(article: T) {
+    const { content, ...rest } = article;
     return {
       ...rest,
       paywalled: true,

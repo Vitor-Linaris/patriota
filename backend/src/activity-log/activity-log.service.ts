@@ -15,6 +15,8 @@ export type ActivityTargetType =
   | 'category'
   | 'media'
   | 'campaign'
+  /** A pacote exclusivo — a set of articles sold for one payment. */
+  | 'package'
   | 'setting';
 
 export interface RecordActivityInput {

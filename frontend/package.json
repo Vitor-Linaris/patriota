@@ -8,6 +8,7 @@
     "start": "next start -p 3005 -H 0.0.0.0",
     "lint": "eslint",
     "check:tree": "node src/app/admin/categorias/tree-utils.check.ts",
+    "check:pacotes": "node src/app/admin/pacotes/package-utils.check.ts",
     "docker:up": "docker compose -f ../docker-compose.yml up -d --build",
     "docker:down": "docker compose -f ../docker-compose.yml down",
     "docker:logs": "docker compose -f ../docker-compose.yml logs -f web",

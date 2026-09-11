@@ -10,6 +10,10 @@ import type Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
 import { StripeService } from './stripe.service';
 import { lapsedPlanData } from '../reader-auth/reader-entitlement';
+import {
+  PACKAGE_CHECKOUT_KIND,
+  PackagePurchasesService,
+} from '../packages/package-purchases.service';
 
 /**
  * Stripe subscription statuses that entitle a reader to read.
@@ -37,6 +41,7 @@ export class BillingService {
     private readonly prisma: PrismaService,
     private readonly stripe: StripeService,
     private readonly config: ConfigService,
+    private readonly packagePurchases: PackagePurchasesService,
   ) {}
 
   private siteUrl(): string {
@@ -219,6 +224,32 @@ export class BillingService {
         );
         return true;
 
+      // A delayed method (Multibanco and friends) settling. The original
+      // `completed` arrived payment_status: 'unpaid' and granted nothing;
+      // this is the moment it becomes real.
+      case 'checkout.session.async_payment_succeeded':
+        await this.onCheckoutCompleted(
+          event,
+          event.data.object as Stripe.Checkout.Session,
+        );
+        return true;
+
+      case 'checkout.session.expired':
+        await this.packagePurchases.onCheckoutExpired(
+          event,
+          event.data.object as Stripe.Checkout.Session,
+        );
+        return true;
+
+      // Recorded and logged, never auto-revoked — see
+      // PackagePurchasesService.onChargeRefunded for why.
+      case 'charge.refunded':
+        await this.packagePurchases.onChargeRefunded(
+          event,
+          event.data.object as Stripe.Charge,
+        );
+        return true;
+
       case 'customer.subscription.created':
       case 'customer.subscription.updated':
       case 'customer.subscription.deleted':
@@ -255,6 +286,31 @@ export class BillingService {
     event: Stripe.Event,
     session: Stripe.Checkout.Session,
   ) {
+    // A one-off pacote purchase fires this SAME event type, and everything
+    // below this block assumes a subscription — it writes
+    // stripeSubscriptionId onto the reader. So the branch has to come
+    // first, and it has to be POSITIVE rather than a fallthrough: an
+    // unrecognised payment-mode session is recorded and ignored, never run
+    // through the subscription path on the theory that it is probably fine.
+    if (
+      session.mode === 'payment' ||
+      session.metadata?.kind === PACKAGE_CHECKOUT_KIND
+    ) {
+      if (
+        session.mode === 'payment' &&
+        session.metadata?.kind === PACKAGE_CHECKOUT_KIND
+      ) {
+        await this.packagePurchases.onCheckoutCompleted(event, session);
+      } else {
+        this.logger.warn(
+          `checkout.session.completed ${session.id}: mode=${session.mode} ` +
+            `kind=${session.metadata?.kind ?? 'ausente'} — não tratado.`,
+        );
+        await this.record(event, session.metadata?.readerId ?? null);
+      }
+      return;
+    }
+
     const readerId =
       session.client_reference_id ?? session.metadata?.readerId ?? null;
     if (!readerId) {

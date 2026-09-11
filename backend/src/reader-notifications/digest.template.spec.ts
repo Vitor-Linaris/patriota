@@ -152,4 +152,68 @@ describe('digestTemplate', () => {
     expect(mail.text).toContain('https://opatriota.pt/artigo/orcamento');
     expect(mail.text).toContain('Cancelar todos os e-mails');
   });
+
+  // ── artigos dentro de um pacote ──────────────────────────────────
+  //
+  // An article in a pacote is behind the paywall the pacote is the key
+  // to. Sending its reader to the article would be sending them to a
+  // wall; the e-mail points at the shop instead.
+
+  const inPackage = () =>
+    article({
+      slug: 'habitacao-parte-1',
+      title: 'Habitação: as listas de espera',
+      pkg: {
+        slug: 'dossie-habitacao',
+        name: 'Dossiê Habitação',
+        priceCents: 990,
+        currency: 'EUR',
+      },
+    });
+
+  it('points a pacote article at the pacote, never at the article', () => {
+    const mail = digestTemplate(CTX, {
+      name: 'Ana',
+      articles: [inPackage()],
+      unsubscribeToken: 'tok',
+    });
+
+    expect(mail.html).toContain('https://opatriota.pt/pacotes/dossie-habitacao');
+    expect(mail.html).not.toContain('/artigo/habitacao-parte-1');
+    expect(mail.text).toContain('https://opatriota.pt/pacotes/dossie-habitacao');
+    expect(mail.text).not.toContain('/artigo/habitacao-parte-1');
+  });
+
+  it('says which pacote it joined, and what the pacote costs', () => {
+    const mail = digestTemplate(CTX, {
+      name: null,
+      articles: [inPackage()],
+      unsubscribeToken: 'tok',
+    });
+
+    expect(mail.html).toContain('Novo no pacote Dossiê Habitação');
+    expect(mail.html).toContain('Ver o pacote');
+    expect(mail.html).not.toContain('Ler artigo completo');
+    // Formatted pt-PT, so "9,90" and not "9.90". The non-breaking space
+    // before the symbol is ICU's business, so only the number is pinned.
+    expect(mail.html).toContain('9,90');
+    expect(mail.text).toContain('[Novo no pacote Dossiê Habitação]');
+  });
+
+  it('leaves ordinary articles alone in a mixed digest', () => {
+    const mail = digestTemplate(CTX, {
+      name: null,
+      articles: [
+        article({ slug: 'livre', title: 'Notícia livre' }),
+        inPackage(),
+      ],
+      unsubscribeToken: 'tok',
+    });
+
+    // Both offers present, each pointing where it should.
+    expect(mail.html).toContain('https://opatriota.pt/artigo/livre');
+    expect(mail.html).toContain('Ler artigo completo');
+    expect(mail.html).toContain('https://opatriota.pt/pacotes/dossie-habitacao');
+    expect(mail.html).toContain('Ver o pacote');
+  });
 });
