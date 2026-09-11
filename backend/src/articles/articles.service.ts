@@ -20,6 +20,7 @@ import {
 } from '../common/dto/pagination.dto';
 import type { Role } from '../rbac/rbac.constants';
 import { previewOf } from './paywall';
+import { sanitizeArticleContent } from './sanitize-content';
 import { MediaService } from '../media/media.service';
 import { PackageAccessService } from '../packages/package-access.service';
 
@@ -369,7 +370,11 @@ export class ArticlesService {
           title: dto.title,
           slug,
           summary: dto.summary ?? '',
-          content: dto.content ?? '',
+          // Sanitised on the way IN, here and in update() and
+          // saveDraft() — the three doors `content` has. The editor is a
+          // browser widget, so it shapes the HTML but cannot enforce it;
+          // this can. See sanitize-content.ts.
+          content: sanitizeArticleContent(dto.content),
           status,
           // A row created straight into PUBLICADO is as published as one
           // that got there via publish() — same date, or it sorts as
@@ -424,6 +429,12 @@ export class ArticlesService {
       await this.assertMayPublish(user);
     }
     const data: Record<string, unknown> = { ...dto };
+    // The spread above would carry raw HTML straight through. Only
+    // touched when the field was actually sent — an absent `content` must
+    // stay absent, or a PATCH of the headline alone would blank the body.
+    if (dto.content !== undefined) {
+      data.content = sanitizeArticleContent(dto.content);
+    }
     if (dto.scheduledAt) data.scheduledAt = new Date(dto.scheduledAt);
     // Matches publish(): the date is what makes the piece sort as new
     // and what the notification cron reads to tell readers about it. A
@@ -518,6 +529,13 @@ export class ArticlesService {
     for (const field of ArticlesService.DRAFT_FIELDS) {
       const value = (dto as Record<string, unknown>)[field];
       if (value !== undefined) draft[field] = value;
+    }
+    // A draft is promoted into the live columns wholesale by publish()
+    // (`...draft`), so HTML that arrives dirty here would reach readers
+    // having passed no other check. Cleaned at the door, like the other
+    // two write paths.
+    if (draft.content !== undefined) {
+      draft.content = sanitizeArticleContent(draft.content as string);
     }
 
     return this.prisma.article.update({

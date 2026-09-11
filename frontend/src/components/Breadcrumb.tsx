@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { jsonLdHtml } from "@/lib/json-ld";
 
 export interface Crumb {
   label: string;
@@ -79,9 +80,11 @@ export function Breadcrumb({
       </nav>
       <script
         type="application/ld+json"
-        // The payload is built here from our own data, never from user
-        // input, so there is no injection surface.
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        // "Our own data" is true of the SHAPE and false of the values:
+        // the category names in it are typed into the CMS. JSON.stringify
+        // does not escape `<`, so a name containing "</script>" would
+        // close this tag. See lib/json-ld.ts.
+        dangerouslySetInnerHTML={{ __html: jsonLdHtml(jsonLd) }}
       />
     </>
   );
