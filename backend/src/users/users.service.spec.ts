@@ -251,7 +251,6 @@ describe('UsersService', () => {
         id: 'u1', email: 'u@x.pt', role: 'JORNALISTA',
       });
       prisma.article.count.mockResolvedValueOnce(0);
-      prisma.activityLog.deleteMany.mockResolvedValueOnce({ count: 2 });
       prisma.user.delete.mockResolvedValueOnce({});
       const res = await service.remove('u1', {
         id: 'admin', role: 'SUPER_ADMIN',
@@ -260,6 +259,24 @@ describe('UsersService', () => {
       expect(activity.record).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'deleted', targetType: 'user' }),
       );
+    });
+
+    it('does NOT delete the audit trail the account authored', async () => {
+      // This used to run activityLog.deleteMany({ where: { userId } })
+      // before the delete, destroying every action the account had ever
+      // recorded — under a comment claiming the entries were kept. The
+      // relation is now onDelete: SetNull, so the rows survive with
+      // userId null and actorLabel intact; deleting them here would undo
+      // that. There is no second audit table to fall back on.
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: 'u1', email: 'u@x.pt', role: 'JORNALISTA',
+      });
+      prisma.article.count.mockResolvedValueOnce(0);
+      prisma.user.delete.mockResolvedValueOnce({});
+
+      await service.remove('u1', { id: 'admin', role: 'SUPER_ADMIN' });
+
+      expect(prisma.activityLog.deleteMany).not.toHaveBeenCalled();
     });
   });
 

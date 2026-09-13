@@ -344,10 +344,12 @@ export class UsersService {
       );
     }
     try {
-      // Activity log entries authored by this user keep the userId
-      // reference; the user row itself is removed. Doing the log
-      // BEFORE delete so it doesn't get orphaned by the cascade.
-      await this.prisma.activityLog.deleteMany({ where: { userId: id } });
+      // No activityLog.deleteMany here. The relation is onDelete: SetNull,
+      // so this user's entries survive the deletion with userId null and
+      // actorLabel intact — which is what the comment that used to sit
+      // here already claimed was happening, while the line below it
+      // destroyed the entire trail. The cascade did the same on its own,
+      // so removing only the explicit call would not have been enough.
       await this.prisma.user.delete({ where: { id } });
     } catch (e) {
       if (isPrismaCode(e, 'P2025')) {

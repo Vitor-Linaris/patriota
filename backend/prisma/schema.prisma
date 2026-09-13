@@ -493,16 +493,30 @@ model Article {
   @@index([draftAwaitingReview])
 }
 
+/// Who did what. The platform's only accountability record: there is no
+/// second audit table and no export of this one.
 model ActivityLog {
-  id          String   @id @default(cuid())
-  userId      String
+  id String @id @default(cuid())
+
+  /// Nullable, and SetNull rather than Cascade, because the trail has to
+  /// outlive the account it audits. It was a required FK with
+  /// onDelete: Cascade, so deleting a staff user destroyed every action
+  /// that user had ever recorded — and UsersService.remove() also deleted
+  /// them explicitly first. The accounts easiest to delete are exactly the
+  /// ones with no articles blocking it (MODERADOR, ANALISTA), whose trail
+  /// is reader suspensions, subscription gifts and pacote grants.
+  userId String?
+
+  /// The actor's name and e-mail as they were AT THE TIME, so a deleted
+  /// account is still attributable once userId goes null.
+  actorLabel  String
   action      String
   targetType  String
   targetId    String?
   targetLabel String
   createdAt   DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([createdAt])
   @@index([userId, createdAt])

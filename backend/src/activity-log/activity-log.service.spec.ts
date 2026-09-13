@@ -4,7 +4,10 @@ import { PrismaService } from '../prisma/prisma.service';
 
 describe('ActivityLogService', () => {
   let service: ActivityLogService;
-  let prisma: { activityLog: { create: jest.Mock; findMany: jest.Mock; count: jest.Mock } };
+  let prisma: {
+    activityLog: { create: jest.Mock; findMany: jest.Mock; count: jest.Mock };
+    user: { findUnique: jest.Mock };
+  };
 
   beforeEach(async () => {
     prisma = {
@@ -12,6 +15,11 @@ describe('ActivityLogService', () => {
         create: jest.fn().mockResolvedValue({ id: 'a1' }),
         findMany: jest.fn().mockResolvedValue([]),
         count: jest.fn().mockResolvedValue(0),
+      },
+      user: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ name: 'Ana Dias', email: 'ana@opatriota.pt' }),
       },
     };
     const moduleRef = await Test.createTestingModule({
@@ -35,12 +43,40 @@ describe('ActivityLogService', () => {
       expect(prisma.activityLog.create).toHaveBeenCalledWith({
         data: {
           userId: 'u1',
+          actorLabel: 'Ana Dias <ana@opatriota.pt>',
           action: 'published',
           targetType: 'article',
           targetId: 'a-123',
           targetLabel: 'Article title',
         },
       });
+    });
+
+    it('denormalises the actor label so the entry outlives the account', async () => {
+      // userId is onDelete: SetNull, so after the account is deleted the
+      // relation is the only thing that named the actor — and it is gone.
+      // Without this label the surviving row is unattributable, which is
+      // only marginally better than the cascade that used to delete it.
+      await service.record({
+        userId: 'u1',
+        action: 'reader_suspended',
+        targetType: 'reader',
+        targetLabel: 'leitor@x.pt',
+      });
+      const data = prisma.activityLog.create.mock.calls[0][0].data;
+      expect(data.actorLabel).toContain('ana@opatriota.pt');
+    });
+
+    it('still records something attributable when the actor row is gone', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce(null);
+      await service.record({
+        userId: 'ghost',
+        action: 'x',
+        targetType: 'article',
+        targetLabel: 'x',
+      });
+      const data = prisma.activityLog.create.mock.calls[0][0].data;
+      expect(data.actorLabel).toContain('ghost');
     });
 
     it('swallows persistence errors so business logic is not blocked', async () => {

@@ -79,9 +79,28 @@ export class RbacService implements OnModuleInit {
 
   /**
    * Ensure every Role has a RolePermissions row on boot.
-   * For new rows: seed with DEFAULT_ROLE_PERMISSIONS.
-   * For existing rows: only ADD permissions that are in the default set
-   * but missing from the row — never removes admin customisations.
+   *
+   * CREATE-IF-MISSING ONLY. An existing row is the authoritative statement
+   * of what a SUPER_ADMIN granted through PUT /admin/rbac/role/:role, which
+   * stores the submitted list verbatim.
+   *
+   * This used to also back-fill any default key absent from an existing
+   * row, described as "never removes admin customisations". That is true
+   * for keys an administrator ADDED and false for keys an administrator
+   * REMOVED — and the two are indistinguishable here, because the schema
+   * records only the positive grant list. So every revocation was undone
+   * on the next boot: deploy, container restart, crash-loop recovery. The
+   * damage was widest on EDITOR_CHEFE, whose default set is every key but
+   * configuracoes.permissoes, so essentially any tightening of the most
+   * powerful non-SUPER_ADMIN role was reverted before the first request,
+   * leaving only an INFO log line that reads like a routine migration.
+   *
+   * The two sibling writers of this same table already get it right:
+   * bootstrap-admin.ts and prisma/seed.ts both use `update: {}`.
+   *
+   * A genuinely new catalogue key is rolled out from /admin/permissions,
+   * which is authorised and visible. This hook is neither.
+   *
    * Idempotent.
    */
   async onModuleInit() {
@@ -89,24 +108,12 @@ export class RbacService implements OnModuleInit {
       for (const role of ROLE_ORDER) {
         const existing = await this.prisma.rolePermissions.findUnique({
           where: { role },
+          select: { role: true },
         });
         if (!existing) {
           await this.prisma.rolePermissions.create({
             data: { role, permissions: DEFAULT_ROLE_PERMISSIONS[role] },
           });
-          continue;
-        }
-        const missing = DEFAULT_ROLE_PERMISSIONS[role].filter(
-          (p) => !existing.permissions.includes(p),
-        );
-        if (missing.length > 0) {
-          await this.prisma.rolePermissions.update({
-            where: { role },
-            data: { permissions: [...existing.permissions, ...missing] },
-          });
-          this.logger.log(
-            `Added ${missing.length} new default permission(s) to ${role}: ${missing.join(', ')}`,
-          );
         }
       }
     } catch (err) {
@@ -120,27 +127,18 @@ export class RbacService implements OnModuleInit {
     // provisioning plans must not leave the roles half-done, and a
     // failure on roles must not stop the plans being created.
     try {
+      // Create-if-missing only, for the same reason as the roles above:
+      // a revoked GRATIS permission is indistinguishable from one never
+      // provisioned, and re-adding it undoes the administrator's decision.
       for (const plan of PLAN_ORDER) {
         const existing = await this.prisma.planPermissions.findUnique({
           where: { plan },
+          select: { plan: true },
         });
         if (!existing) {
           await this.prisma.planPermissions.create({
             data: { plan, permissions: DEFAULT_PLAN_PERMISSIONS[plan] },
           });
-          continue;
-        }
-        const missing = DEFAULT_PLAN_PERMISSIONS[plan].filter(
-          (p) => !existing.permissions.includes(p),
-        );
-        if (missing.length > 0) {
-          await this.prisma.planPermissions.update({
-            where: { plan },
-            data: { permissions: [...existing.permissions, ...missing] },
-          });
-          this.logger.log(
-            `Added ${missing.length} new default permission(s) to plan ${plan}: ${missing.join(', ')}`,
-          );
         }
       }
     } catch (err) {

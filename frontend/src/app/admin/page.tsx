@@ -17,6 +17,12 @@ interface ActivityItem {
   targetId: string | null;
   targetLabel: string;
   createdAt: string;
+  /**
+   * Who acted, as they were at the time. The only attribution left once
+   * the account is deleted: `user` goes null (onDelete: SetNull) so the
+   * trail outlives the principal it audits.
+   */
+  actorLabel: string;
   user: {
     id: string;
     name: string | null;
@@ -412,8 +418,12 @@ export default async function AdminDashboardPage() {
                       </span>
                       <div className="min-w-0">
                         <p className="text-xs leading-relaxed text-gray-800">
+                          {/* Live relation first — it reflects a rename.
+                              actorLabel is the fallback for a deleted
+                              account, which used to render as "Sistema":
+                              a real person's action attributed to nobody. */}
                           <span className="font-bold">
-                            {a.user?.name ?? a.user?.email ?? "Sistema"}
+                            {a.user?.name ?? a.user?.email ?? a.actorLabel}
                           </span>{" "}
                           <span className="text-gray-500">
                             {actionLabel(a.action)}

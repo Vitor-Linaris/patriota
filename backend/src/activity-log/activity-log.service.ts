@@ -36,12 +36,27 @@ export class ActivityLogService {
   /**
    * Records an activity entry. Errors are swallowed (logged) so that
    * business operations are never blocked by an audit log failure.
+   *
+   * The actor's label is resolved HERE and stored on the row, rather than
+   * being read through the relation at display time. The relation is
+   * onDelete: SetNull, so deleting the account leaves userId null — and
+   * without a denormalised label the entry would survive the deletion
+   * unattributable, which is only marginally better than the cascade that
+   * used to delete it outright. One primary-key lookup, on a call that is
+   * already fire-and-forget at all of its call sites.
    */
   async record(input: RecordActivityInput): Promise<void> {
     try {
+      const actor = await this.prisma.user.findUnique({
+        where: { id: input.userId },
+        select: { name: true, email: true },
+      });
       await this.prisma.activityLog.create({
         data: {
           userId: input.userId,
+          actorLabel: actor
+            ? `${actor.name} <${actor.email}>`
+            : `(conta removida: ${input.userId})`,
           action: input.action,
           targetType: input.targetType,
           targetId: input.targetId,
