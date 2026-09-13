@@ -4,8 +4,40 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
+import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import type { Role } from '../rbac/rbac.constants';
+
+/** Same cost every stored staff password uses (users.service.ts). */
+const BCRYPT_ROUNDS = 12;
+
+/**
+ * Compared against when the e-mail matches no staff account, so that the
+ * "no such user" branch costs the same as the real one and response time
+ * does not disclose which addresses are newsroom accounts.
+ *
+ * DERIVED at module load, never a literal. bcryptjs returns false from
+ * compare() on the next tick for any hash that is not exactly 60
+ * characters, performing no key derivation at all — so a hand-written
+ * placeholder of the wrong length silently disables this. The literal
+ * that used to sit here was 65 characters AND declared cost 10 against
+ * the cost 12 of every real hash, so both halves of the equalisation
+ * were wrong. Deriving it fixes the length by construction and keeps the
+ * cost tied to BCRYPT_ROUNDS.
+ */
+const ABSENT_USER_HASH = bcrypt.hashSync(
+  randomBytes(32).toString('hex'),
+  BCRYPT_ROUNDS,
+);
+
+/* istanbul ignore next -- boot-time invariant, not a runtime branch */
+if (ABSENT_USER_HASH.length !== 60) {
+  throw new Error(
+    'ABSENT_USER_HASH tem de ser um hash bcrypt de 60 caracteres, ou o ' +
+      'bcrypt.compare() curto-circuita e o login de staff passa a ' +
+      'revelar, pelo tempo de resposta, que endereços são contas.',
+  );
+}
 
 export interface JwtPayload {
   sub: string;
@@ -42,9 +74,7 @@ export class AuthService {
       where: { email: email.toLowerCase() },
     });
     // Run bcrypt even if the user does not exist to keep timing constant
-    const hash =
-      user?.password ??
-      '$2a$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidiu';
+    const hash = user?.password ?? ABSENT_USER_HASH;
     const valid = await bcrypt.compare(password, hash);
 
     if (!user || !user.isActive || !valid) {

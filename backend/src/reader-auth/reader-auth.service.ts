@@ -25,10 +25,31 @@ const BCRYPT_ROUNDS = 12;
 
 /**
  * Burned when the account does not exist or is social-only, so the
- * response time does not reveal which. Same trick as auth.service.ts:38.
+ * response time does not reveal which. Same trick as auth.service.ts.
+ *
+ * DERIVED, never a literal. bcryptjs short-circuits compare() to false on
+ * the next tick for any hash that is not exactly 60 characters
+ * (node_modules/bcryptjs/index.js, `if (hashValue.length !== 60)`), so a
+ * hand-written placeholder of the wrong length performs ZERO key
+ * derivation and turns this whole mitigation into a no-op — the real
+ * branch costs a full cost-12 bcrypt and the dummy branch costs a tick,
+ * which is the entire KDF of difference and readable from one request.
+ * The previous literal here was 65 characters. Deriving from a random
+ * secret at the production cost makes the length correct by construction.
  */
-const DUMMY_HASH =
-  '$2a$12$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidiu';
+const DUMMY_HASH = bcrypt.hashSync(
+  randomBytes(32).toString('hex'),
+  BCRYPT_ROUNDS,
+);
+
+/* istanbul ignore next -- boot-time invariant, not a runtime branch */
+if (DUMMY_HASH.length !== 60) {
+  throw new Error(
+    'DUMMY_HASH tem de ser um hash bcrypt de 60 caracteres, ou o ' +
+      'bcrypt.compare() curto-circuita e o login de leitor passa a ' +
+      'revelar, pelo tempo de resposta, se a conta existe.',
+  );
+}
 
 const VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 const RESET_TTL_MS = 60 * 60 * 1000; //  1h

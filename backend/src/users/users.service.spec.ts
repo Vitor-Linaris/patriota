@@ -290,4 +290,58 @@ describe('UsersService', () => {
     });
   });
 
+  // The peer rule was written into changeRole() and nowhere else, so the
+  // three STRONGER operations were open between equals: a chief could not
+  // demote a peer chief, but could take their password, lock them out, or
+  // delete the account. These pin all three closed.
+  describe('peer isolation across every cross-account write', () => {
+    const peer = { id: 'peer-id', email: 'peer@x.pt', role: 'EDITOR_CHEFE' };
+    const self = { id: 'self-id', role: 'EDITOR_CHEFE' as const };
+
+    it('forbids EDITOR_CHEFE from resetting a peer EDITOR_CHEFE password', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce(peer);
+      await expect(service.resetPassword('peer-id', self)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('forbids EDITOR_CHEFE from suspending a peer EDITOR_CHEFE', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: 'peer-id', role: 'EDITOR_CHEFE',
+      });
+      await expect(
+        service.setActive('peer-id', false, self),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('forbids EDITOR_CHEFE from deleting a peer EDITOR_CHEFE', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce(peer);
+      await expect(service.remove('peer-id', self)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(prisma.user.delete).not.toHaveBeenCalled();
+    });
+
+    it('still lets a SUPER_ADMIN act on an EDITOR_CHEFE', async () => {
+      // The fix must not close the vertical direction it was never about.
+      prisma.user.findUnique.mockResolvedValueOnce(peer);
+      prisma.user.update.mockResolvedValueOnce({});
+      await expect(
+        service.resetPassword('peer-id', { id: 'admin', role: 'SUPER_ADMIN' }),
+      ).resolves.toMatchObject({ email: 'peer@x.pt' });
+    });
+
+    it('still lets an EDITOR_CHEFE act on a lower role', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: 'jorn-id', email: 'j@x.pt', role: 'JORNALISTA',
+      });
+      prisma.user.update.mockResolvedValueOnce({});
+      await expect(
+        service.resetPassword('jorn-id', self),
+      ).resolves.toMatchObject({ email: 'j@x.pt' });
+    });
+  });
+
 });

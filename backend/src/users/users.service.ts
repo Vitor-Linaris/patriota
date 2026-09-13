@@ -177,6 +177,44 @@ export class UsersService {
     }
   }
 
+  /**
+   * Who the actor may act on. ONE place, called by every route that
+   * touches another staff account.
+   *
+   * Two checks, because canManageUser answers only half the question.
+   * It asks "may this rank act on that rank", and ASSIGNABLE_ROLES lists
+   * EDITOR_CHEFE inside EDITOR_CHEFE's own set — deliberately, so a chief
+   * can INVITE a peer. That makes the peer direction true for every
+   * caller of the helper, which is right for creating an account and
+   * wrong for acting on one that already exists.
+   *
+   * The second predicate closes it. It used to live inline in
+   * changeRole() alone, so the WEAKEST of the four operations was the
+   * only guarded one: a chief could not demote a peer, but could reset
+   * that peer's password (and receive it in plaintext), suspend them, or
+   * delete the account outright.
+   */
+  private assertMayActOn(
+    actor: ActingUser,
+    target: { id: string; role: Role },
+    what: string,
+  ): void {
+    if (!canManageUser(actor.role, target.role)) {
+      throw new ForbiddenException(
+        `Não tem permissão para ${what} utilizadores com role ${target.role}.`,
+      );
+    }
+    if (
+      target.role === actor.role &&
+      actor.role !== 'SUPER_ADMIN' &&
+      target.id !== actor.id
+    ) {
+      throw new ForbiddenException(
+        'Não pode gerir a conta de um utilizador do mesmo nível que o seu. Peça a um SUPER_ADMIN.',
+      );
+    }
+  }
+
   async changeRole(id: string, role: Role, actor: ActingUser) {
     if (!canAssignRole(actor.role, role)) {
       throw new ForbiddenException(
@@ -188,21 +226,10 @@ export class UsersService {
     // an EDITOR_CHEFE could "rewrite" a SUPER_ADMIN's role.
     const target = await this.prisma.user.findUnique({
       where: { id },
-      select: { role: true, email: true },
+      select: { id: true, role: true, email: true },
     });
     if (!target) throw new NotFoundException('Utilizador não encontrado.');
-    if (!canManageUser(actor.role, target.role)) {
-      throw new ForbiddenException(
-        `Não tem permissão para gerir utilizadores com role ${target.role}.`,
-      );
-    }
-    if (target.role === actor.role && actor.role !== 'SUPER_ADMIN' && id !== actor.id) {
-      // Prevent peer demotions: two EDITOR_CHEFEs can't fight over
-      // each other's roles, only a SUPER_ADMIN can intervene.
-      throw new ForbiddenException(
-        'Não pode alterar o role de um utilizador do mesmo nível que o seu.',
-      );
-    }
+    this.assertMayActOn(actor, target, 'gerir');
     try {
       const updated = await this.prisma.user.update({
         where: { id },
@@ -226,17 +253,14 @@ export class UsersService {
   }
 
   async setActive(id: string, isActive: boolean, actor: ActingUser) {
-    // Same hierarchy guard: an EDITOR_CHEFE cannot suspend a SUPER_ADMIN.
     const target = await this.prisma.user.findUnique({
       where: { id },
-      select: { role: true },
+      // `id` is selected because assertMayActOn needs it for the peer
+      // check — without it a chief could suspend a peer chief.
+      select: { id: true, role: true },
     });
     if (!target) throw new NotFoundException('Utilizador não encontrado.');
-    if (!canManageUser(actor.role, target.role)) {
-      throw new ForbiddenException(
-        `Não tem permissão para gerir utilizadores com role ${target.role}.`,
-      );
-    }
+    this.assertMayActOn(actor, target, 'suspender ou reactivar');
     try {
       const updated = await this.prisma.user.update({
         where: { id },
@@ -272,11 +296,7 @@ export class UsersService {
       select: { id: true, email: true, role: true },
     });
     if (!target) throw new NotFoundException('Utilizador não encontrado.');
-    if (!canManageUser(actor.role, target.role)) {
-      throw new ForbiddenException(
-        `Não tem permissão para repor a palavra-passe de utilizadores com role ${target.role}.`,
-      );
-    }
+    this.assertMayActOn(actor, target, 'repor a palavra-passe de');
     if (target.id === actor.id) {
       throw new ForbiddenException(
         'Use /users/me/password para alterar a sua própria palavra-passe.',
@@ -314,11 +334,7 @@ export class UsersService {
       select: { id: true, email: true, role: true },
     });
     if (!target) throw new NotFoundException('Utilizador não encontrado.');
-    if (!canManageUser(actor.role, target.role)) {
-      throw new ForbiddenException(
-        `Não tem permissão para eliminar utilizadores com role ${target.role}.`,
-      );
-    }
+    this.assertMayActOn(actor, target, 'eliminar');
     const articleCount = await this.prisma.article.count({
       where: { authorId: id },
     });

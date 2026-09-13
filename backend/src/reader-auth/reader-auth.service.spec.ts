@@ -175,7 +175,6 @@ describe('ReaderAuthService', () => {
   describe('login()', () => {
     it('runs a bcrypt comparison even when no such reader exists', async () => {
       prisma.reader.findUnique.mockResolvedValueOnce(null);
-      const compare = jest.spyOn(bcrypt, 'compare');
 
       await expect(
         service.login('ghost@test.local', 'password123'),
@@ -184,6 +183,15 @@ describe('ReaderAuthService', () => {
       // Skipping the compare on the miss would make "no such account"
       // measurably faster than "wrong password".
       expect(compareMock).toHaveBeenCalled();
+
+      // And CALLING it is not enough: bcryptjs returns false on the next
+      // tick, deriving nothing, for any hash whose length is not exactly
+      // 60. The placeholder here was 65 characters, so the mitigation ran
+      // in name only and the timing channel stayed wide open. Assert the
+      // property the library actually branches on.
+      const hashUsed = compareMock.mock.calls[0][1] as string;
+      expect(hashUsed).toHaveLength(60);
+      expect(bcrypt.getRounds(hashUsed)).toBe(12);
     });
 
     it('runs a bcrypt comparison for a social-only account too', async () => {
@@ -193,13 +201,15 @@ describe('ReaderAuthService', () => {
         ...ACTIVE_READER,
         password: null,
       });
-      const compare = jest.spyOn(bcrypt, 'compare');
 
       await expect(
         service.login('leitor@test.local', 'password123'),
       ).rejects.toThrow(UnauthorizedException);
 
       expect(compareMock).toHaveBeenCalled();
+      const hashUsed = compareMock.mock.calls[0][1] as string;
+      expect(hashUsed).toHaveLength(60);
+      expect(bcrypt.getRounds(hashUsed)).toBe(12);
     });
 
     it('tells a suspended reader they are suspended, and until when', async () => {
