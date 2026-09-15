@@ -1,0 +1,16 @@
+-- Staff sessions become revocable.
+--
+-- A staff token lives 8 hours and carried nothing to invalidate it, so
+-- changing a password -- including an admin reset done precisely because
+-- the old one was compromised -- left every session issued before the
+-- change fully usable until it expired on its own. Reader.tokenVersion
+-- has done this since M10; this is the same column on the other table.
+--
+-- Default 0, matching a freshly signed token.
+--
+-- Expected cost on deploy: tokens issued before this release carry no
+-- `tv` claim at all, and JwtAuthGuard refuses them -- so the newsroom
+-- signs in again once, exactly as it did when the `typ` claim became
+-- mandatory. That is the intended price of the guard having no
+-- permissive branch left behind to forget about.
+ALTER TABLE "User" ADD COLUMN "tokenVersion" INTEGER NOT NULL DEFAULT 0;

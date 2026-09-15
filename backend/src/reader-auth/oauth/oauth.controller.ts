@@ -9,11 +9,10 @@ import {
   Post,
   Req,
   Res,
-  UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
-import { ReaderPublic } from '../reader-auth.decorators';
+import { ReaderPublic, ReaderPublicWith } from '../reader-auth.decorators';
 import { OAuthService, type OAuthProfile } from './oauth.service';
 import { OAuthStateStore } from './oauth-state.store';
 import {
@@ -22,6 +21,7 @@ import {
   type OAuthRequest,
 } from './oauth.guards';
 import { ExchangeCodeDto } from './dto/exchange.dto';
+import { clearBindingCookie, readBindingCookie } from './oauth-binding.cookie';
 
 /**
  * Social login.
@@ -81,28 +81,24 @@ export class OAuthController {
    * Google. It exists so the route is registered, and so the guard has
    * somewhere to hang.
    */
-  @ReaderPublic()
+  @ReaderPublicWith(GoogleOAuthGuard)
   @Get('public/reader/auth/google')
-  @UseGuards(GoogleOAuthGuard)
   google(): void {}
 
-  @ReaderPublic()
+  @ReaderPublicWith(GoogleOAuthGuard)
   @Get('public/reader/auth/google/callback')
-  @UseGuards(GoogleOAuthGuard)
   googleCallback(@Req() req: OAuthRequest, @Res() res: Response) {
     return this.finish(req, res);
   }
 
   // ── Facebook ────────────────────────────────────────────────────────
   /** Same as google() — the guard redirects before this is reached. */
-  @ReaderPublic()
+  @ReaderPublicWith(FacebookOAuthGuard)
   @Get('public/reader/auth/facebook')
-  @UseGuards(FacebookOAuthGuard)
   facebook(): void {}
 
-  @ReaderPublic()
+  @ReaderPublicWith(FacebookOAuthGuard)
   @Get('public/reader/auth/facebook/callback')
-  @UseGuards(FacebookOAuthGuard)
   facebookCallback(@Req() req: OAuthRequest, @Res() res: Response) {
     return this.finish(req, res);
   }
@@ -116,6 +112,20 @@ export class OAuthController {
    * would reject every real callback with a 400.
    */
   private async finish(req: OAuthRequest, res: Response): Promise<void> {
+    // Whatever happens next, this round trip is over: the binding cookie
+    // must not survive to be paired with a second state.
+    clearBindingCookie(req, res);
+
+    /**
+     * The reason is LOGGED, never redirected.
+     *
+     * `?erro=` used to carry the provider's message — or anything an
+     * attacker could make the flow produce — and the login page printed
+     * it in its error banner, on the genuine origin, under the real
+     * domain. A fixed marker is all the page needs: the reader is told
+     * the login failed and invited to try again, and the detail goes
+     * where detail belongs.
+     */
     const failure = (reason: string) => {
       this.logger.warn(`OAuth callback rejected: ${reason}`);
       res.redirect(`${this.successRedirect}?erro=1`);
@@ -133,12 +143,14 @@ export class OAuthController {
 
     const state = await this.state.consumeState(
       typeof req.query.state === 'string' ? req.query.state : undefined,
+      readBindingCookie(req),
     );
-    // A missing or already-spent state means this callback was not
-    // started by us. Without this check an attacker can complete their
-    // own authorization and hand the victim the resulting URL, logging
-    // the victim into the attacker's account.
-    if (!state) return failure('invalid or replayed state');
+    // A missing, already-spent, or foreign state means this callback was
+    // not started by THIS browser. Without both halves an attacker can
+    // complete their own authorization, keep the resulting URL unspent,
+    // and hand it to somebody else — who then browses, saves and
+    // comments inside the attacker's account without ever knowing.
+    if (!state) return failure('invalid, replayed or unbound state');
 
     try {
       const { accessToken } = await this.oauth.signIn(profile);
@@ -146,10 +158,7 @@ export class OAuthController {
       const next = encodeURIComponent(state.next);
       res.redirect(`${this.successRedirect}?code=${code}&next=${next}`);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      res.redirect(
-        `${this.successRedirect}?erro=${encodeURIComponent(message)}`,
-      );
+      return failure(err instanceof Error ? err.message : String(err));
     }
   }
 

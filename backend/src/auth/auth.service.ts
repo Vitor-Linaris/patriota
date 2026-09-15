@@ -50,6 +50,16 @@ export interface JwtPayload {
    * separate signing secrets were ever unified.
    */
   typ: 'staff';
+  /**
+   * User.tokenVersion at the moment the token was signed.
+   *
+   * A mismatch revokes the token, which is how a password change ends
+   * the sessions that were opened with the OLD password. Without it a
+   * reset done because the password was known to somebody else left that
+   * somebody else logged in for up to eight more hours — the reader side
+   * has carried `tv` since M10 and staff simply never got it.
+   */
+  tv: number;
 }
 
 export interface AuthUser {
@@ -89,6 +99,7 @@ export class AuthService {
       // can never satisfy a staff route even if the two signing secrets
       // were ever unified by accident.
       typ: 'staff',
+      tv: user.tokenVersion,
     };
 
     return {
@@ -105,6 +116,37 @@ export class AuthService {
   async getUserById(id: string): Promise<AuthUser | null> {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user || !user.isActive) return null;
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+    };
+  }
+
+  /**
+   * The principal behind a verified token, or null if the session is
+   * over.
+   *
+   * Separate from getUserById() because the two questions are different:
+   * that one asks "who is this id", this one asks "is this TOKEN still
+   * a session". Everything a live session needs to fail is checked here
+   * — deactivated account, and now a tokenVersion that has moved on
+   * because the password changed.
+   *
+   * `tv` is REQUIRED, like `typ` before it. A token signed before this
+   * release carries neither the claim nor any way to tell a genuinely
+   * stale session from an old one, and a permissive branch for the
+   * rollout window is a branch somebody has to remember to delete. The
+   * cost is that the newsroom signs in once after deploy.
+   */
+  async resolveSession(payload: JwtPayload): Promise<AuthUser | null> {
+    if (typeof payload.tv !== 'number') return null;
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+    });
+    if (!user || !user.isActive) return null;
+    if (user.tokenVersion !== payload.tv) return null;
     return {
       id: user.id,
       email: user.email,

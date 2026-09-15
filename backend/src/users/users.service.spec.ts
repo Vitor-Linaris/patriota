@@ -118,6 +118,22 @@ describe('UsersService', () => {
       const newHash = args.data.password as string;
       expect(await bcrypt.compare('NewPassword!23', newHash)).toBe(true);
     });
+
+    it('ends every session opened with the old password', async () => {
+      // Somebody changing their own password after a shared laptop or a
+      // phishing scare is asking for exactly this. Without the bump the
+      // other sessions stayed live for the rest of the 8h token.
+      const stored = await bcrypt.hash('correct123', 10);
+      prisma.user.findUnique.mockResolvedValueOnce({ id: 'u1', password: stored });
+      prisma.user.update.mockResolvedValueOnce({ id: 'u1' });
+      await service.changeOwnPassword('u1', {
+        current: 'correct123',
+        next: 'NewPassword!23',
+      });
+      expect(prisma.user.update.mock.calls[0][0].data.tokenVersion).toEqual({
+        increment: 1,
+      });
+    });
   });
 
   describe('changeRole()', () => {
@@ -217,6 +233,11 @@ describe('UsersService', () => {
       expect(activity.record).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'password-reset' }),
       );
+      // This flow exists for "locked out" AND for "somebody else knows
+      // that password". Without ending the sessions opened with the old
+      // one, the second case gave the admin a false sense of having done
+      // something, for up to eight more hours.
+      expect(args.data.tokenVersion).toEqual({ increment: 1 });
     });
   });
 

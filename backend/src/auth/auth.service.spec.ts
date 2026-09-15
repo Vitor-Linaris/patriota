@@ -90,4 +90,55 @@ describe('AuthService', () => {
       expect(compareMock.mock.calls[0][1]).toBe(stored);
     });
   });
+  describe('resolveSession()', () => {
+    /**
+     * A staff token lives 8 hours and had nothing in it to revoke. A
+     * password reset done BECAUSE the old password was known to somebody
+     * else left that somebody else logged in for the rest of the day —
+     * the reader side has carried `tv` since M10 and staff never got it.
+     */
+    const payload = {
+      sub: 'u1',
+      email: 'chefe@exemplo.pt',
+      role: 'EDITOR_CHEFE' as const,
+      typ: 'staff' as const,
+      tv: 3,
+    };
+    const row = {
+      id: 'u1',
+      email: 'chefe@exemplo.pt',
+      name: 'Chefe',
+      role: 'EDITOR_CHEFE',
+      isActive: true,
+      tokenVersion: 3,
+    };
+
+    it('accepts a token whose version still matches', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce(row);
+      await expect(service.resolveSession(payload)).resolves.toMatchObject({
+        id: 'u1',
+      });
+    });
+
+    it('refuses a token issued before the password changed', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({ ...row, tokenVersion: 4 });
+      await expect(service.resolveSession(payload)).resolves.toBeNull();
+    });
+
+    it('refuses a token with no tv claim at all', async () => {
+      // Tokens signed before this release. Required, not tolerated: a
+      // permissive branch for the rollout window is a branch somebody
+      // has to remember to delete.
+      const { tv: _tv, ...legacy } = payload;
+      await expect(
+        service.resolveSession(legacy as typeof payload),
+      ).resolves.toBeNull();
+      expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('refuses a deactivated account even on a matching version', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({ ...row, isActive: false });
+      await expect(service.resolveSession(payload)).resolves.toBeNull();
+    });
+  });
 });

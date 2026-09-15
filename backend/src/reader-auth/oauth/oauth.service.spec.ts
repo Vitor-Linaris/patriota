@@ -100,7 +100,10 @@ describe('OAuthService', () => {
       expect(out.accessToken).toBe('signed.jwt');
       expect(prisma.reader.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ status: 'ATIVO', suspendedUntil: null }),
+          data: expect.objectContaining({
+            status: 'ATIVO',
+            suspendedUntil: null,
+          }),
         }),
       );
     });
@@ -237,11 +240,10 @@ describe('OAuthService', () => {
     });
 
     it('welcomes the reader — the one branch that creates a new account', async () => {
-      await service.signIn(profile({ email: 'nova@example.com', name: 'Nova' }));
-      expect(mail.sendWelcome).toHaveBeenCalledWith(
-        'nova@example.com',
-        'Nova',
+      await service.signIn(
+        profile({ email: 'nova@example.com', name: 'Nova' }),
       );
+      expect(mail.sendWelcome).toHaveBeenCalledWith('nova@example.com', 'Nova');
     });
   });
 

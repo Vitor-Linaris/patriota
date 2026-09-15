@@ -40,14 +40,21 @@ export default async function ReaderLoginPage({
       {/* Where a failed social login lands. Same alert styling as the
           form's own errors below, so a rejected Google sign-in and a
           wrong password read as the same kind of thing. */}
+      {/* One fixed sentence, whatever `erro` says. It used to render the
+          value back — `?erro=` was a free-text channel from a failed
+          social login into a banner on the genuine origin, under the real
+          domain, styled exactly like the site's own errors. Anyone could
+          hand a reader a link that made this page say whatever they
+          wanted, including a phone number to call. The detail belongs in
+          the backend log, and the reader only needs to know to try
+          again. */}
       {erro ? (
         <p
           role="alert"
           className="mb-4 rounded-[8px] border border-red-200 bg-red-50 px-4 py-2.5 text-[13px] text-red-700"
         >
-          {erro === "1"
-            ? "Não foi possível entrar. A ligação expirou ou já foi utilizada — tente novamente."
-            : decodeURIComponent(erro)}
+          Não foi possível entrar. A ligação expirou ou já foi utilizada —
+          tente novamente.
         </p>
       ) : null}
 

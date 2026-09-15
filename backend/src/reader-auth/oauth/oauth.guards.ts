@@ -4,8 +4,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import type { Request } from 'express';
-import { OAuthStateStore } from './oauth-state.store';
+import type { Request, Response } from 'express';
+import { OAuthStateStore, STATE_TTL_SECONDS } from './oauth-state.store';
+import { setBindingCookie } from './oauth-binding.cookie';
 import { OAuthService } from './oauth.service';
 import type { ReaderAuthProvider } from '../../../generated/prisma/enums';
 
@@ -26,8 +27,10 @@ export function safeNext(next: unknown): string {
  *
  *   • the config check — otherwise an unconfigured deployment redirects
  *     readers to Google with `client_id=not-configured`;
- *   • minting the state — state assigned in the handler would always be
- *     undefined, i.e. no CSRF protection at all, silently.
+ *   • minting the state AND setting its binding cookie — state assigned
+ *     in the handler would always be undefined, i.e. no CSRF protection
+ *     at all, silently, and the cookie has to go out on the same 302
+ *     that leaves for the provider.
  *
  * Passport's own state handling is unusable here: it needs an express
  * session, which this app does not run. Ours lives in Redis and also
@@ -51,7 +54,16 @@ async function prepareInitiate(
     throw new NotFoundException();
   }
 
-  req.oauthState = await state.issueState(safeNext(req.query.next));
+  const issued = await state.issueState(safeNext(req.query.next));
+  req.oauthState = issued.state;
+  // The half that stays in THIS browser. Without it the state proves
+  // only that somebody started a flow, not that this browser did.
+  setBindingCookie(
+    req,
+    context.switchToHttp().getResponse<Response>(),
+    issued.binding,
+    STATE_TTL_SECONDS,
+  );
 }
 
 /**

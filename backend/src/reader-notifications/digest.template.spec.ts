@@ -1,6 +1,9 @@
 import { digestTemplate, type DigestArticle } from './digest.template';
 
-const CTX = { siteName: 'O Patriota Notícias', siteUrl: 'https://opatriota.pt' };
+const CTX = {
+  siteName: 'O Patriota Notícias',
+  siteUrl: 'https://opatriota.pt',
+};
 
 function article(over: Partial<DigestArticle> = {}): DigestArticle {
   return {
@@ -49,7 +52,12 @@ describe('digestTemplate', () => {
       name: null,
       articles: [
         article({ slug: 'p1', title: 'P1', categoryName: 'Política' }),
-        article({ slug: 'e1', title: 'E1', categoryName: 'Economia', categorySlug: 'economia' }),
+        article({
+          slug: 'e1',
+          title: 'E1',
+          categoryName: 'Economia',
+          categorySlug: 'economia',
+        }),
         article({ slug: 'p2', title: 'P2', categoryName: 'Política' }),
       ],
       unsubscribeToken: 'tok',
@@ -110,7 +118,9 @@ describe('digestTemplate', () => {
     expect(mail.html).toContain('Ler artigo completo');
     expect(mail.text).toContain('palavra49');
     expect(mail.text).not.toContain('palavra50');
-    expect(mail.text).toContain('Ler artigo completo: https://opatriota.pt/artigo/longo');
+    expect(mail.text).toContain(
+      'Ler artigo completo: https://opatriota.pt/artigo/longo',
+    );
   });
 
   it('never sends a short body whole, however far under the word budget', () => {
@@ -211,9 +221,13 @@ describe('digestTemplate', () => {
       unsubscribeToken: 'tok',
     });
 
-    expect(mail.html).toContain('https://opatriota.pt/pacotes/dossie-habitacao');
+    expect(mail.html).toContain(
+      'https://opatriota.pt/pacotes/dossie-habitacao',
+    );
     expect(mail.html).not.toContain('/artigo/habitacao-parte-1');
-    expect(mail.text).toContain('https://opatriota.pt/pacotes/dossie-habitacao');
+    expect(mail.text).toContain(
+      'https://opatriota.pt/pacotes/dossie-habitacao',
+    );
     expect(mail.text).not.toContain('/artigo/habitacao-parte-1');
   });
 
@@ -246,7 +260,9 @@ describe('digestTemplate', () => {
     // Both offers present, each pointing where it should.
     expect(mail.html).toContain('https://opatriota.pt/artigo/livre');
     expect(mail.html).toContain('Ler artigo completo');
-    expect(mail.html).toContain('https://opatriota.pt/pacotes/dossie-habitacao');
+    expect(mail.html).toContain(
+      'https://opatriota.pt/pacotes/dossie-habitacao',
+    );
     expect(mail.html).toContain('Ver o pacote');
   });
 });

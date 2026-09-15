@@ -44,9 +44,7 @@ describe('ReaderNotificationsService — roll-up', () => {
     funnel = undefined;
     // Sé › Funchal › Madeira › Portugal, leaf first.
     tree = {
-      resolveAncestorIds: jest
-        .fn()
-        .mockResolvedValue(['se', 'fu', 'ma', 'pt']),
+      resolveAncestorIds: jest.fn().mockResolvedValue(['se', 'fu', 'ma', 'pt']),
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -105,7 +103,9 @@ describe('ReaderNotificationsService — roll-up', () => {
     expect(queued).toBe(1);
     // And every insert must actually ask for the de-duplication.
     for (const call of prisma.articleNotification.createMany.mock.calls) {
-      expect((call[0] as { skipDuplicates: boolean }).skipDuplicates).toBe(true);
+      expect((call[0] as { skipDuplicates: boolean }).skipDuplicates).toBe(
+        true,
+      );
     }
   });
 
@@ -114,7 +114,9 @@ describe('ReaderNotificationsService — roll-up', () => {
     // Nobody follows Sé; someone follows Portugal.
     prisma.categoryFavorite.findMany.mockImplementation((args: unknown) => {
       const { where } = args as { where: { categoryId: string } };
-      return Promise.resolve(where.categoryId === 'pt' ? [{ readerId: 'r9' }] : []);
+      return Promise.resolve(
+        where.categoryId === 'pt' ? [{ readerId: 'r9' }] : [],
+      );
     });
     prisma.articleNotification.createMany.mockResolvedValueOnce({ count: 1 });
 
@@ -219,7 +221,10 @@ describe('ReaderNotificationsService — deliver', () => {
             sendOrThrow,
           },
         },
-        { provide: CategoryTreeService, useValue: { resolveAncestorIds: jest.fn() } },
+        {
+          provide: CategoryTreeService,
+          useValue: { resolveAncestorIds: jest.fn() },
+        },
         { provide: ConfigService, useValue: { get: () => undefined } },
       ],
     }).compile();

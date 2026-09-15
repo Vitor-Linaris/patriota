@@ -74,6 +74,27 @@ export const ReaderPublic = () =>
   applyDecorators(Public(), UseGuards(ReaderFeatureGuard));
 
 /**
+ * @ReaderPublic() for a route that also needs a guard of its own, when
+ * the feature flag must be honoured FIRST.
+ *
+ * Nest appends each @UseGuards() to the metadata already on the handler,
+ * and decorators evaluate bottom-up — so writing
+ *
+ *   @ReaderPublic()
+ *   @UseGuards(GoogleOAuthGuard)
+ *
+ * runs the passport guard first and the feature guard second. On the
+ * OAuth initiate leg passport ends the request with a 302 to Google, so
+ * the feature guard never ran at all: FEATURE_READER_AREA=false still
+ * sent readers off to a consent screen for an account system that was
+ * switched off, and only the return leg noticed. One UseGuards call
+ * with an explicit order is the fix, because within one call Nest
+ * executes them as listed.
+ */
+export const ReaderPublicWith = (...guards: Parameters<typeof UseGuards>) =>
+  applyDecorators(Public(), UseGuards(ReaderFeatureGuard, ...guards));
+
+/**
  * The reader principal, from `req.reader`.
  *
  * Separate from @CurrentUser() (which reads `req.user` and returns staff)

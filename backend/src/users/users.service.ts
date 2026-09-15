@@ -306,7 +306,12 @@ export class UsersService {
     const hash = await bcrypt.hash(temporaryPassword, 12);
     await this.prisma.user.update({
       where: { id },
-      data: { password: hash },
+      // The bump is the point of the reset, not bookkeeping alongside it.
+      // This flow exists for "locked out" AND for "somebody else knows
+      // that password"; without ending the sessions opened with the old
+      // one, the second case handed the admin a false sense of having
+      // done something for up to eight more hours.
+      data: { password: hash, tokenVersion: { increment: 1 } },
     });
     void this.activity.record({
       userId: actor.id,
@@ -409,7 +414,12 @@ export class UsersService {
     const hash = await bcrypt.hash(dto.next, 12);
     await this.prisma.user.update({
       where: { id },
-      data: { password: hash },
+      // Ends every other session too, including the caller's other
+      // devices — which is what somebody changing their password after a
+      // shared laptop or a phishing scare is actually asking for. The
+      // caller's current token dies with it; the frontend sends them
+      // back to the login form on the next 401.
+      data: { password: hash, tokenVersion: { increment: 1 } },
     });
     return { ok: true };
   }

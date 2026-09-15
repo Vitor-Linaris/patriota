@@ -148,8 +148,15 @@ export default function AdminProfileClient({ initial, initialNotifs }: Props) {
         setPwError(res.error);
         return;
       }
-      setPwSaved(true);
       setPw({ current: "", next: "", confirm: "" });
+      // The new password ended this session along with every other one.
+      // Straight to the login form, where signing in with the password
+      // just chosen is the confirmation that it took.
+      if (res.signedOut) {
+        window.location.href = "/admin/login?palavra-passe-alterada=1";
+        return;
+      }
+      setPwSaved(true);
       setTimeout(() => setPwSaved(false), 3000);
     });
   }

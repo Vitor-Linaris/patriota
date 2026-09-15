@@ -48,7 +48,12 @@ describe('ReaderLibraryService — lifecycle on the way out', () => {
           useValue: {
             getById: jest
               .fn()
-              .mockResolvedValue({ id: 'cat1', path: '/cat1/', name: 'Política', slug: 'politica' }),
+              .mockResolvedValue({
+                id: 'cat1',
+                path: '/cat1/',
+                name: 'Política',
+                slug: 'politica',
+              }),
           },
         },
       ],

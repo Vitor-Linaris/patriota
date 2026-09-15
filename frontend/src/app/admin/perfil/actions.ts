@@ -74,6 +74,14 @@ export async function uploadAvatarAction(
   return { ok: true, avatarUrl: data.avatarUrl };
 }
 
+/**
+ * Changing the password ends every session opened with the old one —
+ * including this one. The backend bumps User.tokenVersion and the token
+ * in this cookie stops verifying, so the cookie is dropped here rather
+ * than left to produce a puzzling 401 on whatever the person clicks
+ * next. They sign in again with the new password, which is also the
+ * clearest possible confirmation that it took.
+ */
 export async function changePasswordAction(current: string, next: string) {
   const res = await apiFetch("/users/me/password", {
     method: "POST",
@@ -85,5 +93,7 @@ export async function changePasswordAction(current: string, next: string) {
     const body = (await res.json().catch(() => ({}))) as { message?: string };
     return { ok: false as const, error: body.message ?? "Falha." };
   }
-  return { ok: true as const };
+  const cookieStore = await cookies();
+  cookieStore.delete(SESSION_COOKIE);
+  return { ok: true as const, signedOut: true as const };
 }

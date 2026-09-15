@@ -40,7 +40,13 @@ export class FacebookOAuthStrategy extends PassportStrategy(
       // to move it is an env var and not a deploy.
       graphAPIVersion: process.env.FACEBOOK_GRAPH_VERSION ?? 'v21.0',
       scope: ['email'],
-      profileFields: ['id', 'emails', 'name', 'displayName', 'picture.type(large)'],
+      profileFields: [
+        'id',
+        'emails',
+        'name',
+        'displayName',
+        'picture.type(large)',
+      ],
       state: false,
     });
   }
