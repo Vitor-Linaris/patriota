@@ -379,6 +379,63 @@ describe('PackagePurchasesService', () => {
       expect(tx.packagePurchaseItem.deleteMany).not.toHaveBeenCalled();
     });
   });
+
+  describe('createCheckoutSession()', () => {
+    /**
+     * The address becomes a Stripe customer and the name on an invoice —
+     * a billing record the newsroom reads and Stripe writes to. An
+     * unverified address is one nobody has shown they can read, so this
+     * would put somebody else's e-mail on a paying customer record and
+     * post them the receipt. Refused before the money, because a payment
+     * taken against the wrong address is a refund, a support thread and
+     * a billing record that cannot be quietly corrected.
+     */
+    const PKG = {
+      id: 'p1',
+      name: 'Dossiê',
+      slug: 'dossie',
+      priceCents: 990,
+      currency: 'EUR',
+      stripePriceId: 'price_1',
+      items: [{ articleId: 'a1' }],
+    };
+
+    it('refuses a reader who has not confirmed their address', async () => {
+      prisma.package.findFirst.mockResolvedValueOnce(PKG);
+      prisma.reader.findUnique.mockResolvedValueOnce({
+        id: 'r1',
+        email: 'quem@sabe.pt',
+        stripeCustomerId: null,
+        emailVerifiedAt: null,
+      });
+
+      await expect(
+        service.createCheckoutSession({ id: 'r1', email: 'quem@sabe.pt' }, 'dossie'),
+      ).rejects.toThrow(/Confirme o seu e-mail/);
+
+      expect(prisma.packagePurchase.create).not.toHaveBeenCalled();
+    });
+
+    it('asks the database for the verification timestamp at all', async () => {
+      prisma.package.findFirst.mockResolvedValueOnce(PKG);
+      prisma.reader.findUnique.mockResolvedValueOnce({
+        id: 'r1',
+        email: 'quem@sabe.pt',
+        stripeCustomerId: null,
+        emailVerifiedAt: null,
+      });
+
+      await service
+        .createCheckoutSession({ id: 'r1', email: 'quem@sabe.pt' }, 'dossie')
+        .catch(() => undefined);
+
+      const select = prisma.reader.findUnique.mock.calls[0][0].select as Record<
+        string,
+        boolean
+      >;
+      expect(select.emailVerifiedAt).toBe(true);
+    });
+  });
 });
 
 describe('PackagePurchasesService — listPurchases buyer identity', () => {
@@ -452,4 +509,5 @@ describe('PackagePurchasesService — listPurchases buyer identity', () => {
     expect(rbac.getPermissionsForRole).not.toHaveBeenCalled();
     expect(readerSelect()).toEqual({ id: true, email: true, name: true });
   });
+
 });

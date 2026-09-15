@@ -3,6 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { apiBaseUrl } from "@/lib/api-base";
+import { clientIpHeaders } from "@/lib/client-ip";
 
 export type LoginState = {
   error?: string;
@@ -35,7 +36,11 @@ export async function loginAction(
   try {
     res = await fetch(`${apiBaseUrl()}/auth/login`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        // Per-visitor rate limiting; see lib/client-ip.ts.
+        ...(await clientIpHeaders()),
+      },
       body: JSON.stringify({ email, password }),
       cache: "no-store",
     });

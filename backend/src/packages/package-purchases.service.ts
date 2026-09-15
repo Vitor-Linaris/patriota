@@ -111,9 +111,25 @@ export class PackagePurchasesService {
 
     const row = await this.prisma.reader.findUnique({
       where: { id: reader.id },
-      select: { id: true, email: true, stripeCustomerId: true },
+      select: {
+        id: true,
+        email: true,
+        stripeCustomerId: true,
+        emailVerifiedAt: true,
+      },
     });
     if (!row) throw new NotFoundException('Leitor não encontrado.');
+
+    // Same rule as the subscription door, and for the same reason: this
+    // address becomes a Stripe customer and the name on an invoice. An
+    // unverified one is an address nobody has shown they can read.
+    if (!row.emailVerifiedAt) {
+      throw new BadRequestException(
+        'Confirme o seu e-mail antes de comprar. Enviámos-lhe uma ligação ' +
+          'de confirmação quando criou a conta — pode pedir outra na sua ' +
+          'área de leitor.',
+      );
+    }
 
     const articleIds = pkg.items.map((i) => i.articleId);
     if (articleIds.length === 0) {

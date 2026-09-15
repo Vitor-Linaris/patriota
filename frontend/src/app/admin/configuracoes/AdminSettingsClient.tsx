@@ -149,16 +149,34 @@ function Toggle({
 function Field({
   label,
   hint,
+  inert,
   children,
 }: {
   label: string;
   hint?: string;
+  /**
+   * The value is stored and nothing reads it.
+   *
+   * Marked on the field itself, not only in the panel's banner: a
+   * security console that describes a control it does not have is worse
+   * than one that never mentions it — somebody reads "bloquear após 5
+   * tentativas", believes the newsroom is protected against password
+   * guessing, and stops looking for the protection that is missing.
+   */
+  inert?: boolean;
   children: ReactNode;
 }) {
   return (
     <div className="flex items-start gap-6 border-b border-gray-50 py-5 last:border-0">
       <div className="w-56 shrink-0">
-        <p className="text-sm font-semibold text-gray-800">{label}</p>
+        <p className="text-sm font-semibold text-gray-800">
+          {label}
+          {inert && (
+            <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 align-middle text-[10px] font-bold uppercase tracking-wider text-amber-700">
+              por aplicar
+            </span>
+          )}
+        </p>
         {hint && (
           <p className="mt-0.5 text-xs leading-relaxed text-gray-400">{hint}</p>
         )}
@@ -928,19 +946,26 @@ export default function AdminSettingsClient({
                   <ul className="space-y-0.5 text-xs leading-relaxed">
                     <li>
                       <strong>Activos</strong>: log de auditoria (todas as
-                      acções administrativas são registadas) e limite de
-                      pedidos no login (rate limit global).
+                      acções administrativas são registadas), limite de
+                      pedidos no login, contado por visitante, e revogação
+                      de sessões — mudar a palavra-passe termina as sessões
+                      abertas com a anterior.
                     </li>
                     <li>
-                      <strong>Em desenvolvimento</strong>: 2FA, timeout de
-                      sessão configurável, whitelist de IPs e reCAPTCHA — os
-                      valores são guardados mas ainda não são aplicados.
+                      <strong>Por aplicar</strong>: 2FA, timeout de sessão
+                      configurável, <strong>tentativas de login</strong>,
+                      whitelist de IPs e reCAPTCHA. Os valores são guardados
+                      e nenhum deles é lido por código nenhum. O bloqueio
+                      por tentativas falhadas não existe: contra adivinhação
+                      de palavras-passe, o que protege hoje é o limite de
+                      pedidos.
                     </li>
                   </ul>
                 </div>
               </div>
               <Field
                 label="Autenticação em dois factores"
+                inert
                 hint="Obriga todos os administradores a usar 2FA."
               >
                 <div className="flex items-center gap-3">
@@ -954,6 +979,7 @@ export default function AdminSettingsClient({
               </Field>
               <Field
                 label="Timeout de sessão (min)"
+                inert
                 hint="Minutos de inactividade até encerrar a sessão automaticamente."
               >
                 <div className="flex gap-2">
@@ -971,6 +997,7 @@ export default function AdminSettingsClient({
               </Field>
               <Field
                 label="Tentativas de login"
+                inert
                 hint="Número máximo de tentativas falhadas antes de bloquear."
               >
                 <div className="flex gap-2">
@@ -988,6 +1015,7 @@ export default function AdminSettingsClient({
               </Field>
               <Field
                 label="Whitelist de IPs"
+                inert
                 hint="IPs autorizados para acesso ao admin (um por linha). Deixar vazio para não restringir."
               >
                 <Textarea
@@ -1007,6 +1035,7 @@ export default function AdminSettingsClient({
               </Field>
               <Field
                 label="reCAPTCHA"
+                inert
                 hint="Protecção contra bots nos formulários públicos."
               >
                 <div className="space-y-3">

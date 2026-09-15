@@ -80,9 +80,27 @@ export class BillingService {
         planRenewsAt: true,
         planSource: true,
         stripeCustomerId: true,
+        emailVerifiedAt: true,
       },
     });
     if (!row) throw new NotFoundException('Leitor não encontrado.');
+
+    // The address goes straight into a Stripe customer and onto an
+    // invoice, where the newsroom reads it and Stripe writes to it. An
+    // unverified address is one nobody has shown they can read: this
+    // would put somebody else's e-mail on a paying customer record, and
+    // send them the receipt.
+    //
+    // Before the money, not after: a payment taken against the wrong
+    // address is a refund, a support thread and a billing record that
+    // cannot be quietly corrected.
+    if (!row.emailVerifiedAt) {
+      throw new BadRequestException(
+        'Confirme o seu e-mail antes de subscrever. Enviámos-lhe uma ' +
+          'ligação de confirmação quando criou a conta — pode pedir outra ' +
+          'na sua área de leitor.',
+      );
+    }
 
     // Refused rather than allowed to go through and be sorted out later:
     // a second checkout would take a second card and start a second

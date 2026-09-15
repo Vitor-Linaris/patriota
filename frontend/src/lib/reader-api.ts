@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { apiBaseUrl } from "./api-base";
+import { clientIpHeaders } from "./client-ip";
 
 /**
  * Reader-side counterpart to lib/api.ts.
@@ -89,6 +90,9 @@ export async function readerApiFetch(
       cache: "no-store",
       headers: {
         "Content-Type": "application/json",
+        // Who is actually asking, so the API can rate-limit per visitor
+        // instead of counting this whole process as one. See client-ip.ts.
+        ...(await clientIpHeaders()),
         ...(init.headers ?? {}),
         Authorization: `Bearer ${token}`,
       },

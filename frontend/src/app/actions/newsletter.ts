@@ -1,6 +1,7 @@
 "use server";
 
 import { apiBaseUrl } from "@/lib/api-base";
+import { clientIpHeaders } from "@/lib/client-ip";
 
 function validateEmail(email: string):
   | { ok: true; email: string }
@@ -19,7 +20,11 @@ export async function publicSubscribeAction(email: string, name?: string) {
   try {
     const res = await fetch(`${apiBaseUrl()}/public/newsletter/subscribe`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        // Per-visitor rate limiting; see lib/client-ip.ts.
+        ...(await clientIpHeaders()),
+      },
       body: JSON.stringify({ email: v.email, name: name?.trim() }),
       cache: "no-store",
     });
