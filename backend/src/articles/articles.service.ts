@@ -980,14 +980,24 @@ export class ArticlesService {
   /**
    * The cut response.
    *
-   * `content` is DESTRUCTURED OUT, not blanked. An empty string would
-   * still be a key in the JSON, and the next person to write
+   * Everything PUBLIC_ARTICLE_DETAIL_SELECT adds over the card shape is
+   * body-grade and goes together: `content` AND `videoEmbedUrl`. This used
+   * to remove only `content`, so the video survived on every withheld
+   * exclusive and the article page rendered a working player above the cut
+   * text — for a paid video report that is the whole product delivered to
+   * an anonymous caller. Adding a field to the detail select means adding
+   * it here too.
+   *
+   * Both are DESTRUCTURED OUT, not blanked. An empty string would still be
+   * a key in the JSON, and the next person to write
    * `article.content ?? article.contentPreview` would find the empty
-   * string truthy-adjacent and ship a blank article. It simply is not
+   * string truthy-adjacent and ship a blank article. They simply are not
    * there.
    */
-  private paywalled<T extends { content: string }>(article: T) {
-    const { content, ...rest } = article;
+  private paywalled<
+    T extends { content: string; videoEmbedUrl?: string | null },
+  >(article: T) {
+    const { content, videoEmbedUrl, ...rest } = article;
     return {
       ...rest,
       paywalled: true,

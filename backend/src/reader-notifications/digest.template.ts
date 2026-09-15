@@ -6,7 +6,14 @@ export interface DigestArticle {
   slug: string;
   title: string;
   summary: string;
-  /** Raw HTML body — cut down to an excerpt in this file, never sent whole. */
+  /**
+   * Raw HTML body — cut down to an excerpt in this file, never sent whole.
+   *
+   * EMPTY for an exclusive: the caller withholds it, because the digest
+   * picks recipients by category follow and asks nothing about
+   * entitlement. `teaserOf` falls back to the summary in that case, which
+   * is editor-written and already public on cards and in search.
+   */
   content: string;
   categoryName: string;
   categorySlug: string;
@@ -57,8 +64,28 @@ function excerptOf(html: string, maxWords = EXCERPT_WORDS): string {
     .split(' ')
     .filter(Boolean);
 
-  if (words.length <= maxWords) return words.join(' ');
-  return words.slice(0, maxWords).join(' ') + '…';
+  // Never more than half the piece, whatever the word budget says — the
+  // same rule paywall.ts:previewOf applies, and for the same reason it
+  // gives there: a fixed budget quietly does nothing for exactly the
+  // pieces most likely to need it. `words.length <= maxWords` used to
+  // return the joined words verbatim, so a short article went out WHOLE
+  // and without so much as an ellipsis, contradicting this file's own
+  // contract that the body is "never sent whole".
+  const cap = Math.min(maxWords, Math.floor(words.length / 2));
+  if (cap < 1) return '';
+  return words.slice(0, cap).join(' ') + '…';
+}
+
+/**
+ * What the reader sees under the headline.
+ *
+ * The body excerpt when there is a body, the editor-written summary when
+ * there is not. An exclusive arrives here with an empty `content` — the
+ * caller withholds it — and an empty teaser would leave a blank gap
+ * above the button.
+ */
+function teaserOf(a: DigestArticle): string {
+  return excerptOf(a.content) || a.summary;
 }
 
 /**
@@ -122,7 +149,7 @@ export function digestTemplate(
               ${escapeHtml(a.title)}
             </a>
             <div style="margin-top:6px;font-size:14px;line-height:1.65;color:#334155;">
-              ${escapeHtml(excerptOf(a.content))}
+              ${escapeHtml(teaserOf(a))}
             </div>
             <div style="margin-top:12px;">
               <a href="${url}"
@@ -198,7 +225,7 @@ export function digestTemplate(
         ...articles.flatMap((a) => [
           ...(a.pkg ? [`  [Novo no pacote ${a.pkg.name}]`] : []),
           `  ${a.title}`,
-          `  ${excerptOf(a.content)}`,
+          `  ${teaserOf(a)}`,
           a.pkg
             ? `  Ver o pacote (${formatPrice(a.pkg.priceCents, a.pkg.currency)}): ${ctx.siteUrl}/pacotes/${a.pkg.slug}`
             : `  Ler artigo completo: ${ctx.siteUrl}/artigo/${a.slug}`,

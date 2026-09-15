@@ -113,32 +113,65 @@ describe('digestTemplate', () => {
     expect(mail.text).toContain('Ler artigo completo: https://opatriota.pt/artigo/longo');
   });
 
-  it('does not truncate a body shorter than the cut', () => {
+  it('never sends a short body whole, however far under the word budget', () => {
+    // The regression: a body shorter than the 50-word budget used to be
+    // joined and returned verbatim, without so much as an ellipsis. A
+    // 300-word news brief IS the article, and the digest shipped it —
+    // contradicting this file's own contract that the body is "never
+    // sent whole", and taking the click with it.
+    const brief = `<p>${Array.from({ length: 12 }, (_, i) => `palavra${i}`).join(' ')}</p>`;
     const mail = digestTemplate(CTX, {
       name: null,
-      articles: [article({ content: '<p>Um parágrafo curto.</p>' })],
+      articles: [article({ content: brief })],
       unsubscribeToken: 'tok',
     });
 
-    expect(mail.html).toContain('Um parágrafo curto.');
-    expect(mail.html).not.toContain('…');
+    // Half of twelve, and an ellipsis to say there is more.
+    expect(mail.html).toContain('palavra5…');
+    expect(mail.html).not.toContain('palavra6');
+    expect(mail.text).not.toContain('palavra6');
   });
 
   it('strips markup from the excerpt rather than sending raw tags', () => {
+    const body = `<p>Primeiro <strong>parágrafo</strong>.</p><p>${Array.from(
+      { length: 40 },
+      (_, i) => `palavra${i}`,
+    ).join(' ')}</p>`;
+    const mail = digestTemplate(CTX, {
+      name: null,
+      articles: [article({ content: body })],
+      unsubscribeToken: 'tok',
+    });
+
+    expect(mail.html).toContain('Primeiro parágrafo .');
+    // Only the excerpt has to be markup-free — the footer legitimately
+    // uses <strong> for the category name, which is unrelated.
+    expect(mail.html).not.toMatch(/Primeiro[^<]*<strong>/);
+  });
+
+  it('withholds the body of an exclusive and falls back to the summary', () => {
+    // The caller hands this template an empty `content` for an exclusive,
+    // because the digest picks recipients by category follow and asks
+    // nothing about entitlement. An empty teaser would leave a blank gap
+    // above the button, so the editor-written summary — already public on
+    // cards and in search — takes its place.
     const mail = digestTemplate(CTX, {
       name: null,
       articles: [
         article({
-          content: '<p>Primeiro <strong>parágrafo</strong>.</p><p>Segundo.</p>',
+          slug: 'exclusivo',
+          title: 'Investigação exclusiva',
+          summary: 'O que apurámos sobre o contrato.',
+          content: '',
         }),
       ],
       unsubscribeToken: 'tok',
     });
 
-    expect(mail.html).toContain('Primeiro parágrafo . Segundo.');
-    // Only the excerpt has to be markup-free — the footer legitimately
-    // uses <strong> for the category name, which is unrelated.
-    expect(mail.html).not.toMatch(/Primeiro[^<]*<strong>/);
+    expect(mail.html).toContain('O que apurámos sobre o contrato.');
+    expect(mail.text).toContain('O que apurámos sobre o contrato.');
+    // And the invitation to go read it is still there.
+    expect(mail.html).toContain('Ler artigo completo');
   });
 
   it('always ships a plain-text part with working links', () => {

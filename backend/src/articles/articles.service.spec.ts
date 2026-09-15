@@ -471,6 +471,23 @@ describe('ArticlesService', () => {
       expect(out).toHaveProperty('contentPreview');
     });
 
+    it('withholds the video embed along with the body', async () => {
+      paywall = 'true';
+      prisma.article.findFirst.mockResolvedValueOnce({
+        ...exclusive,
+        videoEmbedUrl: 'https://www.youtube.com/embed/ABC123',
+      });
+
+      const out = await service.findPublicBySlug('dossier', freeReader);
+
+      // The cut used to remove `content` and nothing else, so a paid
+      // video report came back with a working player above the preview
+      // text — the whole product delivered to an anonymous caller. Body
+      // and video are one thing here, and they leave together.
+      expect('videoEmbedUrl' in out).toBe(false);
+      expect('content' in out).toBe(false);
+    });
+
     it('never paywalls a free article, whatever pacote holds it', async () => {
       paywall = 'true';
       packageAccess.isSubscriptionExcluded.mockResolvedValue(true);

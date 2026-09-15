@@ -197,12 +197,20 @@ export class ReaderNotificationsService {
             slug: true,
             title: true,
             summary: true,
-            // The opening of the piece, cut to ~200 words in the
-            // template. A reader deciding whether to click needs more
+            // The opening of the piece, cut to at most EXCERPT_WORDS in
+            // the template. A reader deciding whether to click needs more
             // than the one-line summary — that is what the summary is
             // FOR elsewhere (cards, search), not what makes somebody
             // open an e-mail.
             content: true,
+            // ...but NOT for an exclusive. This module is a second reader
+            // of Article.content and it reproduces neither half of the
+            // paywall: recipients are chosen by category follow, with no
+            // plan permission and no PackagePurchaseItem lookup anywhere
+            // on the path. Without this column the body of a paid article
+            // was mailed to every free follower, outside the application
+            // boundary and forwardable, about two minutes after publish.
+            exclusive: true,
             publishedAt: true,
             category: { select: { slug: true, name: true } },
             // The pacote this piece belongs to, if any — it changes where
@@ -254,7 +262,12 @@ export class ReaderNotificationsService {
         slug: r.article.slug,
         title: r.article.title,
         summary: r.article.summary,
-        content: r.article.content,
+        // An exclusive contributes no body text to outbound mail. The
+        // summary is editor-written and already public on cards and in
+        // search, so it is the right teaser for paid work; the body is
+        // the thing the paywall exists to withhold, and an inbox is
+        // past the point where any further authorisation applies.
+        content: r.article.exclusive ? '' : r.article.content,
         categoryName: r.article.category.name,
         categorySlug: r.article.category.slug,
         pkg: r.article.packageEntries[0]?.package ?? null,
