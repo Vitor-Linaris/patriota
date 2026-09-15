@@ -4,10 +4,20 @@ import { SubscriptionsPanel } from "./SubscriptionsPanel";
 import type { ReaderStats } from "./leitores/AdminReadersClient";
 import { apiFetch } from "@/lib/api";
 
+/**
+ * Nullable where the figure is gated.
+ *
+ * The API scales this response to the caller's permissions — the staff
+ * head count answers to `utilizadores.ver` and the visit counts to
+ * `analytics.basicas`, the same permissions that gate those numbers on
+ * their own pages. A card with no figure shows a dash rather than a
+ * zero: "not for you" and "none" are different statements, and a
+ * newsroom of zero people is a lie.
+ */
 interface StatsResponse {
   articles: { published: number; total: number; pending: number };
-  users: { total: number };
-  visits: { today: number; week: number; month: number };
+  users: { total: number } | null;
+  visits: { today: number; week: number; month: number } | null;
 }
 
 interface ActivityItem {
@@ -196,16 +206,18 @@ export default async function AdminDashboardPage() {
     },
     {
       label: "Utilizadores registados",
-      value: intFmt.format(stats?.users.total ?? 0),
-      change: "Equipa editorial",
+      value: stats?.users ? intFmt.format(stats.users.total) : "—",
+      change: stats?.users ? "Equipa editorial" : "Sem acesso a este número",
       cardClass: "bg-green-50 border-green-200",
       accent: "text-green-700",
       changeClass: "text-gray-500",
     },
     {
       label: "Visitas hoje",
-      value: intFmt.format(stats?.visits.today ?? 0),
-      change: `${intFmt.format(stats?.visits.week ?? 0)} esta semana · ${intFmt.format(stats?.visits.month ?? 0)} no mês`,
+      value: stats?.visits ? intFmt.format(stats.visits.today) : "—",
+      change: stats?.visits
+        ? `${intFmt.format(stats.visits.week)} esta semana · ${intFmt.format(stats.visits.month)} no mês`
+        : "Sem acesso a este número",
       cardClass: "bg-purple-50 border-purple-200",
       accent: "text-purple-700",
       changeClass: "text-gray-500",

@@ -68,3 +68,39 @@ export async function publicUnsubscribeAction(email: string) {
     };
   }
 }
+
+/**
+ * The three token endpoints behind /newsletter/gerir.
+ *
+ * The token is the authorisation on all of them, and it only ever
+ * reaches the inbox that owns the address — which is the whole point:
+ * an e-mail typed into a public form proves nothing about who typed it,
+ * and cancelling a subscription used to run on exactly that.
+ */
+async function postToken(path: string, token: string) {
+  try {
+    const res = await fetch(`${apiBaseUrl()}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      return { ok: false as const, error: "A ligação já não é válida." };
+    }
+    return { ok: true as const };
+  } catch {
+    return {
+      ok: false as const,
+      error: "Não foi possível contactar o servidor.",
+    };
+  }
+}
+
+export async function newsletterUnsubscribeByTokenAction(token: string) {
+  return postToken("/public/newsletter/manage/unsubscribe", token);
+}
+
+export async function newsletterForgetAction(token: string) {
+  return postToken("/public/newsletter/manage/forget", token);
+}

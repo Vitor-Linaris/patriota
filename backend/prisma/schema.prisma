@@ -310,6 +310,16 @@ model NewsletterSubscriber {
   segment  String           @default("Geral")
   opens    Int              @default(0)
   joinedAt DateTime         @default(now())
+  /// The per-subscriber secret that goes in the "gerir subscrição" link.
+  ///
+  /// This row is keyed by an address, which means the address alone was
+  /// the only thing authorising anything done to it: anybody could cancel
+  /// somebody else's subscription by typing their e-mail into the public
+  /// form. The token moves that authority into something only the owner
+  /// of the inbox ever receives, and it is the same mechanism
+  /// Reader.unsubscribeToken already uses — random, per-row, and the one
+  /// thing a footer link can safely carry.
+  manageToken String @unique @default(cuid())
 
   @@index([status])
   @@index([segment])

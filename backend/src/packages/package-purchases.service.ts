@@ -737,7 +737,8 @@ export class PackagePurchasesService {
       action: 'package_granted',
       targetType: 'reader',
       targetId: reader.id,
-      targetLabel: `${pkg.name} → ${reader.email}`,
+      // The pacote, not the buyer: the reader is named at read time.
+      targetLabel: pkg.name,
     });
     this.logger.log(
       `Pacote ${pkg.id} oferecido a ${reader.id} por ${user.id} ` +
@@ -784,7 +785,7 @@ export class PackagePurchasesService {
       action: 'package_revoked',
       targetType: 'reader',
       targetId: purchase.readerId,
-      targetLabel: `${purchase.package.name} → ${purchase.reader.email}`,
+      targetLabel: purchase.package.name,
     });
     this.logger.log(
       `Compra ${purchaseId} revogada por ${user.id}: acesso retirado.`,

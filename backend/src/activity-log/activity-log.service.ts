@@ -15,6 +15,8 @@ export type ActivityTargetType =
   | 'category'
   | 'media'
   | 'campaign'
+  /** One address on the newsletter list. */
+  | 'newsletter-subscriber'
   /** A pacote exclusivo — a set of articles sold for one payment. */
   | 'package'
   | 'setting';
@@ -24,6 +26,23 @@ export interface RecordActivityInput {
   action: string;
   targetType: ActivityTargetType;
   targetId?: string;
+  /**
+   * What the entry says about its target, MINUS the target's identity.
+   *
+   * For `targetType: 'reader'` this must never contain the reader's
+   * e-mail or name. Six call sites used to write the address in here as
+   * free text while already storing `targetId` next to it — and this
+   * table has no readerId, so the RGPD erasure transaction had nothing
+   * to find and nothing to clear. The address outlived the account that
+   * asked to be forgotten, and came back out of GET /admin/activity
+   * unfiltered.
+   *
+   * The identity is resolved at READ time instead; see list(). Put the
+   * detail here ("permanente", "até 2027-01-01", the pacote name) and
+   * nothing else. A staff actor is different — see actorLabel in
+   * record() — because an audit trail that cannot name who acted is not
+   * an audit trail.
+   */
   targetLabel: string;
 }
 
@@ -70,6 +89,17 @@ export class ActivityLogService {
     }
   }
 
+  /**
+   * One page of the trail, with reader identities resolved LIVE.
+   *
+   * The identity of a reader is never stored on these rows — see
+   * targetLabel — so it is looked up here, once per page, from the
+   * account that still exists. Which means erasure works by itself: an
+   * anonymised reader comes back as "Leitor removido" from the next
+   * render onwards, with no sweep of this table and no column for anyone
+   * to forget. It is the same answer the comment threads already give
+   * for a deleted reader, one module over.
+   */
   async list(query: PageQueryDto): Promise<PageResult<unknown>> {
     const { skip, take } = toSkipTake(query);
     const [items, total] = await Promise.all([
@@ -85,8 +115,40 @@ export class ActivityLogService {
       }),
       this.prisma.activityLog.count(),
     ]);
+
+    const readerIds = [
+      ...new Set(
+        items
+          .filter((i) => i.targetType === 'reader' && i.targetId)
+          .map((i) => i.targetId!),
+      ),
+    ];
+    const readers = readerIds.length
+      ? await this.prisma.reader.findMany({
+          where: { id: { in: readerIds } },
+          select: { id: true, name: true, email: true },
+        })
+      : [];
+    const byId = new Map(readers.map((r) => [r.id, r]));
+
     return {
-      items,
+      items: items.map((i) => {
+        if (i.targetType !== 'reader' || !i.targetId) return i;
+        const r = byId.get(i.targetId);
+        // anonymise() keeps the row and rewrites the address to
+        // anonimizado+<id>@invalid.local. Printing that back would be
+        // technically accurate and useless to read.
+        const identity =
+          !r || r.email.endsWith('@invalid.local')
+            ? 'Leitor removido'
+            : (r.name ?? r.email);
+        return {
+          ...i,
+          targetLabel: i.targetLabel
+            ? `${identity} — ${i.targetLabel}`
+            : identity,
+        };
+      }),
       total,
       page: query.page ?? 1,
       pageSize: query.pageSize ?? 20,

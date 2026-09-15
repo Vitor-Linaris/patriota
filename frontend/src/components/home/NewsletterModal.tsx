@@ -15,11 +15,17 @@ interface NewsletterModalProps {
 }
 
 /**
- * Subscribe + unsubscribe in a single modal. The unsubscribe path
- * requires nothing more than an e-mail, but we gate the actual
- * cancellation behind a confirm step ("Tem a certeza?") so a stray
- * click doesn't lose a reader. Pure client-side; the server actions
- * handle validation and persistence.
+ * Subscribe + unsubscribe in a single modal.
+ *
+ * Neither path reports what the list contains, and the unsubscribe path
+ * no longer cancels anything: it asks the API to send a link, and the
+ * cancellation happens on /newsletter/gerir when that link is opened.
+ * An address typed into a public form says nothing about who typed it,
+ * and this used to take somebody off the list on exactly that basis.
+ *
+ * Both messages are therefore deliberately non-committal. "Subscrição
+ * registada" would be a lie for an address that had cancelled, and
+ * "cancelámos" would be a membership oracle.
  */
 export function NewsletterModal({
   open,
@@ -75,7 +81,7 @@ export function NewsletterModal({
       }
       setStatus({
         kind: "ok",
-        message: "Subscrição registada. Obrigado!",
+        message: "Pedido recebido. Confirme na sua caixa de correio.",
       });
       setEmail("");
       setName("");
@@ -92,7 +98,7 @@ export function NewsletterModal({
       setStatus({
         kind: "ok",
         message:
-          "Pedido recebido. Se o e-mail estiver subscrito, foi cancelado.",
+          "Pedido recebido. Se o e-mail estiver subscrito, enviámos-lhe uma ligação para cancelar.",
       });
       setEmail("");
       setConfirming(false);
@@ -126,7 +132,7 @@ export function NewsletterModal({
               <p className="mt-2 text-[13px] leading-relaxed text-white/70">
                 {mode === "subscribe"
                   ? "Curadoria editorial diária, sem spam. Cancelamento imediato a qualquer momento."
-                  : "Indique o e-mail subscrito. Removemo-lo da lista de imediato."}
+                  : "Indique o e-mail subscrito. Enviamos-lhe uma ligação para confirmar — só quem recebe o e-mail pode cancelar a subscrição."}
               </p>
             </div>
             <button
@@ -278,9 +284,10 @@ export function NewsletterModal({
               {confirming ? (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
                   <p className="text-[13px] text-amber-900">
-                    Tem a certeza? Vamos remover{" "}
-                    <strong className="break-all">{email}</strong> da
-                    lista. Pode subscrever novamente quando quiser.
+                    Vamos enviar uma ligação de cancelamento para{" "}
+                    <strong className="break-all">{email}</strong>. O
+                    cancelamento acontece quando abrir essa ligação — é
+                    assim que ninguém cancela a subscrição de outra pessoa.
                   </p>
                   <div className="mt-3 flex gap-2">
                     <button
@@ -297,7 +304,7 @@ export function NewsletterModal({
                       disabled={pending}
                       className="flex-1 rounded-lg bg-rose-600 py-2 text-[13px] font-bold text-white transition-colors hover:bg-rose-700 disabled:opacity-50"
                     >
-                      {pending ? "A cancelar…" : "Sim, cancelar"}
+                      {pending ? "A enviar…" : "Enviar ligação"}
                     </button>
                   </div>
                 </div>
