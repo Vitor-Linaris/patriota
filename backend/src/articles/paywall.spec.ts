@@ -89,4 +89,36 @@ describe('previewOf', () => {
       expect(balanced(out)).toBe(true);
     }
   });
+
+  it('cuts inside the block that crosses the budget, not after it', () => {
+    // The shape the cases above miss, and the one that gave the article
+    // away: a short lead followed by one long block. Every earlier case
+    // is either a single block or two equal blocks, where the loop
+    // happens to break on the first — so the bug never showed.
+    //
+    // The lead is under the cap, so the loop takes it; the body then
+    // crosses, and emitting it whole returned the input verbatim.
+    const html = p('Nota do editor.') + p(words(600));
+    const out = previewOf(html);
+
+    const visible = (s: string) => s.replace(/<[^>]*>/g, '').trim().length;
+    expect(visible(out)).toBeLessThanOrEqual(Math.floor(visible(html) / 2));
+    expect(visible(out)).toBeLessThanOrEqual(600);
+    expect(out).not.toContain(html.slice(-40));
+    expect(balanced(out)).toBe(true);
+  });
+
+  it('holds the cap for every lead length, not just the one we thought of', () => {
+    // The bug was shape-dependent, so pin the invariant across shapes
+    // rather than against one example.
+    for (const lead of [1, 5, 20, 80, 200]) {
+      const html = p(words(lead)) + p(words(500));
+      const out = previewOf(html);
+      const visible = (s: string) => s.replace(/<[^>]*>/g, '').trim().length;
+
+      expect(visible(out)).toBeLessThanOrEqual(600);
+      expect(visible(out)).toBeLessThanOrEqual(Math.floor(visible(html) / 2));
+      expect(balanced(out)).toBe(true);
+    }
+  });
 });

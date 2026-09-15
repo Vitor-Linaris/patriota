@@ -475,9 +475,10 @@ export class ReadersService {
       action: 'reader_suspended',
       targetType: 'reader',
       targetId: readerId,
+      // Detail only. The reader is named at read time, from the account
+      // that still exists — see ActivityLogService.list().
       targetLabel:
-        `${reader.name ?? reader.email} — ${label}` +
-        (purged > 0 ? ` (${purged} comentários eliminados)` : ''),
+        label + (purged > 0 ? ` (${purged} comentários eliminados)` : ''),
     });
 
     return { ...updated, purgedComments: purged };
@@ -513,7 +514,7 @@ export class ReadersService {
       action: 'reader_unsuspended',
       targetType: 'reader',
       targetId: readerId,
-      targetLabel: reader.name ?? reader.email,
+      targetLabel: '',
     });
 
     return updated;
@@ -595,9 +596,9 @@ export class ReadersService {
       action: 'reader_plan_granted',
       targetType: 'reader',
       targetId: readerId,
-      targetLabel: `${reader.name ?? reader.email} — ${
-        until ? `até ${until.toISOString().slice(0, 10)}` : 'sem data de fim'
-      }`,
+      targetLabel: until
+        ? `até ${until.toISOString().slice(0, 10)}`
+        : 'sem data de fim',
     });
 
     return {
@@ -634,7 +635,7 @@ export class ReadersService {
       action: 'reader_plan_revoked',
       targetType: 'reader',
       targetId: readerId,
-      targetLabel: reader.name ?? reader.email,
+      targetLabel: '',
     });
 
     return {

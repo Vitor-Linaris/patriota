@@ -310,6 +310,16 @@ model NewsletterSubscriber {
   segment  String           @default("Geral")
   opens    Int              @default(0)
   joinedAt DateTime         @default(now())
+  /// The per-subscriber secret that goes in the "gerir subscrição" link.
+  ///
+  /// This row is keyed by an address, which means the address alone was
+  /// the only thing authorising anything done to it: anybody could cancel
+  /// somebody else's subscription by typing their e-mail into the public
+  /// form. The token moves that authority into something only the owner
+  /// of the inbox ever receives, and it is the same mechanism
+  /// Reader.unsubscribeToken already uses — random, per-row, and the one
+  /// thing a footer link can safely carry.
+  manageToken String @unique @default(cuid())
 
   @@index([status])
   @@index([segment])
@@ -327,6 +337,14 @@ model User {
   name              String?
   password          String
   role              Role     @default(JORNALISTA)
+  /// Bumped whenever the password changes — by the owner or by an admin
+  /// reset. Staff tokens carry it as `tv` and JwtAuthGuard refuses a
+  /// mismatch, which is how an 8h session gets revoked without
+  /// server-side session storage. Reader.tokenVersion is the same
+  /// mechanism, and staff went without it for one release too long: a
+  /// password changed *because* it was known to somebody else left that
+  /// somebody else logged in until the token expired on its own.
+  tokenVersion      Int      @default(0)
   isActive          Boolean  @default(true)
   bio               String?
   phone             String?
@@ -493,16 +511,30 @@ model Article {
   @@index([draftAwaitingReview])
 }
 
+/// Who did what. The platform's only accountability record: there is no
+/// second audit table and no export of this one.
 model ActivityLog {
-  id          String   @id @default(cuid())
-  userId      String
+  id String @id @default(cuid())
+
+  /// Nullable, and SetNull rather than Cascade, because the trail has to
+  /// outlive the account it audits. It was a required FK with
+  /// onDelete: Cascade, so deleting a staff user destroyed every action
+  /// that user had ever recorded — and UsersService.remove() also deleted
+  /// them explicitly first. The accounts easiest to delete are exactly the
+  /// ones with no articles blocking it (MODERADOR, ANALISTA), whose trail
+  /// is reader suspensions, subscription gifts and pacote grants.
+  userId String?
+
+  /// The actor's name and e-mail as they were AT THE TIME, so a deleted
+  /// account is still attributable once userId goes null.
+  actorLabel  String
   action      String
   targetType  String
   targetId    String?
   targetLabel String
   createdAt   DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([createdAt])
   @@index([userId, createdAt])
@@ -987,6 +1019,24 @@ model PackagePurchase {
   createdAt DateTime  @default(now())
   paidAt    DateTime?
   revokedAt DateTime?
+
+  /// A money reversal at Stripe, PERSISTED rather than only logged.
+  ///
+  /// The reversal used to leave no trace in the database at all: the
+  /// handler wrote one log line and the row stayed PAGO with revokedAt
+  /// null, so the admin purchases table rendered a refunded purchase as
+  /// an ordinary green paid row and "Os meus pacotes" kept listing it.
+  /// The compensating control the code named — a person pressing
+  /// "Revogar compra" — needs the person to be told a decision is due.
+  refundedAt          DateTime?
+  /// What Stripe actually gave back, in cents. A TOTAL refund revokes
+  /// automatically; a partial one only marks the row, which is the case
+  /// the original deferral was really about.
+  refundedAmountCents Int?
+  /// A chargeback the buyer opened through their card issuer.
+  /// charge.dispute.* reached no case in the switch at all, so it fell to
+  /// the default branch and was recorded without even a log line.
+  disputedAt          DateTime?
 
   reader  Reader  @relation(fields: [readerId], references: [id], onDelete: Cascade)
   /// Restrict, not Cascade: deleting a pacote somebody paid for must

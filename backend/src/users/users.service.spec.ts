@@ -118,6 +118,22 @@ describe('UsersService', () => {
       const newHash = args.data.password as string;
       expect(await bcrypt.compare('NewPassword!23', newHash)).toBe(true);
     });
+
+    it('ends every session opened with the old password', async () => {
+      // Somebody changing their own password after a shared laptop or a
+      // phishing scare is asking for exactly this. Without the bump the
+      // other sessions stayed live for the rest of the 8h token.
+      const stored = await bcrypt.hash('correct123', 10);
+      prisma.user.findUnique.mockResolvedValueOnce({ id: 'u1', password: stored });
+      prisma.user.update.mockResolvedValueOnce({ id: 'u1' });
+      await service.changeOwnPassword('u1', {
+        current: 'correct123',
+        next: 'NewPassword!23',
+      });
+      expect(prisma.user.update.mock.calls[0][0].data.tokenVersion).toEqual({
+        increment: 1,
+      });
+    });
   });
 
   describe('changeRole()', () => {
@@ -217,6 +233,11 @@ describe('UsersService', () => {
       expect(activity.record).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'password-reset' }),
       );
+      // This flow exists for "locked out" AND for "somebody else knows
+      // that password". Without ending the sessions opened with the old
+      // one, the second case gave the admin a false sense of having done
+      // something, for up to eight more hours.
+      expect(args.data.tokenVersion).toEqual({ increment: 1 });
     });
   });
 
@@ -251,7 +272,6 @@ describe('UsersService', () => {
         id: 'u1', email: 'u@x.pt', role: 'JORNALISTA',
       });
       prisma.article.count.mockResolvedValueOnce(0);
-      prisma.activityLog.deleteMany.mockResolvedValueOnce({ count: 2 });
       prisma.user.delete.mockResolvedValueOnce({});
       const res = await service.remove('u1', {
         id: 'admin', role: 'SUPER_ADMIN',
@@ -260,6 +280,24 @@ describe('UsersService', () => {
       expect(activity.record).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'deleted', targetType: 'user' }),
       );
+    });
+
+    it('does NOT delete the audit trail the account authored', async () => {
+      // This used to run activityLog.deleteMany({ where: { userId } })
+      // before the delete, destroying every action the account had ever
+      // recorded — under a comment claiming the entries were kept. The
+      // relation is now onDelete: SetNull, so the rows survive with
+      // userId null and actorLabel intact; deleting them here would undo
+      // that. There is no second audit table to fall back on.
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: 'u1', email: 'u@x.pt', role: 'JORNALISTA',
+      });
+      prisma.article.count.mockResolvedValueOnce(0);
+      prisma.user.delete.mockResolvedValueOnce({});
+
+      await service.remove('u1', { id: 'admin', role: 'SUPER_ADMIN' });
+
+      expect(prisma.activityLog.deleteMany).not.toHaveBeenCalled();
     });
   });
 
@@ -287,6 +325,60 @@ describe('UsersService', () => {
       expect(args.select).toEqual(
         expect.objectContaining({ password: false, email: true }),
       );
+    });
+  });
+
+  // The peer rule was written into changeRole() and nowhere else, so the
+  // three STRONGER operations were open between equals: a chief could not
+  // demote a peer chief, but could take their password, lock them out, or
+  // delete the account. These pin all three closed.
+  describe('peer isolation across every cross-account write', () => {
+    const peer = { id: 'peer-id', email: 'peer@x.pt', role: 'EDITOR_CHEFE' };
+    const self = { id: 'self-id', role: 'EDITOR_CHEFE' as const };
+
+    it('forbids EDITOR_CHEFE from resetting a peer EDITOR_CHEFE password', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce(peer);
+      await expect(service.resetPassword('peer-id', self)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('forbids EDITOR_CHEFE from suspending a peer EDITOR_CHEFE', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: 'peer-id', role: 'EDITOR_CHEFE',
+      });
+      await expect(
+        service.setActive('peer-id', false, self),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('forbids EDITOR_CHEFE from deleting a peer EDITOR_CHEFE', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce(peer);
+      await expect(service.remove('peer-id', self)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(prisma.user.delete).not.toHaveBeenCalled();
+    });
+
+    it('still lets a SUPER_ADMIN act on an EDITOR_CHEFE', async () => {
+      // The fix must not close the vertical direction it was never about.
+      prisma.user.findUnique.mockResolvedValueOnce(peer);
+      prisma.user.update.mockResolvedValueOnce({});
+      await expect(
+        service.resetPassword('peer-id', { id: 'admin', role: 'SUPER_ADMIN' }),
+      ).resolves.toMatchObject({ email: 'peer@x.pt' });
+    });
+
+    it('still lets an EDITOR_CHEFE act on a lower role', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: 'jorn-id', email: 'j@x.pt', role: 'JORNALISTA',
+      });
+      prisma.user.update.mockResolvedValueOnce({});
+      await expect(
+        service.resetPassword('jorn-id', self),
+      ).resolves.toMatchObject({ email: 'j@x.pt' });
     });
   });
 

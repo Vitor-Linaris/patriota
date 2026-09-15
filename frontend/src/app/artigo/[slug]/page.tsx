@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { jsonLdHtml } from "@/lib/json-ld";
 import { Container } from "@/components/Container";
 import { TopBar } from "@/components/home/TopBar";
 import { BreakingNews } from "@/components/home/BreakingNews";
@@ -99,9 +100,12 @@ export default async function ArticlePage({
     <div className="flex flex-1 flex-col bg-white text-slate-900">
       <script
         type="application/ld+json"
-        // Same pattern as <Breadcrumb />. JSON.stringify of a plain
-        // object we built ourselves, never reader input.
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(articleJsonLd) }}
+        // jsonLdHtml, not JSON.stringify: the object is ours, but the
+        // VALUES in it are not — headline, section and author name are
+        // typed into the CMS, and JSON.stringify leaves `<` alone, so a
+        // headline containing "</script>" would close this tag and turn
+        // the rest into HTML. See lib/json-ld.ts.
+        dangerouslySetInnerHTML={{ __html: jsonLdHtml(articleJsonLd) }}
       />
       <TopBar />
       <BreakingNews

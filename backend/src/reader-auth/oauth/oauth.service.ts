@@ -1,4 +1,9 @@
-import { ConflictException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ReaderTokenService } from '../reader-token.service';
@@ -160,12 +165,42 @@ export class OAuthService {
             // Linking a verified provider identity proves the mailbox.
             ...(existingReader.emailVerifiedAt
               ? {}
-              : { emailVerifiedAt: new Date(), status: 'ATIVO' as const }),
+              : {
+                  emailVerifiedAt: new Date(),
+                  status: 'ATIVO' as const,
+                  /*
+                   * The unproven password goes, and every session opened
+                   * with it goes too.
+                   *
+                   * Whoever set it never proved they could read this
+                   * mailbox. The person standing here just did. Leaving
+                   * the password in place would mean handing the account
+                   * to its rightful owner while the other party kept a
+                   * working credential into it — and a live 30-day token
+                   * besides.
+                   *
+                   * In the ordinary case this is the same person, who
+                   * registered, never clicked the link, and came back
+                   * with Google. They lose a password they had not
+                   * finished setting up, and they get in.
+                   */
+                  password: null,
+                  tokenVersion: { increment: 1 },
+                }),
           },
         }),
       ]);
 
-      return { accessToken: await this.tokens.sign(existingReader) };
+      // Signed AFTER the bump, or the token we hand out is the one the
+      // update just invalidated.
+      return {
+        accessToken: await this.tokens.sign({
+          ...existingReader,
+          tokenVersion: existingReader.emailVerifiedAt
+            ? existingReader.tokenVersion
+            : existingReader.tokenVersion + 1,
+        }),
+      };
     }
 
     // ── 3. Brand new reader ──────────────────────────────────────────
@@ -214,8 +249,23 @@ export class OAuthService {
       return reader.password === null;
     }
 
-    // Google: both sides must already have proven the address.
-    return profile.emailVerified && reader.emailVerifiedAt !== null;
+    /*
+     * Google: the provider's verified address is the proof.
+     *
+     * This used to require `reader.emailVerifiedAt !== null` as well,
+     * and that second condition handed anybody a way to lock a person
+     * out of their own address. Register victim@exemplo.pt with a
+     * password, never verify it, and the account exists: the real owner
+     * then arrives with Google, is refused with "já existe uma conta
+     * com este e-mail, inicie sessão com a sua palavra-passe", and has
+     * no palavra-passe to use and no way to prove the address is theirs.
+     * The squatter meanwhile holds a 30-day session on it.
+     *
+     * An unverified password is not a claim on an address. A verified
+     * Google identity is. The weaker credential gives way — and is
+     * EXPELLED, not merely outranked: see the update below.
+     */
+    return profile.emailVerified;
   }
 
   /** Providers with credentials configured — drives the login-page buttons. */

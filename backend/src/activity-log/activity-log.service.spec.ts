@@ -4,7 +4,11 @@ import { PrismaService } from '../prisma/prisma.service';
 
 describe('ActivityLogService', () => {
   let service: ActivityLogService;
-  let prisma: { activityLog: { create: jest.Mock; findMany: jest.Mock; count: jest.Mock } };
+  let prisma: {
+    activityLog: { create: jest.Mock; findMany: jest.Mock; count: jest.Mock };
+    user: { findUnique: jest.Mock };
+    reader: { findMany: jest.Mock };
+  };
 
   beforeEach(async () => {
     prisma = {
@@ -13,6 +17,12 @@ describe('ActivityLogService', () => {
         findMany: jest.fn().mockResolvedValue([]),
         count: jest.fn().mockResolvedValue(0),
       },
+      user: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ name: 'Ana Dias', email: 'ana@opatriota.pt' }),
+      },
+      reader: { findMany: jest.fn().mockResolvedValue([]) },
     };
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -35,12 +45,40 @@ describe('ActivityLogService', () => {
       expect(prisma.activityLog.create).toHaveBeenCalledWith({
         data: {
           userId: 'u1',
+          actorLabel: 'Ana Dias <ana@opatriota.pt>',
           action: 'published',
           targetType: 'article',
           targetId: 'a-123',
           targetLabel: 'Article title',
         },
       });
+    });
+
+    it('denormalises the actor label so the entry outlives the account', async () => {
+      // userId is onDelete: SetNull, so after the account is deleted the
+      // relation is the only thing that named the actor — and it is gone.
+      // Without this label the surviving row is unattributable, which is
+      // only marginally better than the cascade that used to delete it.
+      await service.record({
+        userId: 'u1',
+        action: 'reader_suspended',
+        targetType: 'reader',
+        targetLabel: 'leitor@x.pt',
+      });
+      const data = prisma.activityLog.create.mock.calls[0][0].data;
+      expect(data.actorLabel).toContain('ana@opatriota.pt');
+    });
+
+    it('still records something attributable when the actor row is gone', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce(null);
+      await service.record({
+        userId: 'ghost',
+        action: 'x',
+        targetType: 'article',
+        targetLabel: 'x',
+      });
+      const data = prisma.activityLog.create.mock.calls[0][0].data;
+      expect(data.actorLabel).toContain('ghost');
     });
 
     it('swallows persistence errors so business logic is not blocked', async () => {
@@ -73,6 +111,61 @@ describe('ActivityLogService', () => {
           include: { user: { select: { id: true, name: true, email: true, role: true } } },
         }),
       );
+    });
+
+    /**
+     * The reader's identity is never on the row. Six call sites used to
+     * write the address into targetLabel as free text while already
+     * storing targetId beside it — and this table has no readerId, so
+     * the RGPD erasure transaction had nothing to find and nothing to
+     * clear. The address outlived the account that asked to be
+     * forgotten and came straight back out of GET /admin/activity.
+     */
+    const readerRow = {
+      id: 'log1',
+      targetType: 'reader',
+      targetId: 'r1',
+      targetLabel: 'permanente',
+    };
+
+    it('names a reader from the account, not from the stored row', async () => {
+      prisma.activityLog.findMany.mockResolvedValueOnce([readerRow]);
+      prisma.reader.findMany.mockResolvedValueOnce([
+        { id: 'r1', name: 'Ana', email: 'ana@exemplo.pt' },
+      ]);
+
+      const page = await service.list({} as never);
+
+      expect((page.items[0] as { targetLabel: string }).targetLabel).toBe(
+        'Ana — permanente',
+      );
+    });
+
+    it('shows an erased reader as removed, with no sweep of this table', async () => {
+      prisma.activityLog.findMany.mockResolvedValueOnce([readerRow]);
+      // What anonymise() leaves behind.
+      prisma.reader.findMany.mockResolvedValueOnce([
+        { id: 'r1', name: null, email: 'anonimizado+r1@invalid.local' },
+      ]);
+
+      const page = await service.list({} as never);
+      const label = (page.items[0] as { targetLabel: string }).targetLabel;
+
+      expect(label).toBe('Leitor removido — permanente');
+      expect(label).not.toContain('invalid.local');
+    });
+
+    it('leaves rows that are not about a reader alone', async () => {
+      prisma.activityLog.findMany.mockResolvedValueOnce([
+        { id: 'l2', targetType: 'article', targetId: 'a1', targetLabel: 'Título' },
+      ]);
+
+      const page = await service.list({} as never);
+
+      expect((page.items[0] as { targetLabel: string }).targetLabel).toBe(
+        'Título',
+      );
+      expect(prisma.reader.findMany).not.toHaveBeenCalled();
     });
   });
 });

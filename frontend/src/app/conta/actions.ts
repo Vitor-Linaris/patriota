@@ -3,6 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { apiBaseUrl } from "@/lib/api-base";
+import { clientIpHeaders } from "@/lib/client-ip";
 import { READER_COOKIE, safeNext } from "@/lib/reader-api";
 
 export type FormState = { error?: string; notice?: string };
@@ -35,7 +36,11 @@ async function postJson(
   try {
     const res = await fetch(`${apiBaseUrl()}${path}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        // Per-visitor rate limiting; see lib/client-ip.ts.
+        ...(await clientIpHeaders()),
+      },
       body: JSON.stringify(body),
       cache: "no-store",
     });

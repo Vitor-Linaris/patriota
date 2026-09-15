@@ -9,7 +9,16 @@ const features = [
   { glyph: "◉", label: "Analytics e métricas editoriais" },
 ];
 
-export default function AdminLoginPage() {
+export default async function AdminLoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ "palavra-passe-alterada"?: string }>;
+}) {
+  // Set by /admin/perfil after a password change, which ends every
+  // session opened with the old one — this one included. Without the
+  // note, being bounced to the login form reads like a failure.
+  const alterada = (await searchParams)["palavra-passe-alterada"] === "1";
+
   return (
     <div className="flex min-h-screen flex-col bg-patriota-medium lg:flex-row">
       {/* Left panel — institutional */}
@@ -92,6 +101,16 @@ export default function AdminLoginPage() {
               Introduza as suas credenciais de acesso ao backoffice.
             </p>
           </header>
+
+          {alterada ? (
+            <p
+              role="status"
+              className="mt-6 rounded-[8px] border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-[13px] text-emerald-200"
+            >
+              Palavra-passe alterada. As sessões abertas com a anterior
+              terminaram — entre novamente com a nova.
+            </p>
+          ) : null}
 
           <div className="mt-8">
             <LoginForm />

@@ -44,9 +44,7 @@ describe('ReaderNotificationsService — roll-up', () => {
     funnel = undefined;
     // Sé › Funchal › Madeira › Portugal, leaf first.
     tree = {
-      resolveAncestorIds: jest
-        .fn()
-        .mockResolvedValue(['se', 'fu', 'ma', 'pt']),
+      resolveAncestorIds: jest.fn().mockResolvedValue(['se', 'fu', 'ma', 'pt']),
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -105,7 +103,9 @@ describe('ReaderNotificationsService — roll-up', () => {
     expect(queued).toBe(1);
     // And every insert must actually ask for the de-duplication.
     for (const call of prisma.articleNotification.createMany.mock.calls) {
-      expect((call[0] as { skipDuplicates: boolean }).skipDuplicates).toBe(true);
+      expect((call[0] as { skipDuplicates: boolean }).skipDuplicates).toBe(
+        true,
+      );
     }
   });
 
@@ -114,7 +114,9 @@ describe('ReaderNotificationsService — roll-up', () => {
     // Nobody follows Sé; someone follows Portugal.
     prisma.categoryFavorite.findMany.mockImplementation((args: unknown) => {
       const { where } = args as { where: { categoryId: string } };
-      return Promise.resolve(where.categoryId === 'pt' ? [{ readerId: 'r9' }] : []);
+      return Promise.resolve(
+        where.categoryId === 'pt' ? [{ readerId: 'r9' }] : [],
+      );
     });
     prisma.articleNotification.createMany.mockResolvedValueOnce({ count: 1 });
 
@@ -158,5 +160,122 @@ describe('ReaderNotificationsService — roll-up', () => {
 
     expect(queued).toBe(0);
     expect(prisma.categoryFavorite.findMany).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The digest as a SECOND reader of Article.content.
+ *
+ * The paywall in articles.service.ts is not the only code that puts an
+ * article body in front of a person. This one chooses its recipients by
+ * category follow and asks nothing about entitlement anywhere on the
+ * path — so whatever it selects, it mails to every free follower, into
+ * an inbox, where no further authorisation will ever apply.
+ */
+describe('ReaderNotificationsService — deliver', () => {
+  let service: ReaderNotificationsService;
+  let prisma: {
+    articleNotification: { findMany: jest.Mock; updateMany: jest.Mock };
+  };
+  let sendOrThrow: jest.Mock;
+
+  const BODY = 'Corpo pago que ninguem fora do paywall devia ler.';
+
+  function pendingRow(over: { exclusive: boolean }) {
+    return {
+      id: 'n1',
+      readerId: 'r1',
+      reader: { email: 'ana@exemplo.pt', name: 'Ana', unsubscribeToken: 'tok' },
+      article: {
+        slug: 'investigacao',
+        title: 'Investigacao',
+        summary: 'O resumo publico.',
+        content: BODY,
+        exclusive: over.exclusive,
+        publishedAt: new Date(),
+        category: { slug: 'politica', name: 'Politica' },
+        packageEntries: [],
+      },
+    };
+  }
+
+  beforeEach(async () => {
+    sendOrThrow = jest.fn().mockResolvedValue(undefined);
+    prisma = {
+      articleNotification: {
+        findMany: jest.fn().mockResolvedValue([]),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        ReaderNotificationsService,
+        { provide: PrismaService, useValue: prisma },
+        {
+          provide: MailerService,
+          useValue: {
+            isEnabled: jest.fn().mockResolvedValue(true),
+            siteName: jest.fn().mockResolvedValue('O Patriota Noticias'),
+            siteUrl: jest.fn().mockReturnValue('https://opatriota.pt'),
+            sendOrThrow,
+          },
+        },
+        {
+          provide: CategoryTreeService,
+          useValue: { resolveAncestorIds: jest.fn() },
+        },
+        { provide: ConfigService, useValue: { get: () => undefined } },
+      ],
+    }).compile();
+    service = moduleRef.get(ReaderNotificationsService);
+  });
+
+  /** The columns the digest asks the database for, flattened. */
+  const articleSelect = () =>
+    (
+      prisma.articleNotification.findMany.mock.calls[0]![0] as {
+        select: { article: { select: Record<string, unknown> } };
+      }
+    ).select.article.select;
+
+  it('asks for the exclusive flag alongside the body', async () => {
+    await service.deliver('DIARIO');
+
+    // Without this column there is nothing to decide on, and the check
+    // below cannot exist at all.
+    expect(articleSelect().exclusive).toBe(true);
+  });
+
+  it('never puts the body of an exclusive in the e-mail', async () => {
+    prisma.articleNotification.findMany.mockResolvedValueOnce([
+      pendingRow({ exclusive: true }),
+    ]);
+
+    await service.deliver('DIARIO');
+
+    const mail = sendOrThrow.mock.calls[0]![0] as {
+      html: string;
+      text: string;
+    };
+    // Not a word of it, in either part. The e-mail still goes out, and
+    // still invites the reader to come and read the piece.
+    expect(mail.html).not.toContain('Corpo pago');
+    expect(mail.text).not.toContain('Corpo pago');
+    expect(mail.html).toContain('O resumo publico.');
+    expect(mail.html).toContain('/artigo/investigacao');
+  });
+
+  it('still carries the opening of a free article', async () => {
+    prisma.articleNotification.findMany.mockResolvedValueOnce([
+      pendingRow({ exclusive: false }),
+    ]);
+
+    await service.deliver('DIARIO');
+
+    const mail = sendOrThrow.mock.calls[0]![0] as { html: string };
+    // The excerpt is what makes somebody open the e-mail; withholding it
+    // from everything would be the wrong fix.
+    expect(mail.html).toContain('Corpo pago');
   });
 });

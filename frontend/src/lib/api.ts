@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { apiBaseUrl } from "./api-base";
+import { clientIpHeaders } from "./client-ip";
 
 const SESSION_COOKIE = "patriota_session";
 
@@ -20,6 +21,9 @@ export async function apiFetch(path: string, init: RequestInit = {}) {
     cache: "no-store",
     headers: {
       "Content-Type": "application/json",
+      // See client-ip.ts: without this the API counts every visitor as
+      // one, and one person's failed logins lock out the newsroom.
+      ...(await clientIpHeaders()),
       ...(init.headers ?? {}),
       Authorization: `Bearer ${token}`,
     },

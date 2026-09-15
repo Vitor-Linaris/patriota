@@ -41,10 +41,14 @@ function redirectTo(path: string): NextResponse {
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const backToLogin = (reason?: string) =>
-    redirectTo(
-      `/conta/entrar${reason ? `?erro=${encodeURIComponent(reason)}` : ""}`,
-    );
+  // No reason parameter, by design. This used to forward whatever the
+  // backend put in `?erro=`, and the login page printed it — a free-text
+  // channel running from a failed OAuth round trip straight into a
+  // banner on the genuine origin, under the real domain, where a reader
+  // has every reason to believe what it says. The failure is always the
+  // same to the reader: it did not work, try again. The detail lives in
+  // the backend log.
+  const backToLogin = () => redirectTo("/conta/entrar?erro=1");
 
   if (!FEATURES.readerArea) {
     return new NextResponse(null, { status: 404 });
@@ -54,9 +58,8 @@ export async function GET(request: Request) {
   const next = url.searchParams.get("next") ?? undefined;
   const erro = url.searchParams.get("erro");
 
-  // The backend already refused — it passes "1" when it has nothing
-  // safe to say, and a message when it does.
-  if (erro) return backToLogin(erro === "1" ? undefined : erro);
+  // The backend refused. It says only that much, and so do we.
+  if (erro) return backToLogin();
   if (!code) return backToLogin();
 
   let accessToken: string | undefined;

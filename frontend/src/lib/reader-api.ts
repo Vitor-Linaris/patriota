@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { apiBaseUrl } from "./api-base";
+import { clientIpHeaders } from "./client-ip";
 
 /**
  * Reader-side counterpart to lib/api.ts.
@@ -89,6 +90,9 @@ export async function readerApiFetch(
       cache: "no-store",
       headers: {
         "Content-Type": "application/json",
+        // Who is actually asking, so the API can rate-limit per visitor
+        // instead of counting this whole process as one. See client-ip.ts.
+        ...(await clientIpHeaders()),
         ...(init.headers ?? {}),
         Authorization: `Bearer ${token}`,
       },
@@ -105,10 +109,22 @@ export async function readerApiFetch(
  * `//evil.com` is a protocol-relative URL: it passes a naive
  * startsWith("/") check and the browser happily treats it as absolute.
  * Anything that fails this falls back to the dashboard.
+ *
+ * The backslash is the same trap wearing a different coat. Browsers
+ * normalise it to a forward slash inside a URL path, so a redirect to
+ * "/\evil.com" is read as "//evil.com" and leaves the site. That matters
+ * here more than most places: this value arrives from ?next= on the
+ * login page and fires the instant the login SUCCEEDS, which is the
+ * moment a reader trusts the page most.
+ *
+ * Whitespace is refused for the same family of reasons — a tab or a
+ * newline inside the path is stripped by some browsers before the URL is
+ * parsed, which is another way to smuggle a leading "//" past a check
+ * that only looked at the first two characters.
  */
 export function safeNext(next: string | undefined): string {
   if (!next) return "/conta";
-  return /^\/(?!\/)/.test(next) ? next : "/conta";
+  return /^\/(?![/\\])[^\s]*$/.test(next) ? next : "/conta";
 }
 
 /**

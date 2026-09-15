@@ -67,11 +67,23 @@ export function previewOf(html: string, budget = PREVIEW_BUDGET): string {
   // paragraph is the whole of it.
   if (textLength(first) > cap) return cutToParagraph(first, cap);
 
+  // The budget is a CEILING on what goes out, not a stop condition after
+  // the fact. Pushing first and measuring afterwards let the block that
+  // crosses the cap leave whole — so an article of a short lead plus one
+  // long paragraph came back complete, the cap having been reached only
+  // once the entire remainder was already in `out`.
   const out: string[] = [];
   let used = 0;
   for (const block of blocks) {
+    const len = textLength(block);
+    if (used + len > cap) {
+      // Cut INSIDE the crossing block. `cap - used` is always positive:
+      // the loop breaks as soon as `used` reaches the cap.
+      out.push(cutToParagraph(block, cap - used));
+      break;
+    }
     out.push(block);
-    used += textLength(block);
+    used += len;
     if (used >= cap) break;
   }
   return out.join('');

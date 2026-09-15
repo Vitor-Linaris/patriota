@@ -80,9 +80,27 @@ export class BillingService {
         planRenewsAt: true,
         planSource: true,
         stripeCustomerId: true,
+        emailVerifiedAt: true,
       },
     });
     if (!row) throw new NotFoundException('Leitor não encontrado.');
+
+    // The address goes straight into a Stripe customer and onto an
+    // invoice, where the newsroom reads it and Stripe writes to it. An
+    // unverified address is one nobody has shown they can read: this
+    // would put somebody else's e-mail on a paying customer record, and
+    // send them the receipt.
+    //
+    // Before the money, not after: a payment taken against the wrong
+    // address is a refund, a support thread and a billing record that
+    // cannot be quietly corrected.
+    if (!row.emailVerifiedAt) {
+      throw new BadRequestException(
+        'Confirme o seu e-mail antes de subscrever. Enviámos-lhe uma ' +
+          'ligação de confirmação quando criou a conta — pode pedir outra ' +
+          'na sua área de leitor.',
+      );
+    }
 
     // Refused rather than allowed to go through and be sorted out later:
     // a second checkout would take a second card and start a second
@@ -241,12 +259,24 @@ export class BillingService {
         );
         return true;
 
-      // Recorded and logged, never auto-revoked — see
-      // PackagePurchasesService.onChargeRefunded for why.
+      // A total refund revokes, a partial one marks and keeps access —
+      // see PackagePurchasesService.onChargeRefunded for why.
       case 'charge.refunded':
         await this.packagePurchases.onChargeRefunded(
           event,
           event.data.object as Stripe.Charge,
+        );
+        return true;
+
+      // A chargeback. These used to fall to `default:` and be recorded
+      // with no log line at all, so a buyer could reverse the payment
+      // through their card issuer and keep the pacote silently. Opening
+      // one marks the row; losing one revokes.
+      case 'charge.dispute.created':
+      case 'charge.dispute.closed':
+        await this.packagePurchases.onChargeDisputed(
+          event,
+          event.data.object as Stripe.Dispute,
         );
         return true;
 

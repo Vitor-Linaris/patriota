@@ -14,6 +14,7 @@ import { StripeService } from '../billing/stripe.service';
 import { PageResult, toSkipTake } from '../common/dto/pagination.dto';
 import { PageQueryDto } from '../common/dto/pagination.dto';
 import { GrantPackageDto } from './dto/grant-package.dto';
+import { RbacService } from '../rbac/rbac.service';
 import type { Role } from '../rbac/rbac.constants';
 
 interface ActingUser {
@@ -44,6 +45,7 @@ export class PackagePurchasesService {
     private readonly stripe: StripeService,
     private readonly config: ConfigService,
     private readonly activity: ActivityLogService,
+    private readonly rbac: RbacService,
   ) {}
 
   private siteUrl(): string {
@@ -109,9 +111,25 @@ export class PackagePurchasesService {
 
     const row = await this.prisma.reader.findUnique({
       where: { id: reader.id },
-      select: { id: true, email: true, stripeCustomerId: true },
+      select: {
+        id: true,
+        email: true,
+        stripeCustomerId: true,
+        emailVerifiedAt: true,
+      },
     });
     if (!row) throw new NotFoundException('Leitor não encontrado.');
+
+    // Same rule as the subscription door, and for the same reason: this
+    // address becomes a Stripe customer and the name on an invoice. An
+    // unverified one is an address nobody has shown they can read.
+    if (!row.emailVerifiedAt) {
+      throw new BadRequestException(
+        'Confirme o seu e-mail antes de comprar. Enviámos-lhe uma ligação ' +
+          'de confirmação quando criou a conta — pode pedir outra na sua ' +
+          'área de leitor.',
+      );
+    }
 
     const articleIds = pkg.items.map((i) => i.articleId);
     if (articleIds.length === 0) {
@@ -350,19 +368,17 @@ export class PackagePurchasesService {
   }
 
   /**
-   * A payment came back. Recorded and logged, NOT auto-revoked.
+   * Finds the pacote purchase a charge-level event belongs to.
    *
-   * Deliberate for v1. Partial refunds exist and revoking on one would be
-   * wrong; a refund on a pacote is rare enough that a person deciding is
-   * affordable; and automatically taking away access is the failure mode
-   * that produces the angriest support ticket there is. The manual path is
-   * revoke() below, which is also exactly the code an automatic handler
-   * would call later.
+   * charge.refunded and charge.dispute.* carry no Checkout session, which
+   * is why createCheckoutSession copies the metadata onto the PaymentIntent
+   * as well. stripePaymentIntentId is the fallback for a charge whose
+   * metadata was lost.
    */
-  async onChargeRefunded(
-    event: Stripe.Event,
-    charge: Stripe.Charge,
-  ): Promise<void> {
+  private async findPurchaseForCharge(charge: {
+    metadata?: Stripe.Metadata | null;
+    payment_intent?: string | Stripe.PaymentIntent | null;
+  }) {
     const purchaseId =
       (charge.metadata?.purchaseId as string | undefined) ?? null;
     const paymentIntentId =
@@ -370,27 +386,146 @@ export class PackagePurchasesService {
         ? charge.payment_intent
         : (charge.payment_intent?.id ?? null);
 
-    const purchase = await this.prisma.packagePurchase.findFirst({
+    return this.prisma.packagePurchase.findFirst({
       where: purchaseId
         ? { id: purchaseId }
         : paymentIntentId
           ? { stripePaymentIntentId: paymentIntentId }
           : { id: '__nenhum__' },
-      select: { id: true, readerId: true, packageId: true },
+      select: { id: true, readerId: true, packageId: true, status: true },
     });
+  }
 
-    if (purchase) {
-      this.logger.error(
-        `REEMBOLSO no Stripe para a compra ${purchase.id} ` +
-          `(leitor ${purchase.readerId}, pacote ${purchase.packageId}). ` +
-          'O acesso NÃO foi retirado automaticamente — usar "Revogar compra" no admin.',
-      );
-    } else {
+  /**
+   * A payment came back.
+   *
+   * A TOTAL refund revokes: entitlement must not outlive the payment that
+   * bought it, and hasPurchased() answers the paywall from the bare
+   * existence of the item rows, so leaving them is leaving the content
+   * paid-for-then-unpaid. A PARTIAL refund only marks the row and keeps
+   * access — that is the case the original "a person decides" deferral was
+   * really about, and taking access away on a €2 goodwill refund of a €15
+   * pacote is the angry-support-ticket failure mode it was avoiding.
+   *
+   * Either way the reversal is PERSISTED. It used to be logged and nothing
+   * else: the row stayed PAGO with revokedAt null, so the admin purchases
+   * table showed a refunded purchase as an ordinary green paid row and the
+   * operator had no way to know a decision was due. Worse, README told the
+   * operator to subscribe four event types that did not include
+   * charge.refunded, so even the log line never fired.
+   */
+  async onChargeRefunded(
+    event: Stripe.Event,
+    charge: Stripe.Charge,
+  ): Promise<void> {
+    const purchase = await this.findPurchaseForCharge(charge);
+
+    if (!purchase) {
       this.logger.warn(
         `charge.refunded ${charge.id} sem compra de pacote correspondente.`,
       );
+      await this.record(event, null);
+      return;
     }
-    await this.record(event, purchase?.readerId ?? null);
+
+    const refunded = charge.amount_refunded ?? 0;
+    const total =
+      typeof charge.amount === 'number' && refunded >= charge.amount;
+    // Only a PAGO purchase has entitlement rows to take back. A row that
+    // is already REEMBOLSADO or EXPIRADO is marked and left alone.
+    const revoking = total && purchase.status === 'PAGO';
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.stripeEvent.create({
+        data: { id: event.id, type: event.type, readerId: purchase.readerId },
+      });
+      await tx.packagePurchase.updateMany({
+        where: { id: purchase.id },
+        data: {
+          refundedAt: new Date(),
+          refundedAmountCents: refunded,
+          ...(revoking
+            ? { status: 'REEMBOLSADO' as const, revokedAt: new Date() }
+            : {}),
+        },
+      });
+      if (revoking) {
+        await tx.packagePurchaseItem.deleteMany({
+          where: { purchaseId: purchase.id },
+        });
+      }
+    });
+
+    this.logger.error(
+      `REEMBOLSO no Stripe para a compra ${purchase.id} ` +
+        `(leitor ${purchase.readerId}, pacote ${purchase.packageId}, ` +
+        `${refunded} de ${charge.amount ?? '?'} cêntimos). ` +
+        (revoking
+          ? 'Reembolso total — acesso retirado automaticamente.'
+          : 'Reembolso parcial — marcado, acesso mantido. Rever no admin.'),
+    );
+  }
+
+  /**
+   * A chargeback: the buyer disputed the payment with their card issuer.
+   *
+   * This reached no `case` in the event switch at all, so it fell to the
+   * default record-and-ignore branch without so much as a log line — a
+   * buyer could take the money back unilaterally and keep reading, with
+   * nothing anywhere in the product saying so.
+   *
+   * Opening a dispute marks the row and logs loudly but does not revoke:
+   * a dispute can be won, and taking access from a reader who then turns
+   * out to be right is worse than the delay. A dispute LOST is a final
+   * reversal, and revokes on the same terms as a total refund.
+   */
+  async onChargeDisputed(
+    event: Stripe.Event,
+    dispute: Stripe.Dispute,
+  ): Promise<void> {
+    const purchase = await this.findPurchaseForCharge({
+      metadata: dispute.metadata,
+      payment_intent: dispute.payment_intent,
+    });
+
+    if (!purchase) {
+      this.logger.warn(
+        `${event.type} ${dispute.id} sem compra de pacote correspondente.`,
+      );
+      await this.record(event, null);
+      return;
+    }
+
+    const lost = dispute.status === 'lost';
+    const revoking = lost && purchase.status === 'PAGO';
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.stripeEvent.create({
+        data: { id: event.id, type: event.type, readerId: purchase.readerId },
+      });
+      await tx.packagePurchase.updateMany({
+        where: { id: purchase.id },
+        data: {
+          disputedAt: new Date(),
+          ...(revoking
+            ? { status: 'REEMBOLSADO' as const, revokedAt: new Date() }
+            : {}),
+        },
+      });
+      if (revoking) {
+        await tx.packagePurchaseItem.deleteMany({
+          where: { purchaseId: purchase.id },
+        });
+      }
+    });
+
+    this.logger.error(
+      `DISPUTA no Stripe (${dispute.status}) para a compra ${purchase.id} ` +
+        `(leitor ${purchase.readerId}, pacote ${purchase.packageId}). ` +
+        (revoking
+          ? 'Disputa perdida — acesso retirado automaticamente.'
+          : 'Marcada, acesso mantido. Rever no admin.'),
+    );
   }
 
   private async record(event: Stripe.Event, readerId: string | null) {
@@ -480,8 +615,29 @@ export class PackagePurchasesService {
 
   // ── admin ──────────────────────────────────────────────────────────
 
-  async listPurchases(query: PageQueryDto): Promise<PageResult<unknown>> {
+  async listPurchases(
+    query: PageQueryDto,
+    user: ActingUser,
+  ): Promise<PageResult<unknown>> {
     const { skip, take } = toSkipTake(query);
+
+    // Reader identity has ONE control in this system: leitores.ver, which
+    // gates GET /admin/readers and whose curated READER_VIEW select decides
+    // which reader columns may reach an admin screen at all.
+    //
+    // This route is gated on pacotes.ver_compras — "quem comprou que pacote
+    // e por quanto" — which ANALISTA holds by default precisely because
+    // revenue per pacote is a number and numbers are their job. ANALISTA is
+    // deliberately NOT given leitores.ver, so returning the buyer's name and
+    // address here made this the one reader-identity surface that role could
+    // reach, and the RBAC screen presents the two permissions as independent
+    // switches while one silently implied the other.
+    const perms =
+      user.role === 'SUPER_ADMIN'
+        ? null // null means "everything"
+        : await this.rbac.getPermissionsForRole(user.role);
+    const maySeeReaders = perms === null || perms.includes('leitores.ver');
+
     const [items, total] = await Promise.all([
       this.prisma.packagePurchase.findMany({
         orderBy: { createdAt: 'desc' },
@@ -496,8 +652,15 @@ export class PackagePurchasesService {
           createdAt: true,
           paidAt: true,
           revokedAt: true,
+          refundedAt: true,
+          refundedAmountCents: true,
+          disputedAt: true,
           grantNote: true,
-          reader: { select: { id: true, email: true, name: true } },
+          reader: {
+            select: maySeeReaders
+              ? { id: true, email: true, name: true }
+              : { id: true },
+          },
           package: { select: { id: true, name: true, slug: true } },
           grantedBy: { select: { id: true, name: true } },
           _count: { select: { items: true } },
@@ -590,7 +753,8 @@ export class PackagePurchasesService {
       action: 'package_granted',
       targetType: 'reader',
       targetId: reader.id,
-      targetLabel: `${pkg.name} → ${reader.email}`,
+      // The pacote, not the buyer: the reader is named at read time.
+      targetLabel: pkg.name,
     });
     this.logger.log(
       `Pacote ${pkg.id} oferecido a ${reader.id} por ${user.id} ` +
@@ -637,7 +801,7 @@ export class PackagePurchasesService {
       action: 'package_revoked',
       targetType: 'reader',
       targetId: purchase.readerId,
-      targetLabel: `${purchase.package.name} → ${purchase.reader.email}`,
+      targetLabel: purchase.package.name,
     });
     this.logger.log(
       `Compra ${purchaseId} revogada por ${user.id}: acesso retirado.`,

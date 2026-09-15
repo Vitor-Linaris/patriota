@@ -177,6 +177,44 @@ export class UsersService {
     }
   }
 
+  /**
+   * Who the actor may act on. ONE place, called by every route that
+   * touches another staff account.
+   *
+   * Two checks, because canManageUser answers only half the question.
+   * It asks "may this rank act on that rank", and ASSIGNABLE_ROLES lists
+   * EDITOR_CHEFE inside EDITOR_CHEFE's own set — deliberately, so a chief
+   * can INVITE a peer. That makes the peer direction true for every
+   * caller of the helper, which is right for creating an account and
+   * wrong for acting on one that already exists.
+   *
+   * The second predicate closes it. It used to live inline in
+   * changeRole() alone, so the WEAKEST of the four operations was the
+   * only guarded one: a chief could not demote a peer, but could reset
+   * that peer's password (and receive it in plaintext), suspend them, or
+   * delete the account outright.
+   */
+  private assertMayActOn(
+    actor: ActingUser,
+    target: { id: string; role: Role },
+    what: string,
+  ): void {
+    if (!canManageUser(actor.role, target.role)) {
+      throw new ForbiddenException(
+        `Não tem permissão para ${what} utilizadores com role ${target.role}.`,
+      );
+    }
+    if (
+      target.role === actor.role &&
+      actor.role !== 'SUPER_ADMIN' &&
+      target.id !== actor.id
+    ) {
+      throw new ForbiddenException(
+        'Não pode gerir a conta de um utilizador do mesmo nível que o seu. Peça a um SUPER_ADMIN.',
+      );
+    }
+  }
+
   async changeRole(id: string, role: Role, actor: ActingUser) {
     if (!canAssignRole(actor.role, role)) {
       throw new ForbiddenException(
@@ -188,21 +226,10 @@ export class UsersService {
     // an EDITOR_CHEFE could "rewrite" a SUPER_ADMIN's role.
     const target = await this.prisma.user.findUnique({
       where: { id },
-      select: { role: true, email: true },
+      select: { id: true, role: true, email: true },
     });
     if (!target) throw new NotFoundException('Utilizador não encontrado.');
-    if (!canManageUser(actor.role, target.role)) {
-      throw new ForbiddenException(
-        `Não tem permissão para gerir utilizadores com role ${target.role}.`,
-      );
-    }
-    if (target.role === actor.role && actor.role !== 'SUPER_ADMIN' && id !== actor.id) {
-      // Prevent peer demotions: two EDITOR_CHEFEs can't fight over
-      // each other's roles, only a SUPER_ADMIN can intervene.
-      throw new ForbiddenException(
-        'Não pode alterar o role de um utilizador do mesmo nível que o seu.',
-      );
-    }
+    this.assertMayActOn(actor, target, 'gerir');
     try {
       const updated = await this.prisma.user.update({
         where: { id },
@@ -226,17 +253,14 @@ export class UsersService {
   }
 
   async setActive(id: string, isActive: boolean, actor: ActingUser) {
-    // Same hierarchy guard: an EDITOR_CHEFE cannot suspend a SUPER_ADMIN.
     const target = await this.prisma.user.findUnique({
       where: { id },
-      select: { role: true },
+      // `id` is selected because assertMayActOn needs it for the peer
+      // check — without it a chief could suspend a peer chief.
+      select: { id: true, role: true },
     });
     if (!target) throw new NotFoundException('Utilizador não encontrado.');
-    if (!canManageUser(actor.role, target.role)) {
-      throw new ForbiddenException(
-        `Não tem permissão para gerir utilizadores com role ${target.role}.`,
-      );
-    }
+    this.assertMayActOn(actor, target, 'suspender ou reactivar');
     try {
       const updated = await this.prisma.user.update({
         where: { id },
@@ -272,11 +296,7 @@ export class UsersService {
       select: { id: true, email: true, role: true },
     });
     if (!target) throw new NotFoundException('Utilizador não encontrado.');
-    if (!canManageUser(actor.role, target.role)) {
-      throw new ForbiddenException(
-        `Não tem permissão para repor a palavra-passe de utilizadores com role ${target.role}.`,
-      );
-    }
+    this.assertMayActOn(actor, target, 'repor a palavra-passe de');
     if (target.id === actor.id) {
       throw new ForbiddenException(
         'Use /users/me/password para alterar a sua própria palavra-passe.',
@@ -286,7 +306,12 @@ export class UsersService {
     const hash = await bcrypt.hash(temporaryPassword, 12);
     await this.prisma.user.update({
       where: { id },
-      data: { password: hash },
+      // The bump is the point of the reset, not bookkeeping alongside it.
+      // This flow exists for "locked out" AND for "somebody else knows
+      // that password"; without ending the sessions opened with the old
+      // one, the second case handed the admin a false sense of having
+      // done something for up to eight more hours.
+      data: { password: hash, tokenVersion: { increment: 1 } },
     });
     void this.activity.record({
       userId: actor.id,
@@ -314,11 +339,7 @@ export class UsersService {
       select: { id: true, email: true, role: true },
     });
     if (!target) throw new NotFoundException('Utilizador não encontrado.');
-    if (!canManageUser(actor.role, target.role)) {
-      throw new ForbiddenException(
-        `Não tem permissão para eliminar utilizadores com role ${target.role}.`,
-      );
-    }
+    this.assertMayActOn(actor, target, 'eliminar');
     const articleCount = await this.prisma.article.count({
       where: { authorId: id },
     });
@@ -328,10 +349,12 @@ export class UsersService {
       );
     }
     try {
-      // Activity log entries authored by this user keep the userId
-      // reference; the user row itself is removed. Doing the log
-      // BEFORE delete so it doesn't get orphaned by the cascade.
-      await this.prisma.activityLog.deleteMany({ where: { userId: id } });
+      // No activityLog.deleteMany here. The relation is onDelete: SetNull,
+      // so this user's entries survive the deletion with userId null and
+      // actorLabel intact — which is what the comment that used to sit
+      // here already claimed was happening, while the line below it
+      // destroyed the entire trail. The cascade did the same on its own,
+      // so removing only the explicit call would not have been enough.
       await this.prisma.user.delete({ where: { id } });
     } catch (e) {
       if (isPrismaCode(e, 'P2025')) {
@@ -391,7 +414,12 @@ export class UsersService {
     const hash = await bcrypt.hash(dto.next, 12);
     await this.prisma.user.update({
       where: { id },
-      data: { password: hash },
+      // Ends every other session too, including the caller's other
+      // devices — which is what somebody changing their password after a
+      // shared laptop or a phishing scare is actually asking for. The
+      // caller's current token dies with it; the frontend sends them
+      // back to the login form on the next 401.
+      data: { password: hash, tokenVersion: { increment: 1 } },
     });
     return { ok: true };
   }

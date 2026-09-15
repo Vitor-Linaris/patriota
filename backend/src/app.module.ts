@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { BffThrottlerGuard } from './common/bff-throttler.guard';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -87,7 +88,11 @@ import { ReaderNotificationsModule } from './reader-notifications/reader-notific
   controllers: [AppController],
   providers: [
     AppService,
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // Not the stock ThrottlerGuard: every browser request reaches this
+    // API through the Next BFF, which opens its own connection, so req.ip
+    // is the Next process and the whole public shared one bucket. See the
+    // note on the class.
+    { provide: APP_GUARD, useClass: BffThrottlerGuard },
   ],
 })
 export class AppModule {}

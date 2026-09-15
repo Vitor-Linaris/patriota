@@ -14,6 +14,8 @@ function makeTreeMock() {
     // listPublic() reads the rolled-up counts off the cached tree.
     getTree: jest.fn().mockResolvedValue([]),
     getForest: jest.fn().mockResolvedValue([]),
+    // findBySlug() walks the cached tree to check the ancestors.
+    getById: jest.fn().mockResolvedValue(null),
   };
 }
 
@@ -543,6 +545,75 @@ describe('CategoriesService', () => {
         { id: 'ch1', label: 'Norte', order: 0 },
         { id: 'ch2', label: 'Centro', order: 1 },
       ]);
+    });
+  });
+
+  /**
+   * `visible: false` is how an editor takes a section out of public
+   * view. Both listing routes have always honoured it; the detail route
+   * honoured nothing at all, so the section an editor had just hidden
+   * stayed a working public page for anyone with the URL.
+   */
+  describe('findBySlug()', () => {
+    const visible = {
+      id: 'c1',
+      slug: 'economia',
+      visible: true,
+      children: [],
+    };
+
+    it('serves a visible category', async () => {
+      prisma.category.findUnique.mockResolvedValueOnce(visible);
+      tree.getById.mockResolvedValueOnce({ id: 'c1', path: '/c1/', visible: true });
+
+      await expect(service.findBySlug('economia')).resolves.toMatchObject({
+        slug: 'economia',
+      });
+    });
+
+    it('refuses a hidden category exactly as it refuses a missing one', async () => {
+      prisma.category.findUnique.mockResolvedValueOnce({
+        ...visible,
+        visible: false,
+      });
+      await expect(service.findBySlug('economia')).rejects.toThrow(
+        NotFoundException,
+      );
+
+      prisma.category.findUnique.mockResolvedValueOnce(null);
+      await expect(service.findBySlug('nao-existe')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('refuses a visible child sitting under a hidden parent', async () => {
+      // Hiding a parent is how a newsroom takes a whole branch down. A
+      // child left reachable underneath puts the branch back up through
+      // a side door.
+      prisma.category.findUnique.mockResolvedValueOnce({
+        ...visible,
+        id: 'c2',
+        slug: 'mercados',
+      });
+      tree.getById
+        .mockResolvedValueOnce({ id: 'c2', path: '/c1/c2/', visible: true })
+        .mockResolvedValueOnce({ id: 'c1', path: '/c1/', visible: false });
+
+      await expect(service.findBySlug('mercados')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('asks the database only for children the public may see', async () => {
+      prisma.category.findUnique.mockResolvedValueOnce(visible);
+      tree.getById.mockResolvedValueOnce({ id: 'c1', path: '/c1/', visible: true });
+
+      await service.findBySlug('economia');
+
+      const args = prisma.category.findUnique.mock.calls[0][0] as {
+        include: { children: { where?: { visible?: boolean } } };
+      };
+      expect(args.include.children.where).toEqual({ visible: true });
     });
   });
 });

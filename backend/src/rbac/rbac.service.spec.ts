@@ -84,3 +84,76 @@ describe('RbacService — retired permissions', () => {
     expect(matrix.counts.EDITOR_CHEFE.percent).toBe(100);
   });
 });
+
+/**
+ * The boot hook used to re-assert DEFAULT_ROLE_PERMISSIONS as a floor on
+ * every start. A default key missing from an existing row is exactly what
+ * a revocation looks like — the schema stores only the positive grant
+ * list — so every restart silently undid a SUPER_ADMIN's decision.
+ */
+describe('RbacService — onModuleInit does not undo revocations', () => {
+  let service: RbacService;
+  let prisma: {
+    rolePermissions: { findUnique: jest.Mock; create: jest.Mock; update: jest.Mock };
+    planPermissions: { findUnique: jest.Mock; create: jest.Mock; update: jest.Mock };
+  };
+
+  beforeEach(async () => {
+    prisma = {
+      rolePermissions: {
+        findUnique: jest.fn(),
+        create: jest.fn().mockResolvedValue({}),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      planPermissions: {
+        findUnique: jest.fn(),
+        create: jest.fn().mockResolvedValue({}),
+        update: jest.fn().mockResolvedValue({}),
+      },
+    };
+    const moduleRef = await Test.createTestingModule({
+      providers: [RbacService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    service = moduleRef.get(RbacService);
+  });
+
+  it('leaves an existing row untouched, even when default keys are absent', async () => {
+    // An EDITOR_CHEFE row with two permissions deliberately revoked.
+    prisma.rolePermissions.findUnique.mockResolvedValue({
+      role: 'EDITOR_CHEFE',
+      permissions: ALL_PERMISSIONS.filter(
+        (p) =>
+          p !== 'leitores.oferecer_assinatura' &&
+          p !== 'utilizadores.atribuir_roles',
+      ),
+    });
+    prisma.planPermissions.findUnique.mockResolvedValue({
+      plan: 'GRATIS',
+      permissions: [],
+    });
+
+    await service.onModuleInit();
+
+    // The whole point: no write of any kind to a row that already exists.
+    expect(prisma.rolePermissions.update).not.toHaveBeenCalled();
+    expect(prisma.planPermissions.update).not.toHaveBeenCalled();
+    expect(prisma.rolePermissions.create).not.toHaveBeenCalled();
+    expect(prisma.planPermissions.create).not.toHaveBeenCalled();
+  });
+
+  it('still seeds a row that does not exist yet', async () => {
+    // The behaviour that makes a fresh database usable must survive.
+    prisma.rolePermissions.findUnique.mockResolvedValue(null);
+    prisma.planPermissions.findUnique.mockResolvedValue(null);
+
+    await service.onModuleInit();
+
+    expect(prisma.rolePermissions.create).toHaveBeenCalled();
+    expect(prisma.planPermissions.create).toHaveBeenCalled();
+    const seeded = prisma.rolePermissions.create.mock.calls.map(
+      (c) => c[0].data.role,
+    );
+    expect(seeded).toContain('EDITOR_CHEFE');
+    expect(seeded).toContain('JORNALISTA');
+  });
+});

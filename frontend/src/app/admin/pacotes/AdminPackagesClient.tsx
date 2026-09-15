@@ -870,12 +870,26 @@ function PurchaseList({
           {purchases.map((p) => (
             <tr key={p.id} className="text-[13px]">
               <td className="px-4 py-2.5">
-                <span className="block font-semibold text-slate-900">
-                  {p.reader.name ?? "—"}
-                </span>
-                <span className="text-[11px] text-slate-500">
-                  {p.reader.email}
-                </span>
+                {/* The backend omits name and email for a role that holds
+                    pacotes.ver_compras without leitores.ver. Show the row
+                    without inventing an identity for it. */}
+                {p.reader.email ? (
+                  <>
+                    <span className="block font-semibold text-slate-900">
+                      {p.reader.name ?? "—"}
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      {p.reader.email}
+                    </span>
+                  </>
+                ) : (
+                  <span
+                    className="text-[11px] text-slate-400"
+                    title="Precisa da permissão leitores.ver para ver quem comprou."
+                  >
+                    leitor #{p.reader.id.slice(0, 8)}
+                  </span>
+                )}
               </td>
               <td className="px-4 py-2.5 text-slate-700">{p.package.name}</td>
               <td className="px-4 py-2.5">
@@ -893,6 +907,22 @@ function PurchaseList({
                 {p.source === "MANUAL" && (
                   <span className="ml-1 rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700 ring-1 ring-sky-200">
                     oferta
+                  </span>
+                )}
+                {/* A reversal that did NOT revoke — a partial refund, or a
+                    dispute still open. The status alone stays PAGO, which
+                    is why this used to look like an ordinary paid row and
+                    the operator had no way to know a decision was due. */}
+                {p.disputedAt && p.status !== "REEMBOLSADO" && (
+                  <span className="ml-1 rounded bg-orange-50 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700 ring-1 ring-orange-200">
+                    disputa
+                  </span>
+                )}
+                {p.refundedAt && p.status !== "REEMBOLSADO" && (
+                  <span className="ml-1 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 ring-1 ring-amber-200">
+                    reembolso parcial
+                    {p.refundedAmountCents != null &&
+                      ` (${formatPrice(p.refundedAmountCents, p.currency)})`}
                   </span>
                 )}
               </td>

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Header,
   Param,
@@ -9,6 +10,7 @@ import {
   Query,
   Res,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import ExcelJS from 'exceljs';
 import {
@@ -38,6 +40,19 @@ class CampaignDto {
   @IsOptional() @IsString() ctaUrl?: string;
   @IsOptional() @IsString() footer?: string;
   @IsOptional() @IsDateString() scheduledAt?: string;
+}
+
+/** The per-subscriber secret from the manage link. */
+class ManageTokenDto {
+  @IsString()
+  @Length(8, 200)
+  token!: string;
+}
+
+class ManageTokenQueryDto {
+  @IsString()
+  @Length(8, 200)
+  t!: string;
 }
 
 class SubscribeDto {
@@ -96,6 +111,16 @@ export class NewsletterController {
   @RequirePermissions('newsletter.listas')
   listSubscribers(@Query() query: ListSubscribersQueryDto) {
     return this.service.listSubscribers(query);
+  }
+
+  /**
+   * RGPD erasure from the admin side. `newsletter.listas` is the
+   * permission that already governs who may see this list at all.
+   */
+  @Delete('admin/newsletters/subscribers/:id')
+  @RequirePermissions('newsletter.listas')
+  removeSubscriber(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.service.removeSubscriber(id, user.id);
   }
 
   @Get('admin/newsletters/subscribers/stats')
@@ -188,9 +213,39 @@ export class NewsletterController {
     return this.service.subscribe(dto.email, dto.name);
   }
 
+  /**
+   * "Cancel my subscription" from the public form. Sends a link; does
+   * not cancel. The address in a request body proves nothing about who
+   * sent it, and this used to take somebody off the list on the strength
+   * of exactly that.
+   */
   @Public()
   @Post('public/newsletter/unsubscribe')
-  unsubscribe(@Body() dto: SubscribeDto) {
-    return this.service.unsubscribe(dto.email);
+  @Throttle({ default: { ttl: 3_600_000, limit: 10 } })
+  requestManageLink(@Body() dto: SubscribeDto) {
+    return this.service.requestManageLink(dto.email);
+  }
+
+  /**
+   * What the link in the e-mail opens. The token is the authorisation on
+   * all three, and it only ever reaches the inbox that owns the address.
+   */
+  @Public()
+  @Get('public/newsletter/manage')
+  describeToken(@Query() query: ManageTokenQueryDto) {
+    return this.service.describeByToken(query.t);
+  }
+
+  @Public()
+  @Post('public/newsletter/manage/unsubscribe')
+  unsubscribeByToken(@Body() dto: ManageTokenDto) {
+    return this.service.unsubscribeByToken(dto.token);
+  }
+
+  /** RGPD erasure: the row goes, not just its status. */
+  @Public()
+  @Post('public/newsletter/manage/forget')
+  forget(@Body() dto: ManageTokenDto) {
+    return this.service.forget(dto.token);
   }
 }

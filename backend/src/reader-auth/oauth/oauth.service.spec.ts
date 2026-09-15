@@ -29,17 +29,19 @@ describe('OAuthService', () => {
   let service: OAuthService;
   let prisma: ReturnType<typeof makePrismaMock>;
   let mail: { sendWelcome: jest.Mock };
+  let tokens: { sign: jest.Mock };
 
   beforeEach(async () => {
     prisma = makePrismaMock();
     mail = { sendWelcome: jest.fn() };
+    tokens = { sign: jest.fn().mockResolvedValue('signed.jwt') };
     const moduleRef = await Test.createTestingModule({
       providers: [
         OAuthService,
         { provide: PrismaService, useValue: prisma },
         {
           provide: ReaderTokenService,
-          useValue: { sign: jest.fn().mockResolvedValue('signed.jwt') },
+          useValue: tokens,
         },
         { provide: ReaderMailService, useValue: mail },
       ],
@@ -100,7 +102,10 @@ describe('OAuthService', () => {
       expect(out.accessToken).toBe('signed.jwt');
       expect(prisma.reader.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ status: 'ATIVO', suspendedUntil: null }),
+          data: expect.objectContaining({
+            status: 'ATIVO',
+            suspendedUntil: null,
+          }),
         }),
       );
     });
@@ -148,18 +153,62 @@ describe('OAuthService', () => {
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
-    it('Google refuses when OUR side never verified the address', async () => {
+    it('Google takes over an unverified account and expels its password', async () => {
+      /*
+       * This used to refuse, and the refusal was the attack. Register
+       * victim@exemplo.pt with a password, never verify it, and the real
+       * owner arriving with Google was told "já existe uma conta com
+       * este e-mail, inicie sessão com a sua palavra-passe" — a password
+       * they do not have, on an address they cannot prove is theirs,
+       * while the squatter held a 30-day session on it.
+       *
+       * An unverified password is not a claim on an address; a verified
+       * Google identity is. The weaker credential does not merely lose,
+       * it is removed, along with every session opened with it.
+       */
       prisma.reader.findUnique.mockResolvedValueOnce({
         id: 'r1',
-        tokenVersion: 0,
-        status: 'ATIVO',
+        tokenVersion: 4,
+        status: 'PENDENTE_VERIFICACAO',
         password: 'hashed',
         emailVerifiedAt: null,
       });
 
-      await expect(
-        service.signIn(profile({ provider: 'GOOGLE', emailVerified: true })),
-      ).rejects.toThrow(ConflictException);
+      const out = await service.signIn(
+        profile({ provider: 'GOOGLE', emailVerified: true }),
+      );
+
+      expect(out.accessToken).toBe('signed.jwt');
+      const update = prisma.reader.update.mock.calls[0][0] as {
+        data: Record<string, unknown>;
+      };
+      expect(update.data.password).toBeNull();
+      expect(update.data.tokenVersion).toEqual({ increment: 1 });
+      expect(update.data.emailVerifiedAt).toBeInstanceOf(Date);
+      expect(update.data.status).toBe('ATIVO');
+      // The token we hand out must be signed against the BUMPED version,
+      // or it is the one the same transaction just invalidated.
+      expect(
+        (tokens.sign.mock.calls[0][0] as { tokenVersion: number }).tokenVersion,
+      ).toBe(5);
+    });
+
+    it('leaves a verified account’s password alone', async () => {
+      prisma.reader.findUnique.mockResolvedValueOnce({
+        id: 'r1',
+        tokenVersion: 4,
+        status: 'ATIVO',
+        password: 'hashed',
+        emailVerifiedAt: new Date(),
+      });
+
+      await service.signIn(profile({ provider: 'GOOGLE', emailVerified: true }));
+
+      const update = prisma.reader.update.mock.calls[0][0] as {
+        data: Record<string, unknown>;
+      };
+      expect(update.data.password).toBeUndefined();
+      expect(update.data.tokenVersion).toBeUndefined();
     });
 
     it('Facebook NEVER links onto an account that has a password', async () => {
@@ -237,11 +286,10 @@ describe('OAuthService', () => {
     });
 
     it('welcomes the reader — the one branch that creates a new account', async () => {
-      await service.signIn(profile({ email: 'nova@example.com', name: 'Nova' }));
-      expect(mail.sendWelcome).toHaveBeenCalledWith(
-        'nova@example.com',
-        'Nova',
+      await service.signIn(
+        profile({ email: 'nova@example.com', name: 'Nova' }),
       );
+      expect(mail.sendWelcome).toHaveBeenCalledWith('nova@example.com', 'Nova');
     });
   });
 

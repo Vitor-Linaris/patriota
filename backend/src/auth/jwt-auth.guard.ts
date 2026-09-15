@@ -55,8 +55,12 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Token inválido.');
     }
 
-    const user = await this.authService.getUserById(payload.sub);
-    if (!user) throw new UnauthorizedException('Utilizador inativo.');
+    // Not getUserById: the question is whether this TOKEN is still a
+    // session, not merely whether the id exists. A deactivated account
+    // fails here, and so does a token signed before the password changed
+    // — see JwtPayload.tv.
+    const user = await this.authService.resolveSession(payload);
+    if (!user) throw new UnauthorizedException('Sessão terminada.');
 
     (req as Request & { user?: typeof user }).user = user;
     return true;

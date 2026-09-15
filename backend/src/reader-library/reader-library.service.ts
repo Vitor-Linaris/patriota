@@ -224,15 +224,22 @@ export class ReaderLibraryService {
     query: PageQueryDto,
   ): Promise<PageResult<unknown>> {
     const { skip, take } = toSkipTake(query);
+    // The same lifecycle predicate saveArticle() enforces on the way in.
+    // A favourite row outlives the condition that allowed it to be
+    // created, so an article pulled from publication — a retraction, a
+    // legal takedown, a story held for correction — has to drop out of
+    // this list too. One `where` shared by the page and the count, or the
+    // total disagrees with the rows it is counting.
+    const where = { readerId, article: { status: 'PUBLICADO' as const } };
     const [rows, total] = await Promise.all([
       this.prisma.articleFavorite.findMany({
-        where: { readerId },
+        where,
         skip,
         take,
         orderBy: { createdAt: 'desc' },
         select: { createdAt: true, article: { select: ARTICLE_CARD } },
       }),
-      this.prisma.articleFavorite.count({ where: { readerId } }),
+      this.prisma.articleFavorite.count({ where }),
     ]);
 
     return {
@@ -274,9 +281,13 @@ export class ReaderLibraryService {
     query: PageQueryDto,
   ): Promise<PageResult<unknown>> {
     const { skip, take } = toSkipTake(query);
+    // Same rule as listArticleFavorites(): trackRead() only ever writes
+    // these rows for a PUBLICADO article, and reading them back has to ask
+    // the same question again.
+    const where = { readerId, article: { status: 'PUBLICADO' as const } };
     const [rows, total] = await Promise.all([
       this.prisma.readingHistory.findMany({
-        where: { readerId },
+        where,
         skip,
         take,
         orderBy: { lastReadAt: 'desc' },
@@ -287,7 +298,7 @@ export class ReaderLibraryService {
           article: { select: ARTICLE_CARD },
         },
       }),
-      this.prisma.readingHistory.count({ where: { readerId } }),
+      this.prisma.readingHistory.count({ where }),
     ]);
 
     return {
@@ -375,9 +386,16 @@ export class ReaderLibraryService {
   async articleState(readerId: string, articleId: string) {
     const article = await this.prisma.article.findUnique({
       where: { id: articleId },
-      select: { id: true, categoryId: true },
+      select: { id: true, categoryId: true, status: true },
     });
-    if (!article) throw new NotFoundException('Notícia não encontrada.');
+    // The same refusal saveArticle() and trackRead() already make, and for
+    // the reason stated there: answering for a draft, a scheduled piece or
+    // an archived one turns this endpoint into the existence oracle those
+    // two were written to refuse. It used to reject only a missing row, so
+    // a guessed id was answered with 200 and the article's root category.
+    if (!article || article.status !== 'PUBLICADO') {
+      throw new NotFoundException('Notícia não encontrada.');
+    }
 
     const root = await this.tree.getById(article.categoryId);
     const rootId = root

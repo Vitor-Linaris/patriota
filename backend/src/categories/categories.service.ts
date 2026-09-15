@@ -59,6 +59,18 @@ const CHILDREN_INCLUDE = {
   children: { orderBy: { order: 'asc' as const } },
 };
 
+/**
+ * The same shape minus what an editor has hidden. Separate from
+ * CHILDREN_INCLUDE rather than a flag on it: the CMS views must keep
+ * showing hidden rows — that is where an editor un-hides them.
+ */
+const PUBLIC_CHILDREN_INCLUDE = {
+  children: {
+    where: { visible: true },
+    orderBy: { order: 'asc' as const },
+  },
+};
+
 @Injectable()
 export class CategoriesService {
   constructor(
@@ -192,7 +204,10 @@ export class CategoriesService {
       where: { visible: true, parentId: null },
       orderBy: { order: 'asc' },
       include: {
-        ...CHILDREN_INCLUDE,
+        // The roots were filtered and their children were not, so a
+        // hidden subsection still arrived in the public navigation of
+        // its visible parent.
+        ...PUBLIC_CHILDREN_INCLUDE,
         _count: {
           select: {
             articles: { where: { status: 'PUBLICADO' } },
@@ -216,12 +231,40 @@ export class CategoriesService {
     });
   }
 
+  /**
+   * The public category page. The ONLY caller is the @Public() route
+   * /public/categories/:slug, which is why the filter lives here.
+   *
+   * `visible: false` is how an editor takes a section out of public
+   * view — a category being prepared, one retired mid-season, one that
+   * exists only to group things in the CMS. Both listing routes have
+   * always honoured it; this one honoured nothing at all, so the section
+   * an editor had just hidden was still a working page, with its name,
+   * description and its whole list of children, to anybody who kept the
+   * URL or guessed the slug.
+   *
+   * Ancestors count too. Hiding a parent is how a newsroom takes a whole
+   * branch down, and a visible child left reachable underneath a hidden
+   * parent puts that branch back up through a side door. The tree is
+   * already in memory, so walking the path costs nothing.
+   */
   async findBySlug(slug: string) {
     const cat = await this.prisma.category.findUnique({
       where: { slug },
-      include: CHILDREN_INCLUDE,
+      include: PUBLIC_CHILDREN_INCLUDE,
     });
-    if (!cat) throw new NotFoundException('Categoria não encontrada.');
+    const missing = () => new NotFoundException('Categoria não encontrada.');
+    if (!cat || !cat.visible) throw missing();
+
+    const node = await this.tree.getById(cat.id);
+    if (node) {
+      const ancestors = node.path.split('/').filter(Boolean).slice(0, -1);
+      for (const id of ancestors) {
+        const a = await this.tree.getById(id);
+        if (a && !a.visible) throw missing();
+      }
+    }
+
     return this.withSubtopicsAlias(cat);
   }
 
