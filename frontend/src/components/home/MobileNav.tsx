@@ -441,6 +441,28 @@ export function MobileNav({
               Newsletter
             </button>
           </div>
+          {/*
+            The top strip is hidden below sm:, so without this the
+            storefront has no entry point at all on a phone — which is
+            most of the readership.
+          */}
+          {FEATURES.packages && (
+            <Link
+              href="/pacotes"
+              onClick={() => setOpen(false)}
+              className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-patriota-accent/40 bg-patriota-accent/10 px-3 py-2.5 transition-colors hover:bg-patriota-accent/20"
+            >
+              <span className="flex items-center gap-2 text-[13px] font-bold text-patriota-dark">
+                <span aria-hidden className="text-[15px] leading-none">
+                  ◫
+                </span>
+                Pacotes exclusivos
+              </span>
+              <span aria-hidden className="text-[13px] text-patriota-dark/50">
+                →
+              </span>
+            </Link>
+          )}
           <p className="mt-4 text-center text-[11px] text-slate-400">
             © 2026 O Patriota Notícias
           </p>

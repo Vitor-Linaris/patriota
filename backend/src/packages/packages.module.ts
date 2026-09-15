@@ -6,6 +6,7 @@ import { PackagesController } from './packages.controller';
 import { PackageAccessModule } from './package-access.module';
 import { StripeModule } from '../billing/stripe.module';
 import { ArticlesModule } from '../articles/articles.module';
+import { MediaModule } from '../media/media.module';
 import { ReaderAuthModule } from '../reader-auth/reader-auth.module';
 
 /**
@@ -23,6 +24,10 @@ import { ReaderAuthModule } from '../reader-auth/reader-auth.module';
  *     cycle.
  *   - StripeModule — the client, shared with BillingModule for the same
  *     reason.
+ *   - MediaModule — publishing a pacote has to publish its cover image
+ *     too, the same way publishing an article publishes the images in
+ *     it. Without it the storefront shows a broken cover to readers
+ *     while looking correct in the admin.
  *
  * BillingModule imports THIS one (its webhook dispatches pacote events to
  * PackagePurchasesService), never the other way round.
@@ -30,6 +35,7 @@ import { ReaderAuthModule } from '../reader-auth/reader-auth.module';
 @Module({
   imports: [
     ArticlesModule,
+    MediaModule,
     PackageAccessModule,
     StripeModule,
     ReaderAuthModule,

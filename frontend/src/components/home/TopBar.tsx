@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Container } from "../Container";
 import { FEATURES } from "@/lib/features";
@@ -100,6 +101,35 @@ export function TopBar() {
             >
               Newsletter
             </button>
+            {FEATURES.packages && (
+              <>
+                <span aria-hidden className="h-3 w-px bg-white/20" />
+                {/*
+                  The one commercial entry point in a bar of utilities,
+                  so it carries the accent the masthead already uses for
+                  the live indicator on the other side — the same
+                  colour, balanced across the strip, rather than a new
+                  one introduced for one link.
+
+                  A ring instead of a filled button: this is a 36px
+                  utility bar above the masthead, and a solid CTA up here
+                  would outrank the newspaper's own headline. It lights
+                  up on hover, which is where the invitation belongs.
+                */}
+                <Link
+                  href="/pacotes"
+                  className="group inline-flex items-center gap-1.5 rounded-full border border-patriota-accent/30 bg-patriota-accent/5 px-2.5 py-0.5 font-medium text-patriota-accent transition-colors hover:border-patriota-accent/70 hover:bg-patriota-accent/15"
+                >
+                  <span
+                    aria-hidden
+                    className="text-[13px] leading-none transition-transform group-hover:-rotate-6"
+                  >
+                    ◫
+                  </span>
+                  Pacotes exclusivos
+                </Link>
+              </>
+            )}
             {FEATURES.publicAuth && FEATURES.readerArea && (
               <>
                 <span aria-hidden className="h-3 w-px bg-white/20" />

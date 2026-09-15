@@ -125,7 +125,7 @@ export class MediaAccessService {
       (u): u is string => Boolean(u),
     );
 
-    const [article, ad] = await Promise.all([
+    const [article, ad, pkg] = await Promise.all([
       this.prisma.article.findFirst({
         where: {
           status: 'PUBLICADO',
@@ -140,12 +140,23 @@ export class MediaAccessService {
         where: { enabled: true, imageUrl: { in: variants } },
         select: { id: true },
       }),
+      // A pacote's cover. Added late, and the gap it left is exactly the
+      // failure this net exists to catch: publishing a pacote did not
+      // promote its cover, so every pacote on sale showed a broken image
+      // to readers while looking correct in the admin, where the session
+      // makes a private file visible. The publish path now promotes it;
+      // this is what quietly repairs the ones already out there.
+      this.prisma.package.findFirst({
+        where: { status: 'PUBLICADO', coverImageUrl: { in: variants } },
+        select: { id: true },
+      }),
     ]);
 
-    if (!article && !ad) return false;
+    if (!article && !ad && !pkg) return false;
 
+    const where = article ? 'an article' : ad ? 'an ad' : 'a pacote';
     this.logger.warn(
-      `Media ${key} was private but is live on ${article ? 'an article' : 'an ad'}. Publishing it now.`,
+      `Media ${key} was private but is live on ${where}. Publishing it now.`,
     );
     await this.prisma.media.update({
       where: { id: row.id },
