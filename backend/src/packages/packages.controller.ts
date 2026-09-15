@@ -106,10 +106,16 @@ export class PackagesController {
     });
   }
 
+  // The acting user is passed down so the service can decide which shape
+  // of buyer to serialise: the name and address are reader identity, and
+  // reader identity is gated on leitores.ver, not on this permission.
   @Get('admin/packages/purchases')
   @RequirePermissions('pacotes.ver_compras')
-  listPurchases(@Query() query: PageQueryDto) {
-    return this.purchases.listPurchases(query);
+  listPurchases(@Query() query: PageQueryDto, @CurrentUser() user: AuthUser) {
+    return this.purchases.listPurchases(query, {
+      id: user.id,
+      role: user.role,
+    });
   }
 
   @Post('admin/packages/purchases/grant')

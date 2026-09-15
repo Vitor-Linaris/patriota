@@ -267,8 +267,19 @@ Ainda em **Desenvolvedores** → **Webhooks** → **Adicionar endpoint** (o
 ecrã pode aparecer como "Criar destino de eventos", consoante a versão
 da interface):
 - **URL**: `https://<o-seu-domínio>/public/stripe/webhook`
-- **Eventos a escutar** — adicione exactamente estes quatro:
+- **Eventos a escutar** — adicione exactamente estes nove:
   - `checkout.session.completed`
+  - `checkout.session.async_payment_succeeded` — um método diferido
+    (Multibanco e afins) a liquidar. Sem este, o pagamento chega mas o
+    acesso ao pacote nunca é concedido.
+  - `checkout.session.expired` — marca como `EXPIRADO` uma compra que
+    ficou por pagar; sem ele acumulam-se linhas `PENDENTE` para sempre.
+  - `charge.refunded` — um reembolso total retira o acesso ao pacote
+    automaticamente, um parcial marca a compra para revisão. **Sem este
+    evento subscrito, um reembolso não produz sinal nenhum no produto** e
+    o comprador fica a ler o que já lhe foi devolvido.
+  - `charge.dispute.created` e `charge.dispute.closed` — um chargeback.
+    Abrir marca a compra; perder retira o acesso.
   - `customer.subscription.created`
   - `customer.subscription.updated`
   - `customer.subscription.deleted`

@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { StripeService } from '../billing/stripe.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { ConfigService } from '@nestjs/config';
+import { RbacService } from '../rbac/rbac.service';
 
 /** A transaction client with the same shape the service reaches for. */
 function makeTx() {
@@ -13,7 +14,11 @@ function makeTx() {
     packagePurchase: {
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
-    packagePurchaseItem: { createMany: jest.fn() },
+    // deleteMany is on the tx client because a revocation triggered by a
+    // refund or a lost dispute has to land in the SAME transaction as the
+    // StripeEvent row — otherwise a retry could revoke twice, or revoke
+    // without recording that it did.
+    packagePurchaseItem: { createMany: jest.fn(), deleteMany: jest.fn() },
     reader: { updateMany: jest.fn() },
   };
 }
@@ -87,6 +92,10 @@ describe('PackagePurchasesService', () => {
         { provide: StripeService, useValue: { enabled: true, stripe: {} } },
         { provide: ActivityLogService, useValue: { record: jest.fn() } },
         { provide: ConfigService, useValue: { get: () => 'http://localhost:3005' } },
+        {
+          provide: RbacService,
+          useValue: { getPermissionsForRole: jest.fn().mockResolvedValue([]) },
+        },
       ],
     }).compile();
     service = moduleRef.get(PackagePurchasesService);
@@ -243,25 +252,204 @@ describe('PackagePurchasesService', () => {
   });
 
   describe('onChargeRefunded()', () => {
-    it('records and warns, and never revokes on its own', async () => {
-      prisma.packagePurchase.findFirst.mockResolvedValueOnce({
-        id: 'pur1',
-        readerId: 'r1',
-        packageId: 'p1',
+    const PAID = { id: 'pur1', readerId: 'r1', packageId: 'p1', status: 'PAGO' };
+    const charge = (over: object = {}) =>
+      ({
+        id: 'ch_1',
+        payment_intent: 'pi_1',
+        amount: 990,
+        amount_refunded: 990,
+        metadata: { purchaseId: 'pur1' },
+        ...over,
+      }) as unknown as Stripe.Charge;
+    const refundEvent = () => event({ id: 'evt_ref', type: 'charge.refunded' });
+
+    it('revokes on a TOTAL refund: entitlement must not outlive the payment', async () => {
+      prisma.packagePurchase.findFirst.mockResolvedValueOnce(PAID);
+
+      await service.onChargeRefunded(refundEvent(), charge());
+
+      // hasPurchased() answers the paywall from the bare existence of
+      // these rows, so leaving them is leaving the pacote readable after
+      // the money went back.
+      expect(tx.packagePurchaseItem.deleteMany).toHaveBeenCalledWith({
+        where: { purchaseId: 'pur1' },
       });
-      await service.onChargeRefunded(
-        event({ id: 'evt_ref', type: 'charge.refunded' }),
-        {
-          id: 'ch_1',
-          payment_intent: 'pi_1',
-          metadata: { purchaseId: 'pur1' },
-        } as unknown as Stripe.Charge,
+      expect(tx.packagePurchase.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: 'REEMBOLSADO',
+            refundedAmountCents: 990,
+          }),
+        }),
       );
-      // Partial refunds exist, and taking access away automatically is the
-      // failure mode that generates the angriest support ticket. A person
-      // decides, through revoke().
-      expect(prisma.packagePurchaseItem.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('keeps access on a PARTIAL refund, but persists the reversal', async () => {
+      prisma.packagePurchase.findFirst.mockResolvedValueOnce(PAID);
+
+      await service.onChargeRefunded(refundEvent(), charge({ amount_refunded: 200 }));
+
+      // A goodwill refund of part of the price is not a cancellation, and
+      // taking the pacote away over one is the angry-support-ticket
+      // failure mode the original deferral was avoiding.
+      expect(tx.packagePurchaseItem.deleteMany).not.toHaveBeenCalled();
+      const data = tx.packagePurchase.updateMany.mock.calls[0][0].data;
+      expect(data.refundedAmountCents).toBe(200);
+      expect(data.status).toBeUndefined();
+      // But it IS recorded. Logging alone left the admin table showing an
+      // ordinary green PAGO row with no sign a decision was due.
+      expect(data.refundedAt).toBeInstanceOf(Date);
+    });
+
+    it('writes the event id in the SAME transaction as the revocation', async () => {
+      prisma.packagePurchase.findFirst.mockResolvedValueOnce(PAID);
+      await service.onChargeRefunded(refundEvent(), charge());
+      expect(tx.stripeEvent.create).toHaveBeenCalledWith({
+        data: { id: 'evt_ref', type: 'charge.refunded', readerId: 'r1' },
+      });
+    });
+
+    it('does not revoke a row that is not PAGO', async () => {
+      prisma.packagePurchase.findFirst.mockResolvedValueOnce({
+        ...PAID,
+        status: 'REEMBOLSADO',
+      });
+      await service.onChargeRefunded(refundEvent(), charge());
+      expect(tx.packagePurchaseItem.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('records an unmatched charge without touching anything', async () => {
+      prisma.packagePurchase.findFirst.mockResolvedValueOnce(null);
+      await service.onChargeRefunded(refundEvent(), charge());
+      expect(prisma.$transaction).not.toHaveBeenCalled();
       expect(prisma.stripeEvent.create).toHaveBeenCalled();
     });
+  });
+
+  describe('onChargeDisputed()', () => {
+    const PAID = { id: 'pur1', readerId: 'r1', packageId: 'p1', status: 'PAGO' };
+    const dispute = (over: object = {}) =>
+      ({
+        id: 'dp_1',
+        payment_intent: 'pi_1',
+        status: 'needs_response',
+        metadata: { purchaseId: 'pur1' },
+        ...over,
+      }) as unknown as Stripe.Dispute;
+
+    it('marks but does NOT revoke while the dispute is open', async () => {
+      prisma.packagePurchase.findFirst.mockResolvedValueOnce(PAID);
+
+      await service.onChargeDisputed(
+        event({ id: 'evt_dp', type: 'charge.dispute.created' }),
+        dispute(),
+      );
+
+      // A dispute can be won. Taking access from a reader who turns out to
+      // be right is worse than the delay.
+      expect(tx.packagePurchaseItem.deleteMany).not.toHaveBeenCalled();
+      const data = tx.packagePurchase.updateMany.mock.calls[0][0].data;
+      expect(data.disputedAt).toBeInstanceOf(Date);
+      expect(data.status).toBeUndefined();
+    });
+
+    it('revokes when the dispute is LOST — a final reversal', async () => {
+      prisma.packagePurchase.findFirst.mockResolvedValueOnce(PAID);
+
+      await service.onChargeDisputed(
+        event({ id: 'evt_dp2', type: 'charge.dispute.closed' }),
+        dispute({ status: 'lost' }),
+      );
+
+      expect(tx.packagePurchaseItem.deleteMany).toHaveBeenCalledWith({
+        where: { purchaseId: 'pur1' },
+      });
+      expect(tx.packagePurchase.updateMany.mock.calls[0][0].data.status).toBe(
+        'REEMBOLSADO',
+      );
+    });
+
+    it('does not revoke when the dispute is WON', async () => {
+      prisma.packagePurchase.findFirst.mockResolvedValueOnce(PAID);
+      await service.onChargeDisputed(
+        event({ id: 'evt_dp3', type: 'charge.dispute.closed' }),
+        dispute({ status: 'won' }),
+      );
+      expect(tx.packagePurchaseItem.deleteMany).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe('PackagePurchasesService — listPurchases buyer identity', () => {
+  let service: PackagePurchasesService;
+  let prisma: Record<string, any>;
+  let rbac: { getPermissionsForRole: jest.Mock };
+
+  beforeEach(async () => {
+    prisma = {
+      packagePurchase: {
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
+      },
+    };
+    rbac = { getPermissionsForRole: jest.fn() };
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        PackagePurchasesService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: StripeService, useValue: { enabled: true, stripe: {} } },
+        { provide: ActivityLogService, useValue: { record: jest.fn() } },
+        { provide: ConfigService, useValue: { get: () => 'x' } },
+        { provide: RbacService, useValue: rbac },
+      ],
+    }).compile();
+    service = moduleRef.get(PackagePurchasesService);
+  });
+
+  const readerSelect = () =>
+    prisma.packagePurchase.findMany.mock.calls[0][0].select.reader.select;
+
+  it('withholds the buyer name and e-mail from a role without leitores.ver', async () => {
+    // ANALISTA by default: analytics plus pacotes.ver_compras, and
+    // deliberately NOT leitores.ver. This list was the one reader-identity
+    // surface that role could reach — the RBAC screen presents the two
+    // permissions as independent switches while one implied the other.
+    rbac.getPermissionsForRole.mockResolvedValueOnce([
+      'pacotes.ver',
+      'pacotes.ver_compras',
+      'analytics.basicas',
+    ]);
+
+    await service.listPurchases({ page: 1, pageSize: 20 }, {
+      id: 'a1',
+      role: 'ANALISTA',
+    });
+
+    expect(readerSelect()).toEqual({ id: true });
+  });
+
+  it('includes them for a role that does hold leitores.ver', async () => {
+    rbac.getPermissionsForRole.mockResolvedValueOnce([
+      'pacotes.ver_compras',
+      'leitores.ver',
+    ]);
+
+    await service.listPurchases({ page: 1, pageSize: 20 }, {
+      id: 'm1',
+      role: 'MODERADOR',
+    });
+
+    expect(readerSelect()).toEqual({ id: true, email: true, name: true });
+  });
+
+  it('includes them for SUPER_ADMIN without consulting the matrix', async () => {
+    await service.listPurchases({ page: 1, pageSize: 20 }, {
+      id: 'sa',
+      role: 'SUPER_ADMIN',
+    });
+
+    expect(rbac.getPermissionsForRole).not.toHaveBeenCalled();
+    expect(readerSelect()).toEqual({ id: true, email: true, name: true });
   });
 });

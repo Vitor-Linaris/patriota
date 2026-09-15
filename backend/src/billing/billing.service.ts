@@ -241,12 +241,24 @@ export class BillingService {
         );
         return true;
 
-      // Recorded and logged, never auto-revoked — see
-      // PackagePurchasesService.onChargeRefunded for why.
+      // A total refund revokes, a partial one marks and keeps access —
+      // see PackagePurchasesService.onChargeRefunded for why.
       case 'charge.refunded':
         await this.packagePurchases.onChargeRefunded(
           event,
           event.data.object as Stripe.Charge,
+        );
+        return true;
+
+      // A chargeback. These used to fall to `default:` and be recorded
+      // with no log line at all, so a buyer could reverse the payment
+      // through their card issuer and keep the pacote silently. Opening
+      // one marks the row; losing one revokes.
+      case 'charge.dispute.created':
+      case 'charge.dispute.closed':
+        await this.packagePurchases.onChargeDisputed(
+          event,
+          event.data.object as Stripe.Dispute,
         );
         return true;
 

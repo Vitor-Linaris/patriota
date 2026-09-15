@@ -68,8 +68,18 @@ export interface PackagePurchaseRow {
   createdAt: string;
   paidAt: string | null;
   revokedAt: string | null;
+  /** A money reversal at Stripe, persisted so the table can show it. */
+  refundedAt: string | null;
+  refundedAmountCents: number | null;
+  /** A chargeback opened by the buyer with their card issuer. */
+  disputedAt: string | null;
   grantNote: string | null;
-  reader: { id: string; email: string; name: string | null };
+  /**
+   * `email` and `name` are absent for a staff role that holds
+   * pacotes.ver_compras without leitores.ver — reader identity has one
+   * control in this system and it is not this route's permission.
+   */
+  reader: { id: string; email?: string; name?: string | null };
   package: { id: string; name: string; slug: string };
   grantedBy: { id: string; name: string | null } | null;
   _count: { items: number };

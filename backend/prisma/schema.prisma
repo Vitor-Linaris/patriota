@@ -1002,6 +1002,24 @@ model PackagePurchase {
   paidAt    DateTime?
   revokedAt DateTime?
 
+  /// A money reversal at Stripe, PERSISTED rather than only logged.
+  ///
+  /// The reversal used to leave no trace in the database at all: the
+  /// handler wrote one log line and the row stayed PAGO with revokedAt
+  /// null, so the admin purchases table rendered a refunded purchase as
+  /// an ordinary green paid row and "Os meus pacotes" kept listing it.
+  /// The compensating control the code named — a person pressing
+  /// "Revogar compra" — needs the person to be told a decision is due.
+  refundedAt          DateTime?
+  /// What Stripe actually gave back, in cents. A TOTAL refund revokes
+  /// automatically; a partial one only marks the row, which is the case
+  /// the original deferral was really about.
+  refundedAmountCents Int?
+  /// A chargeback the buyer opened through their card issuer.
+  /// charge.dispute.* reached no case in the switch at all, so it fell to
+  /// the default branch and was recorded without even a log line.
+  disputedAt          DateTime?
+
   reader  Reader  @relation(fields: [readerId], references: [id], onDelete: Cascade)
   /// Restrict, not Cascade: deleting a pacote somebody paid for must
   /// fail loudly. The admin DELETE route returns 409 before it gets
