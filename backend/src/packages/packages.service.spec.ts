@@ -10,6 +10,7 @@ import { ActivityLogService } from '../activity-log/activity-log.service';
 import { RbacService } from '../rbac/rbac.service';
 import { ArticlesService } from '../articles/articles.service';
 import { PackageStripeService } from './package-stripe.service';
+import { MediaService } from '../media/media.service';
 
 const member = (
   id: string,
@@ -31,6 +32,7 @@ describe('PackagesService', () => {
   let articles: { publish: jest.Mock };
   let stripe: { sync: jest.Mock };
   let rbac: { getPermissionsForRole: jest.Mock };
+  let media: { promoteForPublication: jest.Mock };
 
   const editor = { id: 'u1', role: 'EDITOR' as const };
 
@@ -56,6 +58,7 @@ describe('PackagesService', () => {
     stripe = {
       sync: jest.fn().mockResolvedValue({ productId: 'prod_1', priceId: 'price_1' }),
     };
+    media = { promoteForPublication: jest.fn().mockResolvedValue(1) };
     rbac = {
       getPermissionsForRole: jest
         .fn()
@@ -70,6 +73,7 @@ describe('PackagesService', () => {
         { provide: RbacService, useValue: rbac },
         { provide: ArticlesService, useValue: articles },
         { provide: PackageStripeService, useValue: stripe },
+        { provide: MediaService, useValue: media },
       ],
     }).compile();
     service = moduleRef.get(PackagesService);
@@ -151,6 +155,32 @@ describe('PackagesService', () => {
       publishedAt: null,
       items,
       ...over,
+    });
+
+    it('makes the cover image reachable to readers', async () => {
+      /*
+       * Uploaded media starts PRIVADO and /uploads refuses it to anybody
+       * without a session — that is what stops an unpublished
+       * investigation's photographs being fetched by whoever guesses the
+       * address. Publishing is what lifts it, and every other publish
+       * path does this: articles, the scheduler, ads.
+       *
+       * The pacote publish did not, so the cover of every pacote on sale
+       * 404'd for readers while looking perfectly fine in the admin,
+       * where the staff session makes a private file visible. Nobody in
+       * the newsroom could see the bug from inside the newsroom.
+       */
+      prisma.package.findUnique.mockResolvedValue(
+        withMembers([member('a1', 'PUBLICADO', true)], {
+          coverImageUrl: 'http://api/uploads/2026/09/abc123-large.webp',
+        }),
+      );
+
+      await service.publish('p1', editor);
+
+      expect(media.promoteForPublication).toHaveBeenCalledWith(
+        'http://api/uploads/2026/09/abc123-large.webp',
+      );
     });
 
     it('publishes the drafts AND makes exactly those exclusive', async () => {

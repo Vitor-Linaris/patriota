@@ -14,6 +14,7 @@ import {
   PUBLIC_ARTICLE_SELECT,
 } from '../articles/articles.service';
 import { PackageStripeService } from './package-stripe.service';
+import { MediaService } from '../media/media.service';
 import { CreatePackageDto } from './dto/create-package.dto';
 import { UpdatePackageDto } from './dto/update-package.dto';
 import { SetPackageArticlesDto } from './dto/set-package-articles.dto';
@@ -86,6 +87,7 @@ export class PackagesService {
     private readonly rbac: RbacService,
     private readonly articles: ArticlesService,
     private readonly stripe: PackageStripeService,
+    private readonly media: MediaService,
   ) {}
 
   // ── admin CRUD ─────────────────────────────────────────────────────
@@ -233,6 +235,10 @@ export class PackagesService {
       // the old amount, which is the correct answer to "what was I shown".
       if (updated.status === 'PUBLICADO') {
         await this.stripe.sync(updated.id);
+        // Swapping the cover of a pacote already on sale publishes the
+        // new file too. Without this the page silently loses its image
+        // the moment somebody changes it, and only for readers.
+        await this.media.promoteForPublication(updated.coverImageUrl);
       }
       if (priceChanged) {
         void this.activity.record({
@@ -519,6 +525,20 @@ export class PackagesService {
       });
     }
 
+    /*
+     * The cover has to become reachable, or the storefront is broken.
+     *
+     * Uploaded media starts PRIVADO and /uploads refuses it to anybody
+     * without a session — that is deliberate, and it is what stops an
+     * unpublished investigation's photographs being fetched by anyone
+     * who guesses the address. Publishing is what lifts it, and every
+     * other publish path in the app does this: articles, the scheduler,
+     * ads. The pacote publish did not, so the cover of every pacote on
+     * sale 404'd for readers while looking fine in the admin, where the
+     * session makes it visible.
+     */
+    await this.media.promoteForPublication(pkg.coverImageUrl);
+
     const stripeIds = await this.stripe.sync(id);
 
     const updated = await this.prisma.package.update({
@@ -732,6 +752,9 @@ export class PackagesService {
         status: true,
         priceCents: true,
         publishedAt: true,
+        // Needed by publish(), which has to make the cover reachable —
+        // see the promoteForPublication call there.
+        coverImageUrl: true,
         items: {
           orderBy: { position: 'asc' },
           select: {

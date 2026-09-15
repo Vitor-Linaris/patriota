@@ -141,3 +141,26 @@ body {
 .scrollbar-hide::-webkit-scrollbar {
   display: none; /* Chrome, Safari */
 }
+
+/* ──────────────────────────────────────────────────────────────────
+ * fadeUp — the one entrance animation on the site.
+ *
+ * Used by the pacotes storefront grid, staggered per card. Kept here
+ * rather than inline because Tailwind v4 resolves arbitrary animation
+ * names against real @keyframes, and a missing one fails silently:
+ * the cards would simply never appear.
+ *
+ * Every call site applies it through `motion-safe:`, so a reader who
+ * asked their system for reduced motion never gets it at all — which
+ * is why there is no prefers-reduced-motion block here.
+ * ────────────────────────────────────────────────────────────────── */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
