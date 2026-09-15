@@ -126,7 +126,7 @@ export function TopBar() {
                   >
                     ◫
                   </span>
-                  Pacotes exclusivos
+                  Artigos exclusivos
                 </Link>
               </>
             )}

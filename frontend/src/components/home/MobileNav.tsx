@@ -456,7 +456,7 @@ export function MobileNav({
                 <span aria-hidden className="text-[15px] leading-none">
                   ◫
                 </span>
-                Pacotes exclusivos
+                Artigos exclusivos
               </span>
               <span aria-hidden className="text-[13px] text-patriota-dark/50">
                 →

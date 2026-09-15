@@ -21,7 +21,7 @@ import { imageVariant } from "@/lib/images";
 export const revalidate = 300;
 
 export const metadata = {
-  title: "Pacotes exclusivos — O Patriota Notícias",
+  title: "Artigos exclusivos — O Patriota Notícias",
   description:
     "Investigações completas reunidas num só pagamento. Sem assinatura.",
 };
@@ -89,7 +89,7 @@ export default async function PacotesPage() {
           <Container className="relative py-14 sm:py-20">
             <div className="max-w-2xl">
               <p className="inline-flex items-center gap-2 rounded-full border border-patriota-accent/30 bg-patriota-accent/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-patriota-accent">
-                <span aria-hidden>◫</span> Pacotes exclusivos
+                <span aria-hidden>◫</span> Artigos exclusivos
               </p>
               <h1 className="mt-5 text-[34px] font-black leading-[1.08] tracking-tight text-white sm:text-[46px]">
                 Uma investigação completa,
