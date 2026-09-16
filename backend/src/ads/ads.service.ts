@@ -37,6 +37,20 @@ export const DEFAULT_ADS = [
   { id: 'category-leaderboard', name: 'Categoria — Topo', page: 'Categoria', position: 'Topo da página', size: '970×250', sizeLabel: 'Billboard' },
   { id: 'category-sidebar', name: 'Categoria — Sidebar', page: 'Categoria', position: 'Coluna lateral', size: '300×250', sizeLabel: 'Medium Rectangle' },
   { id: 'category-prefooter', name: 'Categoria — Pré-rodapé', page: 'Categoria', position: 'Antes do rodapé', size: '970×250', sizeLabel: 'Billboard' },
+  /*
+   * "Global" is a page bucket that is not a page.
+   *
+   * Every other slot belongs to one kind of page and is passed down by
+   * that page's server component. This one follows the READER, not the
+   * page: it appears two minutes into the visit, wherever they happen
+   * to be by then. So it is fetched by SiteFooter — the one component
+   * every public page renders — and nothing else has to know it exists.
+   *
+   * 300×250 because it is the size an advertiser is most likely to
+   * already own a creative for, and it fits a centred dialog on a phone
+   * without scaling down to nothing.
+   */
+  { id: 'global-popup', name: 'Pop-up — 2 minutos após a chegada', page: 'Global', position: 'Sobreposto, ao centro do ecrã', size: '300×250', sizeLabel: 'Medium Rectangle' },
 ];
 
 interface UpdateAdInput {
