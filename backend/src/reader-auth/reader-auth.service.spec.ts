@@ -36,6 +36,9 @@ function makePrismaMock() {
     categoryFavorite: { deleteMany: jest.fn() },
     readerIdentity: { deleteMany: jest.fn() },
     articleNotification: { deleteMany: jest.fn() },
+    // O apagamento RGPD leva o histórico de moderação com ele: quem
+    // pede para ser esquecido não deixa para trás o registo do que fez.
+    readerSanction: { deleteMany: jest.fn() },
     $transaction: jest.fn(),
   };
 }
@@ -501,6 +504,20 @@ describe('ReaderAuthService', () => {
       // holes through threads other people are still reading.
       expect(update.data.tokenVersion).toEqual({ increment: 1 });
       expect(update.data.digestFrequency).toBe('NUNCA');
+      /*
+       * The moderation history goes with it.
+       *
+       * It is the one thing in this transaction a newsroom might argue
+       * for keeping — "this person was suspended twice" is useful to the
+       * next moderator. But the account is being erased at its owner's
+       * request, and what would survive is a record of what somebody
+       * did, attached to a row that exists only to keep threads
+       * readable. Erasure that leaves the disciplinary file behind is
+       * not erasure.
+       */
+      expect(prisma.readerSanction.deleteMany).toHaveBeenCalledWith({
+        where: { readerId: 'r1' },
+      });
     });
   });
 });

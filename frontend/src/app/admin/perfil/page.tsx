@@ -9,10 +9,18 @@ interface MeProfile {
   role: string;
   isActive: boolean;
   bio: string | null;
+  publishingCadence: string | null;
   phone: string | null;
   avatarUrl: string | null;
   notificationPrefs: Record<string, unknown>;
   createdAt: string;
+  /**
+   * The choices for the cadence dropdown, sent with the profile rather
+   * than fetched separately — the settings endpoints need
+   * `configuracoes.aceder`, which a JORNALISTA does not have, and every
+   * staff account edits this screen. See UsersService.getOwn.
+   */
+  cadenceOptions: string[];
 }
 
 const ROLE_LABEL: Record<string, string> = {
@@ -70,10 +78,12 @@ export default async function Page() {
           email: me.email,
           role: ROLE_LABEL[me.role] ?? me.role,
           bio: me.bio ?? "",
+          publishingCadence: me.publishingCadence ?? "",
           phone: me.phone ?? "",
           avatarUrl: me.avatarUrl ?? "",
           avatarInitials: getInitials(me.name, me.email),
         }}
+        cadenceOptions={me.cadenceOptions ?? []}
         initialNotifs={{
           newArticle: toBool(prefs.newArticle, DEFAULT_NOTIFS.newArticle),
           comments: toBool(prefs.comments, DEFAULT_NOTIFS.comments),

@@ -1,0 +1,12 @@
+-- A cadencia de publicacao combinada com cada jornalista.
+--
+-- Texto e nao enum: a lista de opcoes e gerida pela redaccao em
+-- /admin/configuracoes, e um enum obrigaria a uma migracao sempre que o
+-- Editor-Chefe quisesse acrescentar uma cadencia. O servico valida o
+-- valor contra a lista configurada no momento em que grava.
+--
+-- NULL para as contas que ja existem: ninguem escolheu ainda, e inventar
+-- uma cadencia por elas seria por na ficha de uma pessoa um compromisso
+-- que ela nunca assumiu. O campo passa a ser pedido quando gravarem o
+-- perfil.
+ALTER TABLE "User" ADD COLUMN "publishingCadence" TEXT;

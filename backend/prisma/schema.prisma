@@ -159,23 +159,23 @@ enum MediaPurpose {
 }
 
 model Media {
-  id           String   @id @default(cuid())
+  id        String  @id @default(cuid())
   // Canonical URL — points to the "large" WebP variant for uploads,
   // or to the raw external URL for URL-paste entries.
-  url          String
-  urlMedium    String?
-  urlSmall     String?
-  name         String
-  mimeType     String?
-  size         Int?
-  width        Int?
-  height       Int?
+  url       String
+  urlMedium String?
+  urlSmall  String?
+  name      String
+  mimeType  String?
+  size      Int?
+  width     Int?
+  height    Int?
   /// Frame count, on an animation. NULL on a still.
   ///
   /// Stored so the library can mark a GIF as animated without opening
   /// the file — the stored format is WebP either way, so the mime type
   /// cannot answer it.
-  frames       Int?
+  frames    Int?
 
   /// Everything this upload actually occupies: all three variants, not
   /// just the canonical one.
@@ -203,7 +203,7 @@ model Media {
   uploadedBy   User?    @relation("MediaUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
   uploadedAt   DateTime @default(now())
 
-  visibility   MediaVisibility @default(PRIVADO)
+  visibility MediaVisibility @default(PRIVADO)
 
   /// Editorial library, or an ad banner. See MediaPurpose.
   ///
@@ -211,15 +211,15 @@ model Media {
   /// a path that does not know about this column, lands in the library
   /// — the safe direction. A file wrongly IN the library is visible and
   /// fixable; one wrongly outside it is invisible to everyone.
-  purpose      MediaPurpose    @default(EDITORIAL)
+  purpose MediaPurpose @default(EDITORIAL)
 
-  kind         MediaKind       @default(IMAGEM)
+  kind            MediaKind @default(IMAGEM)
   /// Length in seconds, on a video. NULL on an image.
   durationSeconds Int?
   /// A still taken from the video, for the library grid and the picker.
   /// NULL when the frame could not be extracted — a worse-looking
   /// library, not a reason to refuse a working video.
-  posterUrl    String?
+  posterUrl       String?
 
   /// "YYYY/MM/<baseId>" — the three variants share it and differ only by
   /// suffix. NULL for pasted external URLs, which are not ours to serve.
@@ -228,7 +228,7 @@ model Media {
   /// answering "which row owns /uploads/2026/09/abc-large.webp" would
   /// mean OR-ing three unindexed columns on every image request —
   /// a full table scan per image on every page of the newspaper.
-  storageKey   String?         @unique
+  storageKey String? @unique
 
   @@index([uploadedAt])
   /// "my library, newest first" — the shape of every listing now that
@@ -303,13 +303,13 @@ model NewsletterCampaign {
 }
 
 model NewsletterSubscriber {
-  id       String           @id @default(cuid())
-  email    String           @unique
-  name     String           @default("")
-  status   SubscriberStatus @default(ATIVO)
-  segment  String           @default("Geral")
-  opens    Int              @default(0)
-  joinedAt DateTime         @default(now())
+  id          String           @id @default(cuid())
+  email       String           @unique
+  name        String           @default("")
+  status      SubscriberStatus @default(ATIVO)
+  segment     String           @default("Geral")
+  opens       Int              @default(0)
+  joinedAt    DateTime         @default(now())
   /// The per-subscriber secret that goes in the "gerir subscrição" link.
   ///
   /// This row is keyed by an address, which means the address alone was
@@ -319,7 +319,7 @@ model NewsletterSubscriber {
   /// of the inbox ever receives, and it is the same mechanism
   /// Reader.unsubscribeToken already uses — random, per-row, and the one
   /// thing a footer link can safely carry.
-  manageToken String @unique @default(cuid())
+  manageToken String           @unique @default(cuid())
 
   @@index([status])
   @@index([segment])
@@ -347,6 +347,17 @@ model User {
   tokenVersion      Int      @default(0)
   isActive          Boolean  @default(true)
   bio               String?
+  /// Com que frequência este jornalista publica, escolhida de uma lista
+  /// que a redacção controla em /admin/configuracoes › Redacção.
+  ///
+  /// Guardada como TEXTO e não como enum de propósito: quem manda na
+  /// lista é o Editor-Chefe, e um enum obrigaria a uma migração sempre
+  /// que quisesse acrescentar uma cadência. O serviço valida contra a
+  /// lista configurada no momento em que grava, por isso um valor
+  /// arbitrário não entra; um valor que deixe de existir na lista mais
+  /// tarde sobrevive na coluna, o que é correcto — descreve o que essa
+  /// pessoa combinou, não o que a lista diz hoje.
+  publishingCadence String?
   phone             String?
   avatarUrl         String?
   notificationPrefs Json     @default("{}")
@@ -355,10 +366,11 @@ model User {
 
   activities        ActivityLog[]
   articles          Article[]
-  moderatedComments Comment[]     @relation("CommentModerator")
-  suspendedReaders  Reader[]      @relation("ReaderSuspender")
-  grantedPlans      Reader[]      @relation("PlanGranter")
-  media             Media[]       @relation("MediaUploader")
+  moderatedComments Comment[]         @relation("CommentModerator")
+  suspendedReaders  Reader[]          @relation("ReaderSuspender")
+  readerSanctions   ReaderSanction[]  @relation("ReaderSanctionActor")
+  grantedPlans      Reader[]          @relation("PlanGranter")
+  media             Media[]           @relation("MediaUploader")
   packagesCreated   Package[]         @relation("PackageCreator")
   packagesGranted   PackagePurchase[] @relation("PackageGranter")
 }
@@ -617,8 +629,10 @@ model Reader {
   /// reader-suspension.ts is the single place that decides.
   suspendedUntil   DateTime?
   suspensionReason String?
+  /// O histórico de moderação desta pessoa. Ver ReaderSanction.
+  sanctions        ReaderSanction[]
   suspendedById    String?
-  suspendedBy      User?     @relation("ReaderSuspender", fields: [suspendedById], references: [id], onDelete: SetNull)
+  suspendedBy      User?            @relation("ReaderSuspender", fields: [suspendedById], references: [id], onDelete: SetNull)
 
   // Notification preferences (global; per-category lives on CategoryFavorite)
   notifyNewArticles Boolean         @default(true)
@@ -641,8 +655,8 @@ model Reader {
   /// When false the reader shows as "Leitor" on their public comments.
   displayNamePublic Boolean @default(true)
 
-  plan       ReaderPlan @default(GRATIS)
-  planStatus String?
+  plan                  ReaderPlan  @default(GRATIS)
+  planStatus            String?
   /// When the current entitlement ENDS. NULL means no end date.
   ///
   /// One column for both kinds of subscription, and one meaning:
@@ -653,14 +667,14 @@ model Reader {
   ///
   /// Read by date, like a suspension: a lapsed plan reads as GRATIS at
   /// the next request, with no job to run. See reader-entitlement.ts.
-  planRenewsAt     DateTime?
+  planRenewsAt          DateTime?
   /// When the current subscription BEGAN.
   ///
   /// Needed to answer "how many new subscribers this month", which no
   /// other column can: planRenewsAt moves forward on every renewal, and
   /// createdAt is when the account was opened, not when they started
   /// paying.
-  planStartedAt    DateTime?
+  planStartedAt         DateTime?
   /// Whether the current period is the LAST one.
   ///
   /// `planRenewsAt` alone cannot answer this. It means "entitled until",
@@ -673,26 +687,26 @@ model Reader {
   /// True also for a subscription given by hand, which never renews.
   /// One column, one question — "does this date mean renewal or the
   /// end?" — answered the same way whatever the source.
-  planCancelAtPeriodEnd Boolean @default(false)
+  planCancelAtPeriodEnd Boolean     @default(false)
   /// When the cancellation was REQUESTED, not when access stops.
   ///
   /// Access stops at `planRenewsAt`; this is the day the reader clicked
   /// cancel, which is the one the newsroom needs to see churn as it
   /// happens rather than a month later when the period runs out.
-  planCanceledAt   DateTime?
+  planCanceledAt        DateTime?
   /// Where the subscription came from. NULL on a free reader.
-  planSource       PlanSource?
+  planSource            PlanSource?
   /// Who gave it, on a manual grant. Kept so a gift has a name attached.
-  planGrantedById  String?
-  planGrantedBy    User?       @relation("PlanGranter", fields: [planGrantedById], references: [id], onDelete: SetNull)
+  planGrantedById       String?
+  planGrantedBy         User?       @relation("PlanGranter", fields: [planGrantedById], references: [id], onDelete: SetNull)
   /// Why it was given. Internal; the reader never sees it.
-  planNote         String?
+  planNote              String?
   /// The Stripe customer. Kept even after a subscription ends — they are
   /// still the same customer, and losing it would orphan their invoice
   /// history and mint a second customer if they ever come back.
-  stripeCustomerId String?     @unique
+  stripeCustomerId      String?     @unique
   /// The Stripe subscription currently backing this plan, if any.
-  stripeSubscriptionId String? @unique
+  stripeSubscriptionId  String?     @unique
 
   lastLoginAt DateTime?
   createdAt   DateTime  @default(now())
@@ -722,6 +736,55 @@ model Reader {
   /// generate a migration to drop them.
   @@index([suspendedById])
   @@index([planGrantedById])
+}
+
+/// O que já foi feito a este leitor, e porquê.
+///
+/// A coluna `suspensionReason` guarda a razão da suspensão ACTUAL e mais
+/// nada: levantar a suspensão apaga-a, e a suspensão seguinte escreve
+/// por cima. Isso chega para saber o estado de alguém e não chega para
+/// nada mais — um moderador que abra a fila de comentários não tem como
+/// saber se aquela pessoa é um caso novo ou o terceiro aviso ao mesmo
+/// indivíduo, que é precisamente a diferença entre 15 dias e definitivo.
+///
+/// Esta tabela é o registo que faltava: uma linha por acto, que fica.
+enum ReaderSanctionKind {
+  /// Suspensão com data de fim; ver `until`.
+  SUSPENSAO
+  /// Suspensão sem data de fim.
+  PERMANENTE
+  /// Um moderador levantou a suspensão antes do fim.
+  LEVANTAMENTO
+}
+
+model ReaderSanction {
+  id       String             @id @default(cuid())
+  readerId String
+  /// Cascade: o histórico é sobre esta pessoa e não sobrevive a ela.
+  /// A anonimização RGPD apaga-o explicitamente — ver
+  /// ReaderAuthService.anonymise — porque quem pede para ser esquecido
+  /// não deve deixar para trás um registo do que fez.
+  reader   Reader             @relation(fields: [readerId], references: [id], onDelete: Cascade)
+  kind     ReaderSanctionKind
+  reason   String?
+  /// Fim da suspensão. NULL numa advertência, num levantamento e numa
+  /// suspensão definitiva — as três coisas que não têm data de fim.
+  until    DateTime?
+
+  actorId    String?
+  /// SetNull e não Cascade: o registo de quem moderou tem de sobreviver
+  /// à conta de quem moderou, pela mesma razão que o ActivityLog — ver
+  /// a migração activity_log_survives_actor.
+  actor      User?   @relation("ReaderSanctionActor", fields: [actorId], references: [id], onDelete: SetNull)
+  /// Desnormalizado, para a linha continuar a dizer quem agiu depois de
+  /// a conta desse alguém desaparecer.
+  actorLabel String
+
+  createdAt DateTime @default(now())
+
+  /// A consulta é sempre "o histórico deste leitor, do mais recente
+  /// para o mais antigo".
+  @@index([readerId, createdAt])
 }
 
 /// A linked social account. One Reader may hold several.
@@ -899,42 +962,42 @@ model ArticleNotification {
 /// only to close it afterwards would expose paid work, so that route
 /// does not exist.
 model Package {
-  id            String        @id @default(cuid())
-  slug          String        @unique
-  name          String
-  description   String        @default("")
-  coverImageUrl String?
+  id                     String        @id @default(cuid())
+  slug                   String        @unique
+  name                   String
+  description            String        @default("")
+  coverImageUrl          String?
   /// Cents, integer, never a float. Money in a double is how 9.99
   /// becomes 9.989999999999998 on an invoice. It is also the exact unit
   /// Stripe's unit_amount wants, so nothing is converted on the way to
   /// the Price.
-  priceCents    Int           @default(0)
+  priceCents             Int           @default(0)
   /// Stored rather than assumed even though everything is EUR today: the
   /// Stripe Price carries a currency of its own, and the two disagreeing
   /// silently is worth one column to make impossible.
-  currency      String        @default("EUR")
-  status        PackageStatus @default(RASCUNHO)
+  currency               String        @default("EUR")
+  status                 PackageStatus @default(RASCUNHO)
   /// The admin switch. TRUE (default) means a PREMIUM subscriber reads
   /// these articles without buying. FALSE means even a subscriber must
   /// buy — which INVERTS assinantes.ler_exclusivos, otherwise the last
   /// word on an exclusive. package-access.ts is the only place allowed
   /// to reason about that.
-  includedInSubscription Boolean @default(true)
+  includedInSubscription Boolean       @default(true)
   /// Set on first publish and kept for ever. Never nulled: unpublishing
   /// and republishing must reuse the same Product, so one pacote is one
   /// line in the Stripe dashboard rather than one per attempt.
-  stripeProductId String? @unique
+  stripeProductId        String?       @unique
   /// The CURRENT Price. Stripe Prices are immutable, so changing
   /// priceCents creates a new one, deactivates the old and rewrites
   /// this. Checkout sessions already open against the old id still
   /// complete at the old amount, which is correct: honour the number the
   /// reader was shown.
-  stripePriceId   String? @unique
-  publishedAt DateTime?
-  createdById String
-  createdBy   User      @relation("PackageCreator", fields: [createdById], references: [id])
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  stripePriceId          String?       @unique
+  publishedAt            DateTime?
+  createdById            String
+  createdBy              User          @relation("PackageCreator", fields: [createdById], references: [id])
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
 
   items     PackageArticle[]
   purchases PackagePurchase[]
@@ -1038,11 +1101,11 @@ model PackagePurchase {
   /// the default branch and was recorded without even a log line.
   disputedAt          DateTime?
 
-  reader  Reader  @relation(fields: [readerId], references: [id], onDelete: Cascade)
+  reader  Reader                @relation(fields: [readerId], references: [id], onDelete: Cascade)
   /// Restrict, not Cascade: deleting a pacote somebody paid for must
   /// fail loudly. The admin DELETE route returns 409 before it gets
   /// this far.
-  package Package @relation(fields: [packageId], references: [id], onDelete: Restrict)
+  package Package               @relation(fields: [packageId], references: [id], onDelete: Restrict)
   items   PackagePurchaseItem[]
 
   /// NOT @@unique([readerId, packageId]). Two live purchases of the same

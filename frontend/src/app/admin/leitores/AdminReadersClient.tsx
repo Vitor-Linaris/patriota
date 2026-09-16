@@ -607,6 +607,7 @@ export default function AdminReadersClient({
       {banning && (
         <BanReaderDialog
           readerLabel={banning.name ?? banning.email}
+          readerId={banning.id}
           busy={isPending}
           onCancel={() => setBanning(null)}
           onConfirm={(duration, opts) => {

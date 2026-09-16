@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import sharp from 'sharp';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
+import { SettingsService } from '../settings/settings.service';
 import {
   PageQueryDto,
   PageResult,
@@ -60,6 +61,7 @@ const USER_PUBLIC_SELECT = {
   role: true,
   isActive: true,
   bio: true,
+  publishingCadence: true,
   phone: true,
   avatarUrl: true,
   notificationPrefs: true,
@@ -78,6 +80,7 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly activity: ActivityLogService,
+    private readonly settings: SettingsService,
   ) {}
 
   async list(query: ListUsersQueryDto): Promise<PageResult<unknown>> {
@@ -378,13 +381,29 @@ export class UsersService {
     return { ok: true as const, id: target.id, email: target.email };
   }
 
+  /**
+   * The profile, plus the choices its own form needs.
+   *
+   * `cadenceOptions` rides along rather than living behind its own
+   * endpoint, because every staff account edits this screen and the
+   * list is gated by `configuracoes.aceder` — which a JORNALISTA, a
+   * MODERADOR and an ANALISTA all lack. A second route for it would
+   * either need a permission none of them have, or no permission at
+   * all, and a route with no decorator is how /admin/stats ended up
+   * readable by everybody. Attaching it here asks no new question:
+   * whoever may read their own profile may read the options for a field
+   * in it.
+   */
   async getOwn(id: string) {
-    const u = await this.prisma.user.findUnique({
-      where: { id },
-      select: USER_PUBLIC_SELECT,
-    });
+    const [u, cadenceOptions] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id },
+        select: USER_PUBLIC_SELECT,
+      }),
+      this.settings.cadences(),
+    ]);
     if (!u) throw new NotFoundException('Utilizador não encontrado.');
-    return u;
+    return { ...u, cadenceOptions };
   }
 
   async updateOwn(id: string, dto: UpdateOwnDto) {
@@ -393,9 +412,73 @@ export class UsersService {
     if (dto.bio !== undefined) data.bio = dto.bio;
     if (dto.phone !== undefined) data.phone = dto.phone;
     if (dto.avatarUrl !== undefined) data.avatarUrl = dto.avatarUrl;
+    if (dto.publishingCadence !== undefined) {
+      data.publishingCadence = dto.publishingCadence;
+    }
     if (dto.notificationPrefs !== undefined) {
       data.notificationPrefs = dto.notificationPrefs;
     }
+
+    /*
+     * The required fields are checked against what would be STORED, not
+     * against what arrived.
+     *
+     * This endpoint is a PATCH shared by several forms — the avatar
+     * upload and the notification toggles send nothing else — so
+     * "required" cannot mean "must be in the body". It means the row
+     * must not be left without them. A call that does not touch `bio`
+     * is fine as long as a bio is already there; a call that tries to
+     * blank it is not.
+     */
+    const touches = ['name', 'bio', 'publishingCadence'].some(
+      (k) => data[k] !== undefined,
+    );
+    if (touches) {
+      const current = await this.prisma.user.findUnique({
+        where: { id },
+        select: { name: true, bio: true, publishingCadence: true },
+      });
+      if (!current) throw new NotFoundException('Utilizador não encontrado.');
+
+      const after = {
+        name: (data.name as string | undefined) ?? current.name ?? '',
+        bio: (data.bio as string | undefined) ?? current.bio ?? '',
+        publishingCadence:
+          (data.publishingCadence as string | undefined) ??
+          current.publishingCadence ??
+          '',
+      };
+
+      const missing: string[] = [];
+      if (!after.name.trim()) missing.push('o nome');
+      // Both are published material: the name signs the article and the
+      // bio is what a reader sees under it. A byline with neither is a
+      // piece nobody is accountable for.
+      if (!after.bio.trim()) missing.push('a biografia');
+      if (!after.publishingCadence.trim()) {
+        missing.push('a frequência de publicação');
+      }
+      if (missing.length > 0) {
+        throw new BadRequestException(
+          `Preencha ${missing.join(', ')} antes de gravar o perfil.`,
+        );
+      }
+
+      // Only against the list as it is NOW, and only when the value is
+      // being changed. A cadence the newsroom later removed stays on the
+      // profiles that already chose it — it describes what that person
+      // agreed to, not what the list says today — but nobody can newly
+      // pick something that is not on offer.
+      if (data.publishingCadence !== undefined) {
+        const allowed = await this.settings.cadences();
+        if (!allowed.includes(after.publishingCadence)) {
+          throw new BadRequestException(
+            'Essa frequência de publicação já não está disponível. Escolha uma da lista.',
+          );
+        }
+      }
+    }
+
     return this.prisma.user.update({
       where: { id },
       data,

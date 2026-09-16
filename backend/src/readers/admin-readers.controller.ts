@@ -50,6 +50,16 @@ export class AdminReadersController {
     return this.readers.suspensionOf(id);
   }
 
+  /**
+   * O historico de moderacao desta pessoa, e as contagens que dizem ao
+   * moderador se e um caso novo ou o terceiro aviso.
+   */
+  @Get(':id/historico')
+  @RequirePermissions('leitores.suspender')
+  history(@Param('id') id: string) {
+    return this.readers.historyOf(id);
+  }
+
   @Post(':id/suspend')
   @RequirePermissions('leitores.suspender')
   @HttpCode(HttpStatus.OK)

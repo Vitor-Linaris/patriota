@@ -620,6 +620,22 @@ export class ReaderAuthService {
       this.prisma.categoryFavorite.deleteMany({ where: { readerId } }),
       this.prisma.readerIdentity.deleteMany({ where: { readerId } }),
       this.prisma.articleNotification.deleteMany({ where: { readerId } }),
+      /*
+       * The moderation history goes too.
+       *
+       * It is the one thing here a newsroom might argue for keeping —
+       * "this person was suspended twice" is useful to the next
+       * moderator. But the account is being erased at its owner's
+       * request, and what survives would be a record of what somebody
+       * did, attached to a row that exists only to keep threads
+       * readable. Erasure that leaves the disciplinary file behind is
+       * not erasure.
+       *
+       * The comments themselves stay, shown as "Leitor removido", which
+       * is the separate decision this transaction already made and
+       * explains above.
+       */
+      this.prisma.readerSanction.deleteMany({ where: { readerId } }),
       this.prisma.reader.update({
         where: { id: readerId },
         data: {
