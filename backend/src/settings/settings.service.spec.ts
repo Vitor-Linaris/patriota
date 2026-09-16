@@ -44,4 +44,55 @@ describe('SettingsService', () => {
       service.put('bogus' as never, {}),
     ).rejects.toThrow(BadRequestException);
   });
+
+  /**
+   * The cadence list feeds a REQUIRED dropdown on every staff profile.
+   * Emptying it would leave the whole newsroom with a mandatory field
+   * and nothing to put in it — a screen nobody can save, discovered one
+   * journalist at a time.
+   */
+  describe('redacao › cadências', () => {
+    it('refuses to save an empty list', async () => {
+      await expect(service.put('redacao', { cadencias: [] })).rejects.toThrow(
+        /pelo menos uma/i,
+      );
+      expect(prisma.setting.upsert).not.toHaveBeenCalled();
+    });
+
+    it('refuses a list that is only blanks', async () => {
+      await expect(
+        service.put('redacao', { cadencias: ['   ', ''] }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('trims and de-duplicates what it does save', async () => {
+      await service.put('redacao', {
+        cadencias: [' Uma vez por semana ', 'Uma vez por semana', 'Diária'],
+      });
+
+      expect(prisma.setting.upsert.mock.calls[0][0].create.data).toEqual({
+        cadencias: ['Uma vez por semana', 'Diária'],
+      });
+    });
+
+    it('hands the same cleaned list to whoever asks for the options', async () => {
+      // The dropdown and the validation that guards it must read exactly
+      // the same list, or a value can be offered and then refused.
+      prisma.setting.findUnique.mockResolvedValueOnce({
+        section: 'redacao',
+        data: { cadencias: ['  Semanal ', 'Semanal', 42, ''] },
+      });
+
+      await expect(service.cadences()).resolves.toEqual(['Semanal']);
+    });
+
+    it('falls back to the four the newsroom started with', async () => {
+      await expect(service.cadences()).resolves.toEqual([
+        'Duas vezes por semana',
+        'Uma vez por semana',
+        'Uma vez por mês',
+        'Uma vez a cada 2 meses',
+      ]);
+    });
+  });
 });

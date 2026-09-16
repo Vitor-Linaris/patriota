@@ -347,6 +347,17 @@ model User {
   tokenVersion      Int      @default(0)
   isActive          Boolean  @default(true)
   bio               String?
+  /// Com que frequência este jornalista publica, escolhida de uma lista
+  /// que a redacção controla em /admin/configuracoes › Redacção.
+  ///
+  /// Guardada como TEXTO e não como enum de propósito: quem manda na
+  /// lista é o Editor-Chefe, e um enum obrigaria a uma migração sempre
+  /// que quisesse acrescentar uma cadência. O serviço valida contra a
+  /// lista configurada no momento em que grava, por isso um valor
+  /// arbitrário não entra; um valor que deixe de existir na lista mais
+  /// tarde sobrevive na coluna, o que é correcto — descreve o que essa
+  /// pessoa combinou, não o que a lista diz hoje.
+  publishingCadence String?
   phone             String?
   avatarUrl         String?
   notificationPrefs Json     @default("{}")

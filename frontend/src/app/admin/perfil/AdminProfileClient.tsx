@@ -16,6 +16,8 @@ interface ProfileData {
   email: string;
   role: string;
   bio: string;
+  /** One of `cadenceOptions`; "" until the person has chosen. */
+  publishingCadence: string;
   phone: string;
   avatarUrl: string;
   avatarInitials: string;
@@ -32,6 +34,15 @@ interface NotificationPrefs {
 
 type Section = "perfil" | "seguranca" | "notificacoes" | "sessoes";
 
+/** The one visual mark for a field the form will not save without. */
+function Required() {
+  return (
+    <span aria-hidden className="text-red-500">
+      *
+    </span>
+  );
+}
+
 function initials(name: string) {
   return name
     .split(" ")
@@ -44,9 +55,15 @@ function initials(name: string) {
 interface Props {
   initial: ProfileData;
   initialNotifs: NotificationPrefs;
+  /** The list the newsroom configures in /admin/configuracoes. */
+  cadenceOptions: string[];
 }
 
-export default function AdminProfileClient({ initial, initialNotifs }: Props) {
+export default function AdminProfileClient({
+  initial,
+  initialNotifs,
+  cadenceOptions,
+}: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [section, setSection] = useState<Section>("perfil");
@@ -104,11 +121,31 @@ export default function AdminProfileClient({ initial, initialNotifs }: Props) {
 
   function saveProfile() {
     setSaveError(null);
+    /*
+     * Checked here as well as on the API, and the API is the one that
+     * counts — this is only so the person is told before a round trip,
+     * next to the field, instead of by a red line at the top after it.
+     */
+    if (!draft.name.trim()) {
+      setSaveError("O nome é obrigatório: é o que assina os seus artigos.");
+      return;
+    }
+    if (!draft.bio.trim()) {
+      setSaveError(
+        "A biografia é obrigatória: é o que o leitor vê por baixo da assinatura.",
+      );
+      return;
+    }
+    if (!draft.publishingCadence.trim()) {
+      setSaveError("Escolha com que frequência publica.");
+      return;
+    }
     const payload = {
       name: draft.name.trim(),
-      bio: draft.bio,
+      bio: draft.bio.trim(),
       phone: draft.phone,
       avatarUrl: draft.avatarUrl,
+      publishingCadence: draft.publishingCadence,
     };
     startTransition(async () => {
       const res = await updateProfileAction(payload);
@@ -321,7 +358,7 @@ export default function AdminProfileClient({ initial, initialNotifs }: Props) {
                 <div className="space-y-4">
                   <div>
                     <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">
-                      Nome completo
+                      Nome completo <Required />
                     </label>
                     <input
                       value={draft.name}
@@ -383,7 +420,7 @@ export default function AdminProfileClient({ initial, initialNotifs }: Props) {
 
                   <div>
                     <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">
-                      Biografia
+                      Biografia <Required />
                     </label>
                     <textarea
                       value={draft.bio}
@@ -397,6 +434,51 @@ export default function AdminProfileClient({ initial, initialNotifs }: Props) {
                     />
                     <p className="mt-1 text-xs text-gray-400">
                       {draft.bio.length}/200 caracteres
+                    </p>
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="cadencia"
+                      className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500"
+                    >
+                      Com que frequência publica <Required />
+                    </label>
+                    <select
+                      id="cadencia"
+                      value={draft.publishingCadence}
+                      onChange={(e) =>
+                        setDraft((d) => ({
+                          ...d,
+                          publishingCadence: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm transition-colors focus:border-[#0F2C6B] focus:outline-none focus:ring-2 focus:ring-[#0F2C6B]/20"
+                    >
+                      <option value="">Escolher…</option>
+                      {/*
+                        A cadence chosen before the newsroom removed it
+                        from the list is still shown, rather than
+                        silently reverting to "Escolher…" — it describes
+                        what this person agreed to, and losing it on the
+                        next unrelated save would be a change nobody
+                        made.
+                      */}
+                      {draft.publishingCadence &&
+                        !cadenceOptions.includes(draft.publishingCadence) && (
+                          <option value={draft.publishingCadence}>
+                            {draft.publishingCadence} (já não está na lista)
+                          </option>
+                        )}
+                      {cadenceOptions.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1.5 text-xs text-gray-400">
+                      As opções são definidas pela direcção em Configurações ›
+                      Redacção.
                     </p>
                   </div>
                 </div>

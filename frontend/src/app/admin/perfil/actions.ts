@@ -11,6 +11,8 @@ const SESSION_COOKIE = "patriota_session";
 export interface UpdateProfilePayload {
   name?: string;
   bio?: string;
+  /** One of the labels in Configurações › Redacção. */
+  publishingCadence?: string;
   phone?: string;
   avatarUrl?: string;
   notificationPrefs?: Record<string, boolean>;

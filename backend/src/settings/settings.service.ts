@@ -8,6 +8,7 @@ export const VALID_SECTIONS = [
   'redes',
   'newsletter',
   'seguranca',
+  'redacao',
 ] as const;
 
 export type SectionName = (typeof VALID_SECTIONS)[number];
@@ -80,6 +81,27 @@ const DEFAULTS: Record<SectionName, Record<string, unknown>> = {
     recaptcha: true,
     recaptchaKey: '',
   },
+  /**
+   * Choices the newsroom offers its own staff, rather than site policy.
+   *
+   * `cadencias` is the list behind the "Com que frequência publica"
+   * dropdown on /admin/perfil. It lives here, in a Setting row, because
+   * the whole point of the request was that somebody in the newsroom can
+   * add to it without a deploy — and because putting it here means the
+   * question "who may change it" is already answered by
+   * `configuracoes.editar`, which today is held by SUPER_ADMIN and
+   * EDITOR_CHEFE and nobody else. If that ever needs to change it is one
+   * switch on /admin/permissoes, not a code change with two role names
+   * hard-coded into it.
+   */
+  redacao: {
+    cadencias: [
+      'Duas vezes por semana',
+      'Uma vez por semana',
+      'Uma vez por mês',
+      'Uma vez a cada 2 meses',
+    ],
+  },
 };
 
 @Injectable()
@@ -104,9 +126,51 @@ export class SettingsService {
     };
   }
 
+  /**
+   * The cadence choices a journalist may pick from, cleaned up.
+   *
+   * Trimmed, de-duplicated and stripped of blanks HERE rather than at
+   * the point of use, so the profile dropdown and the validation that
+   * guards it are reading exactly the same list.
+   */
+  async cadences(): Promise<string[]> {
+    const section = (await this.get('redacao')) as { cadencias?: unknown };
+    const raw = Array.isArray(section.cadencias) ? section.cadencias : [];
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const item of raw) {
+      if (typeof item !== 'string') continue;
+      const value = item.trim();
+      if (!value || seen.has(value)) continue;
+      seen.add(value);
+      out.push(value);
+    }
+    return out;
+  }
+
   async put(section: SectionName, data: Record<string, unknown>) {
     if (!VALID_SECTIONS.includes(section)) {
       throw new BadRequestException('Secção inválida.');
+    }
+    if (section === 'redacao') {
+      // An empty list would leave every journalist with a required field
+      // and nothing to put in it — a screen nobody can save. Refused
+      // here, where the person doing it can still see why.
+      const list = Array.isArray(data.cadencias) ? data.cadencias : [];
+      const clean = [
+        ...new Set(
+          list
+            .filter((i): i is string => typeof i === 'string')
+            .map((i) => i.trim())
+            .filter(Boolean),
+        ),
+      ];
+      if (clean.length === 0) {
+        throw new BadRequestException(
+          'Deixe pelo menos uma cadência na lista: é um campo obrigatório no perfil e sem opções ninguém consegue gravar o seu.',
+        );
+      }
+      data = { ...data, cadencias: clean };
     }
     return this.prisma.setting.upsert({
       where: { section },

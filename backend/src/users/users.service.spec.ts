@@ -4,6 +4,7 @@ import * as bcrypt from 'bcryptjs';
 import { UsersService } from './users.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
+import { SettingsService } from '../settings/settings.service';
 
 function makePrismaMock() {
   return {
@@ -28,15 +29,22 @@ describe('UsersService', () => {
   let service: UsersService;
   let prisma: ReturnType<typeof makePrismaMock>;
   let activity: { record: jest.Mock };
+  let settings: { cadences: jest.Mock };
 
   beforeEach(async () => {
     prisma = makePrismaMock();
     activity = { record: jest.fn() };
+    settings = {
+      cadences: jest.fn().mockResolvedValue(['Uma vez por semana']),
+    };
     const moduleRef = await Test.createTestingModule({
       providers: [
         UsersService,
         { provide: PrismaService, useValue: prisma },
         { provide: ActivityLogService, useValue: activity },
+        // A lista que o perfil oferece no menu de cadência. As quatro
+        // que vêm de origem, salvo quando um teste diz outra coisa.
+        { provide: SettingsService, useValue: settings },
       ],
     }).compile();
     service = moduleRef.get(UsersService);
@@ -302,7 +310,15 @@ describe('UsersService', () => {
   });
 
   describe('updateOwn()', () => {
+    /** The row as it already is, for the required-fields check. */
+    const complete = {
+      name: 'Ana Dias',
+      bio: 'Jornalista de investigação.',
+      publishingCadence: 'Uma vez por semana',
+    };
+
     it('does not allow updating role or email through profile endpoint', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce(complete);
       prisma.user.update.mockResolvedValueOnce({ id: 'u1' });
       await service.updateOwn('u1', {
         bio: 'short bio',
@@ -313,6 +329,82 @@ describe('UsersService', () => {
       expect(data.role).toBeUndefined();
       expect(data.email).toBeUndefined();
       expect(data.bio).toBe('short bio');
+    });
+
+    /*
+     * Name and bio are published material — the name signs the article
+     * and the bio is what a reader sees under it — so a byline with
+     * neither is a piece nobody is accountable for. The cadence is what
+     * the newsroom asked to start tracking.
+     *
+     * The rule is about what the ROW ends up with, not about what the
+     * request contained: this endpoint is a PATCH shared by the avatar
+     * upload and the notification toggles, and neither of those resends
+     * a name nobody was editing.
+     */
+    it('refuses to blank a required field', async () => {
+      prisma.user.findUnique.mockResolvedValue(complete);
+
+      await expect(service.updateOwn('u1', { bio: '' })).rejects.toThrow(
+        /biografia/i,
+      );
+      await expect(service.updateOwn('u1', { name: '' })).rejects.toThrow(
+        /nome/i,
+      );
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses to save a profile that is still missing one', async () => {
+      // The existing accounts: a bio was never required before, so a row
+      // can arrive here without one. Saving anything else must not slip
+      // past the new rule.
+      prisma.user.findUnique.mockResolvedValueOnce({
+        ...complete,
+        bio: null,
+      });
+
+      await expect(
+        service.updateOwn('u1', { name: 'Ana Dias' }),
+      ).rejects.toThrow(/biografia/i);
+    });
+
+    it('lets a call that touches none of them through untouched', async () => {
+      // The avatar upload and the notification toggles come through this
+      // same endpoint with nothing else in the body. They must not pay
+      // for a rule about fields they are not editing.
+      prisma.user.update.mockResolvedValueOnce({ id: 'u1' });
+
+      await service.updateOwn('u1', { avatarUrl: '/uploads/a.webp' });
+
+      expect(prisma.user.findUnique).not.toHaveBeenCalled();
+      expect(prisma.user.update).toHaveBeenCalled();
+    });
+
+    it('refuses a cadence that is not on the newsroom’s list', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce(complete);
+      settings.cadences.mockResolvedValueOnce(['Uma vez por semana']);
+
+      await expect(
+        service.updateOwn('u1', { publishingCadence: 'Quando me apetecer' }),
+      ).rejects.toThrow(/frequência/i);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('keeps a cadence the newsroom has since removed', async () => {
+      // It describes what that person agreed to, not what the list says
+      // today. Editing something else must not quietly erase it.
+      prisma.user.findUnique.mockResolvedValueOnce({
+        ...complete,
+        publishingCadence: 'Uma vez a cada 2 meses',
+      });
+      settings.cadences.mockResolvedValueOnce(['Uma vez por semana']);
+      prisma.user.update.mockResolvedValueOnce({ id: 'u1' });
+
+      await service.updateOwn('u1', { bio: 'Nova bio.' });
+
+      expect(prisma.user.update).toHaveBeenCalled();
+      // The validation only runs when the cadence itself is being set.
+      expect(settings.cadences).not.toHaveBeenCalled();
     });
   });
 

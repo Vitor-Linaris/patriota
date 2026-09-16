@@ -91,6 +91,11 @@ export interface SegurancaSettings {
   recaptchaKey: string;
 }
 
+export interface RedacaoSettings {
+  /** The options behind the cadence dropdown on /admin/perfil. */
+  cadencias: string[];
+}
+
 export interface SettingsBundle {
   geral: GeralSettings;
   email: EmailSettings;
@@ -98,6 +103,7 @@ export interface SettingsBundle {
   redes: RedesSettings;
   newsletter: NewsletterSettings;
   seguranca: SegurancaSettings;
+  redacao: RedacaoSettings;
 }
 
 const tabs: { id: TabId; label: string; icon: string }[] = [
@@ -113,6 +119,10 @@ const tabs: { id: TabId; label: string; icon: string }[] = [
   // bring native campaigns back.
   // { id: "newsletter", label: "Newsletter", icon: "◇" },
   { id: "seguranca", label: "Segurança", icon: "◆" },
+  // Gated by configuracoes.editar, like every other section here —
+  // which today means SUPER_ADMIN and EDITOR_CHEFE, and is one switch
+  // on /admin/permissoes if the newsroom ever wants that to change.
+  { id: "redacao", label: "Redacção", icon: "✎" },
 ];
 
 /**
@@ -353,6 +363,12 @@ export default function AdminSettingsClient({
     initial.seguranca.recaptchaKey,
   );
 
+  // ── Redacção ──
+  const [cadencias, setCadencias] = useState<string[]>(
+    initial.redacao.cadencias,
+  );
+  const [novaCadencia, setNovaCadencia] = useState("");
+
   const collectCurrent = (): Record<string, unknown> => {
     switch (tab) {
       case "geral":
@@ -413,6 +429,8 @@ export default function AdminSettingsClient({
           recaptcha,
           recaptchaKey,
         };
+      case "redacao":
+        return { cadencias };
     }
   };
 
@@ -1088,6 +1106,103 @@ export default function AdminSettingsClient({
                 saved={saved === "seguranca"}
                 pending={pending && tab === "seguranca"}
                 error={tab === "seguranca" ? saveError : null}
+              />
+            </div>
+          )}
+
+          {tab === "redacao" && (
+            <div>
+              <h2 className="mb-1 text-lg font-black text-[#0F2C6B]">
+                Redacção
+              </h2>
+              <p className="mb-5 text-xs text-gray-400">
+                Escolhas que a direcção oferece à equipa.
+              </p>
+
+              <Field
+                label="Frequência de publicação"
+                hint="As opções do menu no perfil de cada jornalista. Obrigatório escolher uma, por isso a lista nunca pode ficar vazia."
+              >
+                <ul className="flex flex-col gap-2">
+                  {cadencias.map((c, i) => (
+                    <li key={c} className="flex items-center gap-2">
+                      <input
+                        value={c}
+                        onChange={(e) =>
+                          setCadencias((prev) =>
+                            prev.map((x, j) => (j === i ? e.target.value : x)),
+                          )
+                        }
+                        className="flex-1 rounded-lg border border-gray-200 px-4 py-2 text-sm transition-all focus:border-[#0F2C6B] focus:outline-none focus:ring-2 focus:ring-[#0F2C6B]/10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setCadencias((prev) => prev.filter((_, j) => j !== i))
+                        }
+                        /* Removing the last one is refused rather than
+                           allowed and then rejected on save: the field
+                           it feeds is required, and a profile with a
+                           mandatory dropdown and no options is a screen
+                           nobody can save. */
+                        disabled={cadencias.length === 1}
+                        title={
+                          cadencias.length === 1
+                            ? "Tem de ficar pelo menos uma opção"
+                            : "Remover"
+                        }
+                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-500 transition-colors hover:border-red-300 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-gray-200 disabled:hover:text-gray-500"
+                      >
+                        Remover
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+
+                <div className="mt-3 flex items-center gap-2">
+                  <input
+                    value={novaCadencia}
+                    onChange={(e) => setNovaCadencia(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter") return;
+                      e.preventDefault();
+                      const v = novaCadencia.trim();
+                      if (!v || cadencias.includes(v)) return;
+                      setCadencias((prev) => [...prev, v]);
+                      setNovaCadencia("");
+                    }}
+                    placeholder="Ex.: Três vezes por semana"
+                    className="flex-1 rounded-lg border border-dashed border-gray-300 px-4 py-2 text-sm transition-all focus:border-[#0F2C6B] focus:outline-none focus:ring-2 focus:ring-[#0F2C6B]/10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const v = novaCadencia.trim();
+                      if (!v || cadencias.includes(v)) return;
+                      setCadencias((prev) => [...prev, v]);
+                      setNovaCadencia("");
+                    }}
+                    disabled={
+                      !novaCadencia.trim() ||
+                      cadencias.includes(novaCadencia.trim())
+                    }
+                    className="rounded-lg bg-[#0F2C6B] px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-[#16408f] disabled:opacity-40"
+                  >
+                    Acrescentar
+                  </button>
+                </div>
+                <p className="mt-2 text-xs text-gray-400">
+                  Uma opção removida daqui não apaga a escolha de quem já a
+                  tinha — continua a aparecer no perfil dessa pessoa, marcada
+                  como fora da lista.
+                </p>
+              </Field>
+
+              <SaveBar
+                onSave={handleSave}
+                saved={saved === "redacao"}
+                pending={pending && tab === "redacao"}
+                error={tab === "redacao" ? saveError : null}
               />
             </div>
           )}

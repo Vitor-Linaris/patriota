@@ -62,6 +62,14 @@ const DEFAULTS: SettingsBundle = {
     recaptcha: true,
     recaptchaKey: "",
   },
+  redacao: {
+    cadencias: [
+      "Duas vezes por semana",
+      "Uma vez por semana",
+      "Uma vez por mês",
+      "Uma vez a cada 2 meses",
+    ],
+  },
 };
 
 function mergeWithDefaults(remote: Partial<SettingsBundle>): SettingsBundle {
@@ -72,6 +80,7 @@ function mergeWithDefaults(remote: Partial<SettingsBundle>): SettingsBundle {
     redes: { ...DEFAULTS.redes, ...(remote.redes ?? {}) },
     newsletter: { ...DEFAULTS.newsletter, ...(remote.newsletter ?? {}) },
     seguranca: { ...DEFAULTS.seguranca, ...(remote.seguranca ?? {}) },
+    redacao: { ...DEFAULTS.redacao, ...(remote.redacao ?? {}) },
   };
 }
 
