@@ -434,7 +434,7 @@ export class ReadersService {
    */
   private recordSanction(input: {
     readerId: string;
-    kind: 'ADVERTENCIA' | 'SUSPENSAO' | 'PERMANENTE' | 'LEVANTAMENTO';
+    kind: 'SUSPENSAO' | 'PERMANENTE' | 'LEVANTAMENTO';
     reason?: string | null;
     until?: Date | null;
     staff: ActingStaff;
@@ -461,13 +461,13 @@ export class ReadersService {
 
   /**
    * Everything already done to this reader, newest first, plus the
-   * counts a moderator needs in order to decide.
+   * count a moderator needs in order to decide.
    *
-   * The counts are the point. "Suspender 15 dias" and "Definitivo" are
-   * the same two clicks apart whether this is somebody's first bad day
-   * or their fourth — the screen has to say which, or the escalation the
+   * The count is the point. "Suspender 15 dias" and "Definitivo" are the
+   * same two clicks apart whether this is somebody's first bad day or
+   * their fourth — the screen has to say which, or the escalation the
    * newsroom wants exists only in whichever moderator happens to
-   * remember.
+   * remember the name.
    */
   async historyOf(readerId: string) {
     const [reader, entries] = await Promise.all([
@@ -497,8 +497,7 @@ export class ReadersService {
     return {
       entries,
       total: offences.length,
-      warnings: offences.filter((e) => e.kind === 'ADVERTENCIA').length,
-      suspensions: offences.filter((e) => e.kind !== 'ADVERTENCIA').length,
+      permanent: offences.filter((e) => e.kind === 'PERMANENTE').length,
       /**
        * What the dialog should pre-select. Deliberately a SUGGESTION and
        * never applied on its own: escalating a ban is a decision with a
@@ -507,47 +506,11 @@ export class ReadersService {
        */
       suggested:
         offences.length === 0
-          ? 'ADVERTENCIA'
+          ? 'DIAS_15'
           : offences.length === 1
-            ? 'DIAS_15'
-            : offences.length === 2
-              ? 'DIAS_30'
-              : 'PERMANENTE',
+            ? 'DIAS_30'
+            : 'PERMANENTE',
     };
-  }
-
-  /**
-   * A warning: recorded, and nothing else happens.
-   *
-   * The whole reason it exists is the sentence "this person has been
-   * warned before". Without somewhere to put it, that is a fact that
-   * lives in the memory of whoever was on duty that day, and the next
-   * moderator starts from zero.
-   */
-  async warn(readerId: string, staff: ActingStaff, reason?: string) {
-    const reader = await this.prisma.reader.findUnique({
-      where: { id: readerId },
-      select: { id: true, status: true },
-    });
-    if (!reader) throw new NotFoundException('Leitor não encontrado.');
-    if (reader.status === 'ANONIMIZADO') {
-      throw new BadRequestException('Esta conta já foi anonimizada.');
-    }
-
-    this.recordSanction({
-      readerId,
-      kind: 'ADVERTENCIA',
-      reason,
-      staff,
-    });
-    void this.activity.record({
-      userId: staff.id,
-      action: 'reader_warned',
-      targetType: 'reader',
-      targetId: readerId,
-      targetLabel: reason?.trim() ? 'advertência' : '',
-    });
-    return this.historyOf(readerId);
   }
 
   async suspend(

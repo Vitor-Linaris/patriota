@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { ReadersService } from './readers.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
@@ -26,7 +26,7 @@ function makePrisma() {
   };
 }
 
-const entry = (over: Partial<Record<string, unknown>> = {}) => ({
+const entry = (over: Record<string, unknown> = {}) => ({
   id: 's1',
   kind: 'SUSPENSAO',
   reason: null,
@@ -59,66 +59,69 @@ describe('ReadersService — histórico de moderação', () => {
     service = moduleRef.get(ReadersService);
   });
 
-  describe('warn()', () => {
-    it('records the warning and changes nothing about the account', async () => {
-      // warn() devolve o histórico no fim, e isso volta a consultar a
-      // linha — daí mockResolvedValue e não ...Once.
+  const active = { id: 'r1', email: 'a@x.pt', name: 'Ana', status: 'ATIVO' };
+  const updated = {
+    id: 'r1',
+    email: 'a@x.pt',
+    name: 'Ana',
+    status: 'SUSPENSO',
+    suspendedUntil: null,
+    suspensionReason: null,
+    suspendedBy: null,
+  };
+
+  describe('suspend()', () => {
+    it('writes a line in the history, with who did it', async () => {
+      // actorLabel is stored rather than joined later, for the same
+      // reason ActivityLog does it: the record of who moderated has to
+      // outlive the moderator's account.
+      prisma.reader.findUnique.mockResolvedValue(active);
+      prisma.reader.update.mockResolvedValue(updated);
+
+      await service.suspend('r1', 'DIAS_15', staff, { reason: '  Insultos  ' });
+
+      const data = prisma.readerSanction.create.mock.calls[0][0].data;
+      expect(data).toMatchObject({
+        readerId: 'r1',
+        kind: 'SUSPENSAO',
+        reason: 'Insultos',
+        actorId: 'u1',
+        actorLabel: 'Ana <ana@opatriota.pt>',
+      });
+      // A timed ban carries its end date; the history shows it.
+      expect(data.until).toBeInstanceOf(Date);
+    });
+
+    it('records a definitive ban as PERMANENTE, with no end date', async () => {
+      prisma.reader.findUnique.mockResolvedValue(active);
+      prisma.reader.update.mockResolvedValue(updated);
+
+      await service.suspend('r1', 'PERMANENTE', staff);
+
+      expect(prisma.readerSanction.create.mock.calls[0][0].data).toMatchObject({
+        kind: 'PERMANENTE',
+        until: null,
+      });
+    });
+  });
+
+  describe('unsuspend()', () => {
+    it('records the lifting too', async () => {
+      // A history that hides the liftings reads as a newsroom that never
+      // changes its mind.
       prisma.reader.findUnique.mockResolvedValue({
-        id: 'r1',
-        status: 'ATIVO',
+        ...active,
+        status: 'SUSPENSO',
+        emailVerifiedAt: new Date(),
       });
+      prisma.reader.update.mockResolvedValue(updated);
 
-      await service.warn('r1', staff, '  Linguagem ofensiva  ');
+      await service.unsuspend('r1', staff);
 
-      expect(prisma.readerSanction.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          readerId: 'r1',
-          kind: 'ADVERTENCIA',
-          reason: 'Linguagem ofensiva',
-          until: null,
-          actorId: 'u1',
-        }),
+      expect(prisma.readerSanction.create.mock.calls[0][0].data).toMatchObject({
+        kind: 'LEVANTAMENTO',
+        actorId: 'u1',
       });
-      // A warning is a record, not a punishment.
-      expect(prisma.reader.update).not.toHaveBeenCalled();
-    });
-
-    it('writes who acted, so the line survives their account', async () => {
-      // Same reason ActivityLog.actorLabel exists: the record of who
-      // moderated has to outlive the moderator's account.
-      // warn() devolve o histórico no fim, e isso volta a consultar a
-      // linha — daí mockResolvedValue e não ...Once.
-      prisma.reader.findUnique.mockResolvedValue({
-        id: 'r1',
-        status: 'ATIVO',
-      });
-
-      await service.warn('r1', staff);
-
-      expect(
-        prisma.readerSanction.create.mock.calls[0][0].data.actorLabel,
-      ).toBe('Ana <ana@opatriota.pt>');
-    });
-
-    it('refuses an anonymised account', async () => {
-      // There is nobody behind it to warn, and the row exists only to
-      // keep threads readable.
-      prisma.reader.findUnique.mockResolvedValueOnce({
-        id: 'r1',
-        status: 'ANONIMIZADO',
-      });
-
-      await expect(service.warn('r1', staff)).rejects.toThrow(
-        BadRequestException,
-      );
-      expect(prisma.readerSanction.create).not.toHaveBeenCalled();
-    });
-
-    it('refuses a reader that does not exist', async () => {
-      prisma.reader.findUnique.mockResolvedValueOnce(null);
-      await expect(service.warn('nope', staff)).rejects.toThrow(
-        NotFoundException,
-      );
     });
   });
 
@@ -126,15 +129,14 @@ describe('ReadersService — histórico de moderação', () => {
     const present = () =>
       prisma.reader.findUnique.mockResolvedValue({ id: 'r1' });
 
-    it('escalates with each offence', async () => {
+    it('escalates with each suspension', async () => {
       // The whole point of the feature: the same two clicks should not
       // mean the same thing on somebody's first bad day and their
       // fourth.
       const cases: [number, string][] = [
-        [0, 'ADVERTENCIA'],
-        [1, 'DIAS_15'],
-        [2, 'DIAS_30'],
-        [3, 'PERMANENTE'],
+        [0, 'DIAS_15'],
+        [1, 'DIAS_30'],
+        [2, 'PERMANENTE'],
         [9, 'PERMANENTE'],
       ];
       for (const [count, expected] of cases) {
@@ -160,24 +162,26 @@ describe('ReadersService — histórico de moderação', () => {
       const out = await service.historyOf('r1');
 
       expect(out.total).toBe(1);
-      expect(out.suggested).toBe('DIAS_15');
-      // …but it is still SHOWN. A history that hides the lifting reads
-      // as a newsroom that never changes its mind.
+      expect(out.suggested).toBe('DIAS_30');
+      // …but it is still SHOWN, for the reason above.
       expect(out.entries).toHaveLength(2);
     });
 
-    it('counts warnings and suspensions apart', async () => {
+    it('marks a definitive suspension apart from a timed one', async () => {
+      // "Já foi suspenso 3 vezes · incluindo uma suspensão definitiva"
+      // is a different sentence from three fifteen-day bans, and it is
+      // the one that tells a moderator there is nothing left to escalate
+      // to.
       present();
       prisma.readerSanction.findMany.mockResolvedValueOnce([
-        entry({ id: 'a', kind: 'ADVERTENCIA' }),
-        entry({ id: 'b', kind: 'ADVERTENCIA' }),
+        entry({ id: 'a', kind: 'SUSPENSAO' }),
+        entry({ id: 'b', kind: 'SUSPENSAO' }),
         entry({ id: 'c', kind: 'PERMANENTE' }),
       ]);
 
       await expect(service.historyOf('r1')).resolves.toMatchObject({
         total: 3,
-        warnings: 2,
-        suspensions: 1,
+        permanent: 1,
       });
     });
 
@@ -188,6 +192,11 @@ describe('ReadersService — histórico de moderação', () => {
         where: { readerId: 'r1' },
         orderBy: { createdAt: 'desc' },
       });
+    });
+
+    it('refuses a reader that does not exist', async () => {
+      prisma.reader.findUnique.mockResolvedValueOnce(null);
+      await expect(service.historyOf('nope')).rejects.toThrow(NotFoundException);
     });
   });
 });

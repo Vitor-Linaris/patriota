@@ -66,7 +66,7 @@ export function BanReaderDialog({
         // still pick anything — escalating a ban is a decision with a
         // person on the other end of it, and a screen that decides on
         // their behalf is a screen they stop reading.
-        if (d.suggested !== "ADVERTENCIA") setDuration(d.suggested);
+        setDuration(d.suggested);
       })
       .catch(() => undefined)
       .finally(() => {

@@ -749,8 +749,6 @@ model Reader {
 ///
 /// Esta tabela é o registo que faltava: uma linha por acto, que fica.
 enum ReaderSanctionKind {
-  /// Sem suspensão — fica registado que a pessoa foi avisada.
-  ADVERTENCIA
   /// Suspensão com data de fim; ver `until`.
   SUSPENSAO
   /// Suspensão sem data de fim.

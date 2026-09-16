@@ -1,11 +1,7 @@
 "use client";
 
 /** Mirrors ReaderSanctionKind in the Prisma schema. */
-export type SanctionKind =
-  | "ADVERTENCIA"
-  | "SUSPENSAO"
-  | "PERMANENTE"
-  | "LEVANTAMENTO";
+export type SanctionKind = "SUSPENSAO" | "PERMANENTE" | "LEVANTAMENTO";
 
 export interface SanctionEntry {
   id: string;
@@ -20,21 +16,18 @@ export interface ReaderHistoryData {
   entries: SanctionEntry[];
   /** Offences only — a lifted suspension does not count against anyone. */
   total: number;
-  warnings: number;
-  suspensions: number;
+  permanent: number;
   /** What the API suggests next. A suggestion, never applied on its own. */
-  suggested: "ADVERTENCIA" | "DIAS_15" | "DIAS_30" | "PERMANENTE";
+  suggested: "DIAS_15" | "DIAS_30" | "PERMANENTE";
 }
 
 const KIND_LABEL: Record<SanctionKind, string> = {
-  ADVERTENCIA: "Advertência",
   SUSPENSAO: "Suspensão",
   PERMANENTE: "Suspensão definitiva",
   LEVANTAMENTO: "Suspensão levantada",
 };
 
 const KIND_TONE: Record<SanctionKind, string> = {
-  ADVERTENCIA: "bg-amber-50 text-amber-700 ring-amber-200",
   SUSPENSAO: "bg-orange-50 text-orange-700 ring-orange-200",
   PERMANENTE: "bg-red-50 text-red-700 ring-red-200",
   LEVANTAMENTO: "bg-emerald-50 text-emerald-700 ring-emerald-200",
@@ -75,7 +68,7 @@ export function ReaderHistory({
   if (data.total === 0) {
     return (
       <p className="rounded-lg bg-emerald-50 px-3 py-2.5 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200">
-        Sem registos anteriores — é a primeira ocorrência deste leitor.
+        Sem registos anteriores — é a primeira suspensão deste leitor.
       </p>
     );
   }
@@ -83,10 +76,10 @@ export function ReaderHistory({
   return (
     <div className="rounded-lg border border-amber-200 bg-amber-50/60">
       <p className="px-3 pt-2.5 text-xs font-bold text-amber-900">
-        {data.total}{" "}
-        {data.total === 1 ? "ocorrência anterior" : "ocorrências anteriores"}
-        {data.warnings > 0 && ` · ${data.warnings} advertência(s)`}
-        {data.suspensions > 0 && ` · ${data.suspensions} suspensão(ões)`}
+        {data.total === 1
+          ? "Já foi suspenso uma vez"
+          : `Já foi suspenso ${data.total} vezes`}
+        {data.permanent > 0 && " · incluindo uma suspensão definitiva"}
       </p>
       <ul className="max-h-44 overflow-y-auto px-3 pb-2.5 pt-2">
         {data.entries.map((e) => (

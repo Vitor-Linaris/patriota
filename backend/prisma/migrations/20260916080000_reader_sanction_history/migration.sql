@@ -7,11 +7,8 @@
 -- se aquela pessoa e um caso novo ou o terceiro aviso ao mesmo
 -- individuo, que e exactamente a diferenca entre 15 dias e definitivo.
 --
--- Uma linha por acto, e fica. ADVERTENCIA existe para haver forma de
--- registar um aviso sem suspender: sem ela, "ja foi advertido" e uma
--- coisa que so vive na memoria de quem estava de servico nesse dia.
+-- Uma linha por acto, e fica.
 CREATE TYPE "ReaderSanctionKind" AS ENUM (
-  'ADVERTENCIA',
   'SUSPENSAO',
   'PERMANENTE',
   'LEVANTAMENTO'

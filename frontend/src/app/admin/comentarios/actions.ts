@@ -93,21 +93,6 @@ export async function suspendReaderAction(
   });
 }
 
-/**
- * Um aviso registado, sem suspender.
- *
- * Existe porque "esta pessoa já foi advertida" tem de poder ser um
- * facto e não uma recordação de quem estava de serviço nesse dia.
- */
-export async function warnReaderAction(
-  readerId: string,
-  reason?: string,
-) {
-  return post(`/admin/readers/${readerId}/advertir`, {
-    ...(reason ? { reason } : {}),
-  });
-}
-
 export async function unsuspendReaderAction(
   readerId: string,
 ): Promise<ActionResult> {

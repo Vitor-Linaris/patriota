@@ -11,7 +11,6 @@ import {
 } from '@nestjs/common';
 import { ReadersService } from './readers.service';
 import { SuspendReaderDto } from './dto/suspend-reader.dto';
-import { WarnReaderDto } from './dto/warn-reader.dto';
 import { ListReadersQueryDto } from './dto/list-readers.dto';
 import { GrantSubscriptionDto } from './dto/grant-subscription.dto';
 import { RequirePermissions } from '../auth/permissions.decorator';
@@ -59,18 +58,6 @@ export class AdminReadersController {
   @RequirePermissions('leitores.suspender')
   history(@Param('id') id: string) {
     return this.readers.historyOf(id);
-  }
-
-  /** Um aviso: fica registado, e mais nada acontece. */
-  @Post(':id/advertir')
-  @RequirePermissions('leitores.suspender')
-  @HttpCode(HttpStatus.OK)
-  warn(
-    @Param('id') id: string,
-    @Body() dto: WarnReaderDto,
-    @CurrentUser() user: AuthUser,
-  ) {
-    return this.readers.warn(id, user, dto.reason);
   }
 
   @Post(':id/suspend')
