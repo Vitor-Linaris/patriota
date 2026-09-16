@@ -2,6 +2,10 @@ import { AdminShell } from "../AdminShell";
 import AdminPackagesClient from "./AdminPackagesClient";
 import { apiFetch } from "@/lib/api";
 import type { AdminPackage, PackagePurchaseRow } from "./types";
+import {
+  flattenCategoryTree,
+  type CategoryTreeApi,
+} from "@/lib/category-options";
 
 interface PageResult<T> {
   items: T[];
@@ -11,9 +15,14 @@ interface PageResult<T> {
 }
 
 export default async function Page() {
-  const [listRes, meRes] = await Promise.all([
+  const [listRes, meRes, categoriesRes] = await Promise.all([
     apiFetch("/admin/packages?pageSize=100"),
     apiFetch("/auth/me"),
+    // Feeds the category filter in the article picker. Gated on
+    // `artigos.ler`, which anybody building a pacote necessarily has —
+    // NOT /tree, which needs `categorias.ver` and would leave the filter
+    // empty for an editor who may file but not manage sections.
+    apiFetch("/admin/categories/options"),
   ]);
 
   if (listRes.status === 403) {
@@ -35,6 +44,9 @@ export default async function Page() {
   const me = meRes.ok
     ? ((await meRes.json()) as { permissions?: string[]; role?: string })
     : {};
+  const categories = categoriesRes.ok
+    ? flattenCategoryTree((await categoriesRes.json()) as CategoryTreeApi[])
+    : [];
   const perms = new Set(me.permissions ?? []);
   const has = (p: string) => me.role === "SUPER_ADMIN" || perms.has(p);
 
@@ -57,6 +69,7 @@ export default async function Page() {
       <AdminPackagesClient
         initialPackages={list.items}
         initialPurchases={purchases?.items ?? []}
+        categories={categories}
         can={{
           create: has("pacotes.criar"),
           edit: has("pacotes.editar"),

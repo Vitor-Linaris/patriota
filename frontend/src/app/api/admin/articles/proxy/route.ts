@@ -22,7 +22,12 @@ import { apiBaseUrl } from "@/lib/api-base";
  * by name. This is convenience; that is the rule.
  */
 
-const FORWARDED = ["q", "page", "pageSize", "status"] as const;
+/**
+ * `category` takes a SLUG, which is what /admin/articles filters on. It
+ * is narrowing-only — it can never widen what the picker may see, which
+ * is governed by the caller's own permissions on the API.
+ */
+const FORWARDED = ["q", "page", "pageSize", "status", "category"] as const;
 
 export async function GET(req: Request) {
   const cookieStore = await cookies();

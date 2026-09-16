@@ -269,6 +269,7 @@ export default async function ArticlePage({
                   signedIn={signedIn}
                   billingLive={FEATURES.billing}
                   returnTo={`/artigo/${article.slug}`}
+                  offer={article.packageOffer}
                 />
               )}
 

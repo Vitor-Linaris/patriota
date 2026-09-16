@@ -1,3 +1,4 @@
+import type { PackageOffer } from "@/components/article/Paywall";
 import { cache } from "react";
 import { mapApiAdToUi, type Ad, type AdApi } from "./ads";
 import { apiBaseUrl } from "./api-base";
@@ -56,6 +57,13 @@ export interface ArticleDetail extends ArticleSummary {
   contentPreview?: string;
   /** A partner's video page or a direct file URL — see VideoEmbed.tsx. */
   videoEmbedUrl?: string | null;
+  /**
+   * The cheapest published pacote that contains this article, present
+   * only when the article was withheld. Lets the paywall offer the way
+   * in that actually works — a pacote outside the subscription is NOT
+   * opened by subscribing.
+   */
+  packageOffer?: PackageOffer | null;
 }
 
 export interface HomepageBundle {

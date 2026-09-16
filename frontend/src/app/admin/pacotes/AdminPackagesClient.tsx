@@ -6,6 +6,7 @@ import { CoverImagePicker } from "@/components/admin/CoverImagePicker";
 import { imageVariant } from "@/lib/images";
 import { adminMediaUrl } from "@/lib/media-preview";
 import { ArticlePicker } from "./ArticlePicker";
+import type { CategoryOption } from "@/lib/category-options";
 import {
   centsToEuros,
   eurosToCents,
@@ -76,10 +77,13 @@ function fmtDate(iso: string | null): string {
 export default function AdminPackagesClient({
   initialPackages,
   initialPurchases,
+  categories,
   can,
 }: {
   initialPackages: AdminPackage[];
   initialPurchases: PackagePurchaseRow[];
+  /** The whole forest, flattened, for the picker's category filter. */
+  categories: CategoryOption[];
   can: PackagePermissions;
 }) {
   const router = useRouter();
@@ -100,6 +104,33 @@ export default function AdminPackagesClient({
   const liveAndFree = form.members.filter(
     (m) => m.article.status === "PUBLICADO" && !m.article.exclusive,
   );
+
+  /**
+   * What publishing is about to do, in words, before the click.
+   *
+   * Publishing closes EVERY article in the pacote, including ones that
+   * are live and free today — a pacote whose articles stay readable at
+   * their own URLs is a pacote nobody needs to buy. That is a real
+   * consequence for readers who already have those links, so it is
+   * named here rather than discovered afterwards.
+   */
+  const publishConfirmText = () => {
+    const price =
+      eurosToCents(form.priceEuros) !== null
+        ? formatPrice(eurosToCents(form.priceEuros)!)
+        : "—";
+    const steps: string[] = [];
+    if (drafts.length > 0) {
+      steps.push(`publicar ${drafts.length} artigo(s) em rascunho`);
+    }
+    if (liveAndFree.length > 0) {
+      steps.push(
+        `FECHAR ${liveAndFree.length} artigo(s) que hoje qualquer pessoa lê`,
+      );
+    }
+    const what = steps.length > 0 ? `Vai ${steps.join(" e ")}, e ` : "Vai ";
+    return `${what}pôr o pacote à venda por ${price}. Continuar?`;
+  };
 
   const closeEditor = useCallback(() => {
     setEditorOpen(false);
@@ -495,9 +526,9 @@ export default function AdminPackagesClient({
                 {liveAndFree.length > 0 && (
                   <p className="mt-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-snug text-amber-900">
                     {liveAndFree.length} artigo(s) já publicados e{" "}
-                    <strong>livres</strong>: continuam a ser lidos por todos.
-                    Publicar o pacote não os fecha — isso retiraria da vista
-                    pública algo que já estava lá.
+                    <strong>livres</strong>: hoje qualquer pessoa os lê.
+                    Publicar o pacote <strong>fecha-os</strong> — deixam de
+                    estar acessíveis a quem não pagar. Pode fechá-los já:
                     {can.edit && (
                       <>
                         {" "}
@@ -671,21 +702,7 @@ export default function AdminPackagesClient({
                           runOnPackage(
                             "Pacote publicado.",
                             publishPackageAction,
-                            drafts.length > 0
-                              ? `Vai publicar ${drafts.length} artigo(s) e pôr o pacote à venda por ${
-                                  eurosToCents(form.priceEuros) !== null
-                                    ? formatPrice(
-                                        eurosToCents(form.priceEuros)!,
-                                      )
-                                    : "—"
-                                }. Continuar?`
-                              : `Pôr o pacote à venda por ${
-                                  eurosToCents(form.priceEuros) !== null
-                                    ? formatPrice(
-                                        eurosToCents(form.priceEuros)!,
-                                      )
-                                    : "—"
-                                }. Continuar?`,
+                            publishConfirmText(),
                           )
                         }
                         className="rounded-md bg-emerald-700 px-4 py-1.5 text-[13px] font-bold text-white hover:bg-emerald-800 disabled:opacity-60"
@@ -723,6 +740,7 @@ export default function AdminPackagesClient({
 
       {pickerOpen && (
         <ArticlePicker
+          categories={categories}
           selectedIds={form.members.map((m) => m.article.id)}
           onChange={(ids) => {
             // Keep what is already known about members that survive, and
