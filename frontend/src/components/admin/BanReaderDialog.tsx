@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import {
+  ReaderHistory,
+  type ReaderHistoryData,
+} from "./ReaderHistory";
 /**
  * Kept here rather than imported from a page's actions file: two admin
  * screens hand out bans, and the vocabulary belongs to the dialog that
@@ -25,11 +29,13 @@ const OPTIONS: { key: SuspensionDuration; label: string; hint: string }[] = [
  */
 export function BanReaderDialog({
   readerLabel,
+  readerId,
   busy,
   onCancel,
   onConfirm,
 }: {
   readerLabel: string;
+  readerId: string;
   busy: boolean;
   onCancel: () => void;
   onConfirm: (
@@ -37,10 +43,39 @@ export function BanReaderDialog({
     opts: { reason?: string; purgeComments?: boolean },
   ) => void;
 }) {
+  const [history, setHistory] = useState<ReaderHistoryData | null>(null);
+  const [loadingHistory, setLoadingHistory] = useState(true);
   const [duration, setDuration] = useState<SuspensionDuration>("DIAS_15");
   const [reason, setReason] = useState("");
   const [purge, setPurge] = useState(false);
   const firstRef = useRef<HTMLButtonElement>(null);
+
+  /*
+   * Fetched when the dialog opens, not with the list behind it: a queue
+   * of eighty comments would mean eighty of these, for a number the
+   * moderator only looks at when they are about to act on somebody.
+   */
+  useEffect(() => {
+    let abort = false;
+    fetch(`/api/admin/leitores/${readerId}/historico`, { cache: "no-store" })
+      .then((r) => (r.ok ? (r.json() as Promise<ReaderHistoryData>) : null))
+      .then((d) => {
+        if (abort || !d) return;
+        setHistory(d);
+        // The suggestion, applied as a starting point. The moderator can
+        // still pick anything — escalating a ban is a decision with a
+        // person on the other end of it, and a screen that decides on
+        // their behalf is a screen they stop reading.
+        if (d.suggested !== "ADVERTENCIA") setDuration(d.suggested);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!abort) setLoadingHistory(false);
+      });
+    return () => {
+      abort = true;
+    };
+  }, [readerId]);
 
   useEffect(() => {
     firstRef.current?.focus();
@@ -69,6 +104,10 @@ export function BanReaderDialog({
           de imediato.
         </p>
 
+        <div className="mt-4">
+          <ReaderHistory data={history} loading={loadingHistory} />
+        </div>
+
         <div className="mt-4 flex flex-col gap-2">
           {OPTIONS.map((o, i) => (
             <button
@@ -86,7 +125,21 @@ export function BanReaderDialog({
               <span className="text-sm font-bold text-gray-800">
                 {o.label}
               </span>
-              <span className="text-xs text-gray-400">{o.hint}</span>
+              {/*
+                The static hint ("Primeira infracção") is only true when
+                there is no history. Next to a panel saying this is the
+                third occurrence it contradicts the screen it sits on,
+                so once the history has loaded the hints give way to the
+                one thing that is actually useful: which option this
+                reader's record points at.
+              */}
+              <span className="text-xs text-gray-400">
+                {history && history.total > 0
+                  ? history.suggested === o.key
+                    ? "Sugerido pelo histórico"
+                    : ""
+                  : o.hint}
+              </span>
             </button>
           ))}
         </div>

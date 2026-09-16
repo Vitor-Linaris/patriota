@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
@@ -155,6 +156,8 @@ const READER_ROW = {
 
 @Injectable()
 export class ReadersService {
+  private readonly logger = new Logger(ReadersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly activity: ActivityLogService,
@@ -417,6 +420,136 @@ export class ReadersService {
    * ban ends by the calendar arriving rather than by a job remembering
    * to run. See reader-suspension.ts.
    */
+  /**
+   * One line in the reader's moderation history.
+   *
+   * Fire-and-forget on purpose, like the activity log next to it: a
+   * write that fails here must not turn a completed suspension into a
+   * 500 for the moderator, who would then have no idea whether the ban
+   * landed.
+   *
+   * `actorLabel` is written now rather than joined later, for the same
+   * reason ActivityLog does it — the record of who moderated has to
+   * outlive the account of whoever moderated.
+   */
+  private recordSanction(input: {
+    readerId: string;
+    kind: 'ADVERTENCIA' | 'SUSPENSAO' | 'PERMANENTE' | 'LEVANTAMENTO';
+    reason?: string | null;
+    until?: Date | null;
+    staff: ActingStaff;
+  }): void {
+    void this.prisma.readerSanction
+      .create({
+        data: {
+          readerId: input.readerId,
+          kind: input.kind,
+          reason: input.reason?.trim() || null,
+          until: input.until ?? null,
+          actorId: input.staff.id,
+          actorLabel: `${input.staff.name ?? 'Sem nome'} <${input.staff.email}>`,
+        },
+      })
+      .catch((e: unknown) => {
+        this.logger.warn(
+          `Falhou o registo de moderação do leitor ${input.readerId}: ${
+            e instanceof Error ? e.message : String(e)
+          }`,
+        );
+      });
+  }
+
+  /**
+   * Everything already done to this reader, newest first, plus the
+   * counts a moderator needs in order to decide.
+   *
+   * The counts are the point. "Suspender 15 dias" and "Definitivo" are
+   * the same two clicks apart whether this is somebody's first bad day
+   * or their fourth — the screen has to say which, or the escalation the
+   * newsroom wants exists only in whichever moderator happens to
+   * remember.
+   */
+  async historyOf(readerId: string) {
+    const [reader, entries] = await Promise.all([
+      this.prisma.reader.findUnique({
+        where: { id: readerId },
+        select: { id: true },
+      }),
+      this.prisma.readerSanction.findMany({
+        where: { readerId },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+        select: {
+          id: true,
+          kind: true,
+          reason: true,
+          until: true,
+          actorLabel: true,
+          createdAt: true,
+        },
+      }),
+    ]);
+    if (!reader) throw new NotFoundException('Leitor não encontrado.');
+
+    // A lifted suspension is not an offence — it is somebody undoing
+    // one — so it does not count towards the escalation.
+    const offences = entries.filter((e) => e.kind !== 'LEVANTAMENTO');
+    return {
+      entries,
+      total: offences.length,
+      warnings: offences.filter((e) => e.kind === 'ADVERTENCIA').length,
+      suspensions: offences.filter((e) => e.kind !== 'ADVERTENCIA').length,
+      /**
+       * What the dialog should pre-select. Deliberately a SUGGESTION and
+       * never applied on its own: escalating a ban is a decision with a
+       * person on the other end of it, and the moderator can always
+       * choose something else.
+       */
+      suggested:
+        offences.length === 0
+          ? 'ADVERTENCIA'
+          : offences.length === 1
+            ? 'DIAS_15'
+            : offences.length === 2
+              ? 'DIAS_30'
+              : 'PERMANENTE',
+    };
+  }
+
+  /**
+   * A warning: recorded, and nothing else happens.
+   *
+   * The whole reason it exists is the sentence "this person has been
+   * warned before". Without somewhere to put it, that is a fact that
+   * lives in the memory of whoever was on duty that day, and the next
+   * moderator starts from zero.
+   */
+  async warn(readerId: string, staff: ActingStaff, reason?: string) {
+    const reader = await this.prisma.reader.findUnique({
+      where: { id: readerId },
+      select: { id: true, status: true },
+    });
+    if (!reader) throw new NotFoundException('Leitor não encontrado.');
+    if (reader.status === 'ANONIMIZADO') {
+      throw new BadRequestException('Esta conta já foi anonimizada.');
+    }
+
+    this.recordSanction({
+      readerId,
+      kind: 'ADVERTENCIA',
+      reason,
+      staff,
+    });
+    void this.activity.record({
+      userId: staff.id,
+      action: 'reader_warned',
+      targetType: 'reader',
+      targetId: readerId,
+      targetLabel: reason?.trim() ? 'advertência' : '',
+    });
+    return this.historyOf(readerId);
+  }
+
   async suspend(
     readerId: string,
     duration: SuspensionDuration,
@@ -450,6 +583,14 @@ export class ReadersService {
         tokenVersion: { increment: 1 },
       },
       select: READER_VIEW,
+    });
+
+    this.recordSanction({
+      readerId,
+      kind: until === null ? 'PERMANENTE' : 'SUSPENSAO',
+      reason: opts.reason,
+      until,
+      staff,
     });
 
     const purged = opts.purgeComments
@@ -507,6 +648,12 @@ export class ReadersService {
         suspendedById: null,
       },
       select: READER_VIEW,
+    });
+
+    this.recordSanction({
+      readerId,
+      kind: 'LEVANTAMENTO',
+      staff,
     });
 
     void this.activity.record({

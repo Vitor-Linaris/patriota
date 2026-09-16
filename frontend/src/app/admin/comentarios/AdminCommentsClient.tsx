@@ -9,6 +9,7 @@ import {
   deleteCommentAction,
   permanentlyDeleteCommentAction,
   suspendReaderAction,
+  warnReaderAction,
   unsuspendReaderAction,
 } from "./actions";
 import { BanReaderDialog } from "@/components/admin/BanReaderDialog";
@@ -416,6 +417,34 @@ export default function AdminCommentsClient({
                         Suspender leitor
                       </button>
                     ))}
+                  {/* The step BELOW a suspension, and the one the
+                      newsroom had no way to record: a warning leaves a
+                      line in the person's history and nothing else
+                      happens to them. Without it, "já foi advertido" is
+                      a fact that survives only in the memory of whoever
+                      was on duty that night. */}
+                  {canBan && !bannedNow(c.reader) && (
+                    <button
+                      type="button"
+                      disabled={isPending}
+                      onClick={() => {
+                        const who = c.reader.name ?? c.reader.email;
+                        const reason = window.prompt(
+                          `Advertir ${who}. Motivo (opcional):`,
+                        );
+                        if (reason === null) return;
+                        run(() =>
+                          warnReaderAction(
+                            c.reader.id,
+                            reason.trim() || undefined,
+                          ),
+                        );
+                      }}
+                      className="rounded-lg px-3 py-1 text-xs font-semibold text-amber-700 transition-colors hover:text-amber-800 disabled:opacity-50"
+                    >
+                      Advertir
+                    </button>
+                  )}
                 </div>
               </div>
             </li>
@@ -426,6 +455,7 @@ export default function AdminCommentsClient({
       {banning && (
         <BanReaderDialog
           readerLabel={banning.name ?? banning.email}
+          readerId={banning.id}
           busy={isPending}
           onCancel={() => setBanning(null)}
           onConfirm={(duration, opts) => {
