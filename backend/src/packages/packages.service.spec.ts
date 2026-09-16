@@ -183,27 +183,46 @@ describe('PackagesService', () => {
       );
     });
 
-    it('publishes the drafts AND makes exactly those exclusive', async () => {
+    it('publishes only the drafts, and makes every member exclusive', async () => {
       prisma.package.findUnique.mockResolvedValue(
         withMembers([
           member('a1', 'RASCUNHO'),
           member('a2', 'EM_REVISAO'),
-          // Already live and already exclusive: nothing to do to it.
+          // Already live and already exclusive.
           member('a3', 'PUBLICADO', true),
         ]),
       );
       await service.publish('p1', editor);
 
+      // Publishing is for the drafts alone — a3 is already out.
       expect(articles.publish).toHaveBeenCalledTimes(2);
       expect(articles.publish).toHaveBeenCalledWith('a1', editor);
       expect(articles.publish).toHaveBeenCalledWith('a2', editor);
+      // Closing is for all of them. `exclusive: false` in the where is
+      // what keeps a3 out of the write without keeping it out of the
+      // rule — it is already closed, so there is nothing to do to it.
       expect(prisma.article.updateMany).toHaveBeenCalledWith({
-        where: { id: { in: ['a1', 'a2'] } },
+        where: { id: { in: ['a1', 'a2', 'a3'] }, exclusive: false },
         data: { exclusive: true },
       });
     });
 
-    it('does NOT convert a member that was already live and free', async () => {
+    it('closes a member that was already live and free', async () => {
+      /*
+       * This used to assert the opposite — that a live free member was
+       * left open, and needed a separate "Tornar exclusivos" click. The
+       * reasoning was sound about the danger (closing an article removes
+       * from public view something anybody could read yesterday) and
+       * wrong about where to put the decision.
+       *
+       * What it produced was a pacote on sale whose articles were still
+       * free at their own URLs: the buyer pays for something anybody can
+       * read, and nobody notices until a reader does. Publishing a
+       * pacote IS the decision to sell what is in it.
+       *
+       * The warning moved to the confirmation, which names how many live
+       * free articles are about to close BEFORE the click.
+       */
       prisma.package.findUnique.mockResolvedValue(
         withMembers([
           member('a1', 'RASCUNHO'),
@@ -212,12 +231,30 @@ describe('PackagesService', () => {
       );
       await service.publish('p1', editor);
 
-      // a2 must be absent. Putting a free article behind a paywall removes
-      // from public view something anybody could read yesterday; that needs
-      // an explicit "Tornar exclusivos", not a side effect of publishing.
       const call = prisma.article.updateMany.mock.calls[0][0];
-      expect(call.where.id.in).toEqual(['a1']);
+      expect(call.where.id.in).toEqual(['a1', 'a2']);
+      expect(call.data).toEqual({ exclusive: true });
+      // Still only the DRAFT is published — a2 was already live.
       expect(articles.publish).not.toHaveBeenCalledWith('a2', editor);
+    });
+
+    it('closes the members even when there was no draft to publish', async () => {
+      // A pacote built entirely from articles that were already out.
+      // Nothing to publish, and everything to close.
+      prisma.package.findUnique.mockResolvedValue(
+        withMembers([
+          member('a1', 'PUBLICADO', false),
+          member('a2', 'PUBLICADO', false),
+        ]),
+      );
+
+      await service.publish('p1', editor);
+
+      expect(articles.publish).not.toHaveBeenCalled();
+      expect(prisma.article.updateMany).toHaveBeenCalledWith({
+        where: { id: { in: ['a1', 'a2'] }, exclusive: false },
+        data: { exclusive: true },
+      });
     });
 
     it('refuses, and publishes NOTHING, without artigos.publicar', async () => {

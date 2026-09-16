@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CoverImagePicker } from "@/components/admin/CoverImagePicker";
 import { imageVariant } from "@/lib/images";
 import { adminMediaUrl } from "@/lib/media-preview";
 import { ArticlePicker } from "./ArticlePicker";
+import type { CategoryOption } from "@/lib/category-options";
 import {
   centsToEuros,
   eurosToCents,
@@ -76,16 +77,21 @@ function fmtDate(iso: string | null): string {
 export default function AdminPackagesClient({
   initialPackages,
   initialPurchases,
+  categories,
   can,
 }: {
   initialPackages: AdminPackage[];
   initialPurchases: PackagePurchaseRow[];
+  /** The whole forest, flattened, for the picker's category filter. */
+  categories: CategoryOption[];
   can: PackagePermissions;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [tab, setTab] = useState<"pacotes" | "compras">("pacotes");
   const [editorOpen, setEditorOpen] = useState(false);
+  /** JSON of the form as opened; null when the editor is closed. */
+  const [baseline, setBaseline] = useState<string | null>(null);
   const [form, setForm] = useState<EditorState>(EMPTY);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -101,12 +107,92 @@ export default function AdminPackagesClient({
     (m) => m.article.status === "PUBLICADO" && !m.article.exclusive,
   );
 
+  /**
+   * What publishing is about to do, in words, before the click.
+   *
+   * Publishing closes EVERY article in the pacote, including ones that
+   * are live and free today — a pacote whose articles stay readable at
+   * their own URLs is a pacote nobody needs to buy. That is a real
+   * consequence for readers who already have those links, so it is
+   * named here rather than discovered afterwards.
+   */
+  const publishConfirmText = () => {
+    const price =
+      eurosToCents(form.priceEuros) !== null
+        ? formatPrice(eurosToCents(form.priceEuros)!)
+        : "—";
+    const steps: string[] = [];
+    if (drafts.length > 0) {
+      steps.push(`publicar ${drafts.length} artigo(s) em rascunho`);
+    }
+    if (liveAndFree.length > 0) {
+      steps.push(
+        `FECHAR ${liveAndFree.length} artigo(s) que hoje qualquer pessoa lê`,
+      );
+    }
+    const what = steps.length > 0 ? `Vai ${steps.join(" e ")}, e ` : "Vai ";
+    return `${what}pôr o pacote à venda por ${price}. Continuar?`;
+  };
+
   const closeEditor = useCallback(() => {
     setEditorOpen(false);
     setForm(EMPTY);
     setError(null);
     setNotice(null);
+    setBaseline(null);
   }, []);
+
+  /**
+   * The form exactly as it was opened, serialised.
+   *
+   * Comparing against it is what tells a stray click on the backdrop
+   * apart from one that throws away twenty minutes of typing. Without
+   * it, "click outside to close" is a good shortcut attached to a way
+   * of losing work silently.
+   */
+  const dirty = baseline !== null && JSON.stringify(form) !== baseline;
+
+  /**
+   * Every way out of the editor except Guardar goes through here:
+   * Cancelar, Esc, and a click on the dark area around the panel.
+   *
+   * A pacote editor is a long form — name, description, cover, price,
+   * and a list of articles picked one at a time — so the confirmation
+   * is not ceremony. It only appears when something actually changed:
+   * opening a pacote to look at it and clicking away closes instantly,
+   * which is the common case and the one the shortcut is for.
+   */
+  const requestCloseEditor = useCallback(() => {
+    if (pending) return;
+    if (
+      dirty &&
+      !window.confirm(
+        "Tem alterações por guardar neste pacote. Fechar e perdê-las?",
+      )
+    ) {
+      return;
+    }
+    closeEditor();
+  }, [closeEditor, dirty, pending]);
+
+  // Esc closes it, the same way it closes every other panel on the site.
+  //
+  // …unless something is stacked on top. The article picker and the media
+  // library both sit above this panel and neither had an Esc of its own,
+  // so without the check a single Esc meant to dismiss the picker would
+  // close the editor underneath it as well. `data-modal-top` is how a
+  // dialog declares it is the one on top; the two that stack above this
+  // one carry it.
+  useEffect(() => {
+    if (!editorOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (document.querySelector("[data-modal-top]")) return;
+      requestCloseEditor();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editorOpen, requestCloseEditor]);
 
   /** Reloads one pacote's full detail (members carry current status). */
   const loadDetail = useCallback(async (id: string) => {
@@ -123,11 +209,12 @@ export default function AdminPackagesClient({
       setNotice(null);
       if (!pkg) {
         setForm(EMPTY);
+        setBaseline(JSON.stringify(EMPTY));
         setEditorOpen(true);
         return;
       }
       const detail = await loadDetail(pkg.id);
-      setForm({
+      const opened = {
         id: pkg.id,
         name: pkg.name,
         slug: pkg.slug,
@@ -139,7 +226,9 @@ export default function AdminPackagesClient({
         status: pkg.status,
         stripePriceId: pkg.stripePriceId,
         purchaseCount: pkg._count.purchases,
-      });
+      };
+      setForm(opened);
+      setBaseline(JSON.stringify(opened));
       setEditorOpen(true);
     },
     [loadDetail],
@@ -208,11 +297,29 @@ export default function AdminPackagesClient({
       }
       const detail = await loadDetail(form.id!);
       if (detail) {
-        set({
+        const fromServer = {
           members: detail.items,
           status: detail.status,
           stripePriceId: detail.stripePriceId,
-        });
+        };
+        set(fromServer);
+        // The baseline moves by the SAME delta, because these values
+        // came back from the server and are therefore already saved.
+        // Without this, publishing a pacote and then clicking outside
+        // would ask "tem alterações por guardar?" about changes the
+        // server made — and a confirmation that cries wolf is a
+        // confirmation people learn to click through.
+        //
+        // Applying the delta rather than re-snapshotting the whole form
+        // keeps any genuine unsaved edit still counted as unsaved.
+        setBaseline((b) =>
+          b === null
+            ? b
+            : JSON.stringify({
+                ...(JSON.parse(b) as EditorState),
+                ...fromServer,
+              }),
+        );
       }
       setNotice(label);
       router.refresh();
@@ -289,7 +396,19 @@ export default function AdminPackagesClient({
       )}
 
       {editorOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 backdrop-blur-sm">
+        <div
+          /*
+            `e.target === e.currentTarget` rather than stopPropagation on
+            the panel: this fires only for a click that landed on the dark
+            area itself, and it leaves every event inside the panel to
+            behave normally — a select, a drag over a text field, a click
+            that starts inside and ends out here.
+          */
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) requestCloseEditor();
+          }}
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 backdrop-blur-sm"
+        >
           <div className="w-full max-w-3xl rounded-xl bg-white shadow-2xl">
             <div className="sticky top-0 z-10 flex items-center justify-between gap-3 rounded-t-xl border-b border-slate-200 bg-white px-6 py-4">
               <div className="min-w-0">
@@ -316,7 +435,7 @@ export default function AdminPackagesClient({
               <div className="flex shrink-0 items-center gap-2">
                 <button
                   type="button"
-                  onClick={closeEditor}
+                  onClick={requestCloseEditor}
                   disabled={pending}
                   className="rounded px-3 py-1.5 text-[13px] font-semibold text-slate-600 hover:bg-slate-100"
                 >
@@ -495,9 +614,9 @@ export default function AdminPackagesClient({
                 {liveAndFree.length > 0 && (
                   <p className="mt-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-snug text-amber-900">
                     {liveAndFree.length} artigo(s) já publicados e{" "}
-                    <strong>livres</strong>: continuam a ser lidos por todos.
-                    Publicar o pacote não os fecha — isso retiraria da vista
-                    pública algo que já estava lá.
+                    <strong>livres</strong>: hoje qualquer pessoa os lê.
+                    Publicar o pacote <strong>fecha-os</strong> — deixam de
+                    estar acessíveis a quem não pagar. Pode fechá-los já:
                     {can.edit && (
                       <>
                         {" "}
@@ -671,21 +790,7 @@ export default function AdminPackagesClient({
                           runOnPackage(
                             "Pacote publicado.",
                             publishPackageAction,
-                            drafts.length > 0
-                              ? `Vai publicar ${drafts.length} artigo(s) e pôr o pacote à venda por ${
-                                  eurosToCents(form.priceEuros) !== null
-                                    ? formatPrice(
-                                        eurosToCents(form.priceEuros)!,
-                                      )
-                                    : "—"
-                                }. Continuar?`
-                              : `Pôr o pacote à venda por ${
-                                  eurosToCents(form.priceEuros) !== null
-                                    ? formatPrice(
-                                        eurosToCents(form.priceEuros)!,
-                                      )
-                                    : "—"
-                                }. Continuar?`,
+                            publishConfirmText(),
                           )
                         }
                         className="rounded-md bg-emerald-700 px-4 py-1.5 text-[13px] font-bold text-white hover:bg-emerald-800 disabled:opacity-60"
@@ -723,6 +828,7 @@ export default function AdminPackagesClient({
 
       {pickerOpen && (
         <ArticlePicker
+          categories={categories}
           selectedIds={form.members.map((m) => m.article.id)}
           onChange={(ids) => {
             // Keep what is already known about members that survive, and

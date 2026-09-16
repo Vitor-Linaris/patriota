@@ -54,6 +54,49 @@ export class PackageAccessService {
   }
 
   /**
+   * The pacote to offer somebody who has just been refused this article.
+   *
+   * Without it the paywall can only ever say "assine" — which is the
+   * wrong answer, and sometimes a false one: an article sold in a pacote
+   * with includedInSubscription=false is NOT unlocked by subscribing, so
+   * a reader who follows that advice pays and still cannot read it. The
+   * offer is what lets the block send them where the article actually
+   * is.
+   *
+   * The CHEAPEST, and only one. An article can sit in several pacotes;
+   * a paywall has room for a single offer, and the cheapest is both the
+   * likeliest to be taken and the one a reader is least likely to feel
+   * misled by afterwards. Same rule the digest e-mail already applies.
+   *
+   * Only on the refusal path, which is the cold one — a reader entitled
+   * to the article never reaches this query.
+   */
+  async offerFor(articleId: string): Promise<{
+    slug: string;
+    name: string;
+    priceCents: number;
+    currency: string;
+    includedInSubscription: boolean;
+  } | null> {
+    const row = await this.prisma.packageArticle.findFirst({
+      where: { articleId, package: { status: 'PUBLICADO' } },
+      orderBy: { package: { priceCents: 'asc' } },
+      select: {
+        package: {
+          select: {
+            slug: true,
+            name: true,
+            priceCents: true,
+            currency: true,
+            includedInSubscription: true,
+          },
+        },
+      },
+    });
+    return row?.package ?? null;
+  }
+
+  /**
    * The same question for a whole pacote, for the detail page's CTA.
    *
    * "Owned" means a purchase that actually settled. PENDENTE grants

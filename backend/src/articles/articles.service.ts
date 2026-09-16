@@ -960,7 +960,7 @@ export class ArticlesService {
 
     // Anonymous: no plan and no purchases, so both queries below could
     // only confirm what is already known.
-    if (!reader) return this.paywalled(a);
+    if (!reader) return this.cut(a);
 
     if (await this.mayReadExclusive(reader)) {
       // …but the plan now LOSES to a pacote sold outside the
@@ -974,7 +974,25 @@ export class ArticlesService {
     // pacote is the only way in.
     if (await this.packageAccess.hasPurchased(reader.id, a.id)) return a;
 
-    return this.paywalled(a);
+    return this.cut(a);
+  }
+
+  /**
+   * The refusal, with somewhere for the reader to go.
+   *
+   * A paywall that can only say "assine" is wrong whenever the article
+   * is sold in a pacote outside the subscription — a reader who follows
+   * that advice pays for a subscription and still cannot read the piece
+   * they wanted. One extra query, on the cold path only: nobody entitled
+   * to the article ever gets here.
+   */
+  private async cut<
+    T extends { id: string; content: string; videoEmbedUrl?: string | null },
+  >(article: T) {
+    return {
+      ...this.paywalled(article),
+      packageOffer: await this.packageAccess.offerFor(article.id),
+    };
   }
 
   /**

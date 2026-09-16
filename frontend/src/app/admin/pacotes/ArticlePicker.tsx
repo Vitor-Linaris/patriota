@@ -4,6 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import { imageVariant } from "@/lib/images";
 import { adminMediaUrl } from "@/lib/media-preview";
 import {
+  indentOption,
+  type CategoryOption,
+} from "@/lib/category-options";
+import {
   ARTICLE_STATUS_LABEL,
   REFUSED_MEMBER_STATUSES,
   type ArticleStatus,
@@ -65,10 +69,13 @@ function statusChip(status: ArticleStatus) {
  *     status, so the editor knows what publishing will do.
  */
 export function ArticlePicker({
+  categories,
   selectedIds,
   onChange,
   onClose,
 }: {
+  /** The whole forest, flattened, parent before children. */
+  categories: readonly CategoryOption[];
   selectedIds: readonly string[];
   onChange: (ids: string[]) => void;
   onClose: () => void;
@@ -79,6 +86,17 @@ export function ArticlePicker({
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
   const [status, setStatus] = useState<"" | ArticleStatus>("");
+  /**
+   * The category SLUG, which is what /admin/articles filters on.
+   *
+   * Narrow by section, not by remembering a headline: a pacote is
+   * usually every piece a newsroom wrote about one subject, and finding
+   * them by typing each title is the job this filter removes. Filtering
+   * is exact — picking "Portugal" means Portugal and not the Funchal
+   * underneath it — which is the CMS rule the API already applies, and
+   * the opposite of what the public site does.
+   */
+  const [category, setCategory] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -92,7 +110,7 @@ export function ArticlePicker({
   // A new query starts a new list rather than appending to the old one.
   useEffect(() => {
     setPage(1);
-  }, [debounced, status]);
+  }, [debounced, status, category]);
 
   useEffect(() => {
     let abort = false;
@@ -104,6 +122,7 @@ export function ArticlePicker({
     });
     if (debounced) params.set("q", debounced);
     if (status) params.set("status", status);
+    if (category) params.set("category", category);
 
     fetch(`/api/admin/articles/proxy?${params.toString()}`, {
       cache: "no-store",
@@ -132,7 +151,7 @@ export function ArticlePicker({
     return () => {
       abort = true;
     };
-  }, [page, debounced, status]);
+  }, [page, debounced, status, category]);
 
   const toggle = useCallback(
     (id: string) => {
@@ -145,10 +164,24 @@ export function ArticlePicker({
     [selectedIds, onChange],
   );
 
+  // Esc closes it, the same as clicking the dark area or "Fechar".
+  // Nothing here is unsaved: ticking a row calls onChange immediately,
+  // so there is no draft state to warn about.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   const hasMore = items.length < total;
 
   return (
     <div
+      // Marks this as the top dialog: the pacote editor underneath
+      // checks for it before acting on Esc.
+      data-modal-top
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
       onClick={onClose}
     >
@@ -193,6 +226,39 @@ export function ArticlePicker({
               </option>
             ))}
           </select>
+          {/*
+            Hidden entirely when the catalogue came back empty — an
+            editor whose role cannot read it gets no control rather than
+            a select with one dead option in it.
+          */}
+          {categories.length > 0 && (
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              aria-label="Filtrar por categoria"
+              className="max-w-[180px] rounded-md border border-slate-300 px-2 py-1.5 text-[13px] outline-none focus:border-slate-500"
+            >
+              <option value="">Todas as categorias</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.slug}>
+                  {indentOption(c.name, c.depth)}
+                </option>
+              ))}
+            </select>
+          )}
+          {(status || category || debounced) && (
+            <button
+              type="button"
+              onClick={() => {
+                setStatus("");
+                setCategory("");
+                setSearch("");
+              }}
+              className="rounded-md px-2 py-1.5 text-[12px] font-semibold text-slate-500 underline-offset-2 hover:text-slate-800 hover:underline"
+            >
+              Limpar
+            </button>
+          )}
           <span className="text-[12px] text-slate-500">
             {selectedIds.length} escolhido(s)
           </span>

@@ -505,25 +505,35 @@ export class PackagesService {
       await this.articles.publish(article.id, user);
     }
 
-    if (drafts.length > 0) {
-      // Exclusive only on the articles THIS publish just published.
-      //
-      // Never on a member that was already live and free: putting a free
-      // article behind a paywall removes from public view something
-      // anybody could read yesterday, and that is not a thing an editor
-      // may do without knowing they did it. The admin warns about those
-      // and offers an explicit "Tornar exclusivos" instead.
-      //
-      // A paid pacote whose articles are not exclusive is worth nothing,
-      // and the "Conteúdo Exclusivo" switch in the article editor sits
-      // behind the subscriberPublishing flag — the journalist may not even
-      // see it. For an article being published INTO a pacote there is only
-      // one possible reading of the intent, so it is automatic.
-      await this.prisma.article.updateMany({
-        where: { id: { in: drafts.map((a) => a.id) } },
-        data: { exclusive: true },
-      });
-    }
+    /*
+     * EVERY member becomes exclusive, not only the drafts this publish
+     * just published.
+     *
+     * This used to close only the drafts, and leave a member that was
+     * already live and free exactly as it was — on the reasoning that
+     * putting a free article behind a paywall removes from public view
+     * something anybody could read yesterday, which an editor must not
+     * do by accident. The admin warned about those and offered a
+     * separate "Tornar exclusivos" button.
+     *
+     * The reasoning was right about the danger and wrong about where to
+     * put the decision. What it produced in practice was a pacote on
+     * sale whose articles were still free at their own URLs: the buyer
+     * pays for something anybody can read, and nobody notices until a
+     * reader does. Publishing a pacote IS the decision to sell what is
+     * in it — there is no other reading of it — so it is the moment the
+     * articles close.
+     *
+     * The protection moves to the confirmation: the admin names how many
+     * live free articles are about to stop being free BEFORE the click,
+     * which is where a warning is useful. Nothing is closed silently;
+     * it is just no longer a second button somebody can forget.
+     */
+    const memberIds = pkg.items.map((i) => i.article.id);
+    await this.prisma.article.updateMany({
+      where: { id: { in: memberIds }, exclusive: false },
+      data: { exclusive: true },
+    });
 
     /*
      * The cover has to become reachable, or the storefront is broken.

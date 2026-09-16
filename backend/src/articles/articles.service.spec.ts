@@ -55,6 +55,7 @@ describe('ArticlesService', () => {
     isSubscriptionExcluded: jest.Mock;
     hasPurchased: jest.Mock;
     ownsPackage: jest.Mock;
+    offerFor: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -70,6 +71,8 @@ describe('ArticlesService', () => {
       isSubscriptionExcluded: jest.fn().mockResolvedValue(false),
       hasPurchased: jest.fn().mockResolvedValue(false),
       ownsPackage: jest.fn().mockResolvedValue(false),
+      // No pacote holds the article, unless a test says otherwise.
+      offerFor: jest.fn().mockResolvedValue(null),
     };
     tree = {
       resolveSubtreeIds: jest.fn().mockResolvedValue([]),
@@ -404,14 +407,55 @@ describe('ArticlesService', () => {
       expect(packageAccess.isSubscriptionExcluded).not.toHaveBeenCalled();
     });
 
-    it('costs an anonymous visitor no pacote queries at all', async () => {
+    it('asks an anonymous visitor no ENTITLEMENT questions', async () => {
       paywall = 'true';
       prisma.article.findFirst.mockResolvedValueOnce(exclusive);
       const out = await service.findPublicBySlug('dossier');
       expect(out).not.toHaveProperty('content');
       expect(out).toHaveProperty('paywalled', true);
+      // Nobody anonymous has a plan or a purchase, so both of these
+      // could only ever confirm what is already known.
       expect(packageAccess.hasPurchased).not.toHaveBeenCalled();
       expect(packageAccess.isSubscriptionExcluded).not.toHaveBeenCalled();
+      // The offer IS asked for, and only here: it is what the refusal
+      // needs in order to point somewhere, and it is on the cold path —
+      // a reader entitled to the article never reaches it.
+      expect(packageAccess.offerFor).toHaveBeenCalledWith('a1');
+    });
+
+    it('hands the paywall the pacote to offer', async () => {
+      // Without this the block can only say "assine" — which for a
+      // pacote sold outside the subscription is not merely unhelpful, it
+      // is false: the reader pays for a subscription and still cannot
+      // read the piece they came for.
+      paywall = 'true';
+      prisma.article.findFirst.mockResolvedValueOnce(exclusive);
+      packageAccess.offerFor.mockResolvedValueOnce({
+        slug: 'dossie-habitacao',
+        name: 'Dossiê Habitação',
+        priceCents: 990,
+        currency: 'EUR',
+        includedInSubscription: false,
+      });
+
+      const out = await service.findPublicBySlug('dossier', freeReader);
+
+      expect(out).toHaveProperty('packageOffer', {
+        slug: 'dossie-habitacao',
+        name: 'Dossiê Habitação',
+        priceCents: 990,
+        currency: 'EUR',
+        includedInSubscription: false,
+      });
+    });
+
+    it('offers nothing when no pacote holds the article', async () => {
+      paywall = 'true';
+      prisma.article.findFirst.mockResolvedValueOnce(exclusive);
+
+      const out = await service.findPublicBySlug('dossier', freeReader);
+
+      expect(out).toHaveProperty('packageOffer', null);
     });
 
     it('lets a subscriber read an exclusive that no pacote holds apart', async () => {
