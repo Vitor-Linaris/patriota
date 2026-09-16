@@ -1,10 +1,11 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Container } from "../Container";
-import { getSocialLinks, type SocialLinks } from "@/lib/public-api";
+import { getAdsByPage, getSocialLinks, type SocialLinks } from "@/lib/public-api";
 import { getRootCategories } from "@/lib/categories";
 import { CookieConsent } from "./CookieConsent";
 import { StickyAdBanner } from "@/components/ads/StickyAdBanner";
+import { PopupAd } from "@/components/ads/PopupAd";
 import type { Ad } from "@/lib/ads";
 
 interface FooterLink {
@@ -137,9 +138,13 @@ export async function SiteFooter({
    *  renders nothing, same as every other AdSlot. */
   stickyAd?: Ad | null;
 } = {}) {
-  const [social, roots] = await Promise.all([
+  const [social, roots, globalAds] = await Promise.all([
     getSocialLinks(),
     getRootCategories(),
+    // The popup follows the reader, not the page, so it is fetched
+    // here — the one component every public page renders — instead of
+    // being threaded through every page.tsx as a prop.
+    getAdsByPage("Global"),
   ]);
 
   // Top-level sections only, in the order the admin arranged them.
@@ -208,6 +213,9 @@ export async function SiteFooter({
     {/* Sticky footer ad — see StickyAdBanner.tsx for why it never
         shows until the cookie banner above has been answered. */}
     <StickyAdBanner ad={stickyAd} />
+    {/* Two minutes into the visit, once the cookie notice is answered.
+        See PopupAd.tsx. */}
+    <PopupAd ad={globalAds["global-popup"]} />
     </>
   );
 }

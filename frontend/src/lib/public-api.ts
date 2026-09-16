@@ -202,7 +202,9 @@ export async function listRelated(
  * leak through we still treat them as "no ad" in <AdSlot/>.
  */
 export const getAdsByPage = cache(
-  async (page: "Homepage" | "Artigo" | "Categoria"): Promise<Record<string, Ad>> => {
+  async (
+    page: "Homepage" | "Artigo" | "Categoria" | "Global",
+  ): Promise<Record<string, Ad>> => {
     try {
       const res = await fetch(
         `${apiBaseUrl()}/public/ads/${encodeURIComponent(page)}`,
