@@ -164,10 +164,24 @@ export function ArticlePicker({
     [selectedIds, onChange],
   );
 
+  // Esc closes it, the same as clicking the dark area or "Fechar".
+  // Nothing here is unsaved: ticking a row calls onChange immediately,
+  // so there is no draft state to warn about.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   const hasMore = items.length < total;
 
   return (
     <div
+      // Marks this as the top dialog: the pacote editor underneath
+      // checks for it before acting on Esc.
+      data-modal-top
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
       onClick={onClose}
     >

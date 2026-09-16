@@ -91,6 +91,9 @@ export function MediaLibraryModal({
 
   return (
     <div
+      /* Tells whatever is underneath that it is no longer the top
+         dialog, so an Esc pressed here does not close it as well. */
+      data-modal-top
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
       onClick={onClose}
     >
