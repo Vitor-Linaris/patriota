@@ -43,6 +43,16 @@ const NAV: readonly NavItem[] = [
     requires: ["pacotes.ver"],
   },
   {
+    // The queue of what is about to be posted to the newspaper's
+    // Facebook and Instagram, and what already was. Next to Artigos
+    // because it is the same act seen from the other end — a failure
+    // here is an article the audience never heard about.
+    href: "/admin/redes",
+    label: "Redes sociais",
+    icon: "◎",
+    requires: ["artigos.publicar"],
+  },
+  {
     href: "/admin/utilizadores",
     label: "Utilizadores",
     icon: "○",

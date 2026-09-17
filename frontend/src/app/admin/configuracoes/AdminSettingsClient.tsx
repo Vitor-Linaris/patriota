@@ -96,6 +96,24 @@ export interface RedacaoSettings {
   cadencias: string[];
 }
 
+/**
+ * The editorial half of the automatic posting to Facebook and Instagram.
+ *
+ * ONLY the editorial half. The Meta credentials are environment
+ * variables on the API and deliberately not here: this whole object is
+ * returned by GET /admin/settings to anybody with `configuracoes.aceder`,
+ * and a Meta Page token never expires — once shared with the newsroom it
+ * stays shared.
+ */
+export interface PublicacaoSocialSettings {
+  facebookEnabled: boolean;
+  instagramEnabled: boolean;
+  /** The window to catch a mistake before the post goes out. */
+  delayMinutes: number;
+  facebookTemplate: string;
+  instagramTemplate: string;
+}
+
 export interface SettingsBundle {
   geral: GeralSettings;
   email: EmailSettings;
@@ -104,6 +122,7 @@ export interface SettingsBundle {
   newsletter: NewsletterSettings;
   seguranca: SegurancaSettings;
   redacao: RedacaoSettings;
+  publicacao_social: PublicacaoSocialSettings;
 }
 
 const tabs: { id: TabId; label: string; icon: string }[] = [
@@ -123,6 +142,8 @@ const tabs: { id: TabId; label: string; icon: string }[] = [
   // which today means SUPER_ADMIN and EDITOR_CHEFE, and is one switch
   // on /admin/permissoes if the newsroom ever wants that to change.
   { id: "redacao", label: "Redacção", icon: "✎" },
+  // Editorial knobs only — the Meta tokens are environment variables.
+  { id: "publicacao_social", label: "Publicação social", icon: "➤" },
 ];
 
 /**
@@ -369,6 +390,23 @@ export default function AdminSettingsClient({
   );
   const [novaCadencia, setNovaCadencia] = useState("");
 
+  // ── Publicação social ──
+  const [fbEnabled, setFbEnabled] = useState(
+    initial.publicacao_social.facebookEnabled,
+  );
+  const [igEnabled, setIgEnabled] = useState(
+    initial.publicacao_social.instagramEnabled,
+  );
+  const [delayMinutes, setDelayMinutes] = useState(
+    String(initial.publicacao_social.delayMinutes),
+  );
+  const [fbTemplate, setFbTemplate] = useState(
+    initial.publicacao_social.facebookTemplate,
+  );
+  const [igTemplate, setIgTemplate] = useState(
+    initial.publicacao_social.instagramTemplate,
+  );
+
   const collectCurrent = (): Record<string, unknown> => {
     switch (tab) {
       case "geral":
@@ -431,6 +469,16 @@ export default function AdminSettingsClient({
         };
       case "redacao":
         return { cadencias };
+      case "publicacao_social":
+        return {
+          facebookEnabled: fbEnabled,
+          instagramEnabled: igEnabled,
+          // Number, not the string the input holds: the API clamps it
+          // and a string would clamp to the default on every save.
+          delayMinutes: Number(delayMinutes) || 0,
+          facebookTemplate: fbTemplate,
+          instagramTemplate: igTemplate,
+        };
     }
   };
 
@@ -1203,6 +1251,85 @@ export default function AdminSettingsClient({
                 saved={saved === "redacao"}
                 pending={pending && tab === "redacao"}
                 error={tab === "redacao" ? saveError : null}
+              />
+            </div>
+          )}
+
+          {tab === "publicacao_social" && (
+            <div>
+              <h2 className="mb-1 text-lg font-black text-[#0F2C6B]">
+                Publicação social
+              </h2>
+              <p className="mb-5 text-xs text-gray-400">
+                O que sai para o Facebook e para o Instagram quando um artigo
+                é publicado. As credenciais da Meta ficam no servidor, não
+                aqui — esta página é visível para toda a gente com acesso a
+                Configurações, e um token de Página não expira.
+              </p>
+
+              <Field
+                label="Facebook"
+                hint="Publica uma ligação para o artigo. O cartão — título, descrição e imagem — é montado pelo Facebook a partir da página do artigo."
+              >
+                <Toggle
+                  checked={fbEnabled}
+                  onChange={() => setFbEnabled((v) => !v)}
+                />
+              </Field>
+
+              <Field
+                label="Instagram"
+                hint="Publica a imagem de capa com uma legenda. O Instagram não aceita ligações na legenda, por isso este post dá alcance e não tráfego."
+              >
+                <Toggle
+                  checked={igEnabled}
+                  onChange={() => setIgEnabled((v) => !v)}
+                />
+              </Field>
+
+              <Field
+                label="Tempo para cancelar"
+                hint="Minutos entre publicar o artigo e o post sair. É esta a janela para corrigir uma gralha ou travar a publicação — a imagem de um post do Instagram não se troca depois."
+              >
+                <input
+                  type="number"
+                  min={0}
+                  max={1440}
+                  value={delayMinutes}
+                  onChange={(e) => setDelayMinutes(e.target.value)}
+                  className="w-32 rounded-lg border border-gray-200 px-4 py-2.5 text-sm transition-all focus:border-[#0F2C6B] focus:outline-none focus:ring-2 focus:ring-[#0F2C6B]/10"
+                />
+              </Field>
+
+              <Field
+                label="Texto no Facebook"
+                hint="Use {titulo}, {resumo}, {categoria} e {link}."
+              >
+                <textarea
+                  value={fbTemplate}
+                  onChange={(e) => setFbTemplate(e.target.value)}
+                  rows={4}
+                  className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm transition-all focus:border-[#0F2C6B] focus:outline-none focus:ring-2 focus:ring-[#0F2C6B]/10"
+                />
+              </Field>
+
+              <Field
+                label="Legenda no Instagram"
+                hint="Use {titulo}, {resumo} e {categoria}. Evite {link}: uma ligação na legenda do Instagram não é clicável e lê-se como um engano."
+              >
+                <textarea
+                  value={igTemplate}
+                  onChange={(e) => setIgTemplate(e.target.value)}
+                  rows={4}
+                  className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm transition-all focus:border-[#0F2C6B] focus:outline-none focus:ring-2 focus:ring-[#0F2C6B]/10"
+                />
+              </Field>
+
+              <SaveBar
+                onSave={handleSave}
+                saved={saved === "publicacao_social"}
+                pending={pending && tab === "publicacao_social"}
+                error={tab === "publicacao_social" ? saveError : null}
               />
             </div>
           )}

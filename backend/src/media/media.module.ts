@@ -4,6 +4,7 @@ import { MediaAccessService } from './media-access.service';
 import { VideoService } from './video.service';
 import { MediaController } from './media.controller';
 import { UploadsController } from './uploads.controller';
+import { SocialImageController } from './social-image.controller';
 
 /**
  * The media library, and the route that serves its files.
@@ -19,7 +20,7 @@ import { UploadsController } from './uploads.controller';
  */
 @Module({
   providers: [MediaService, MediaAccessService, VideoService],
-  controllers: [MediaController, UploadsController],
+  controllers: [MediaController, UploadsController, SocialImageController],
   exports: [MediaService, MediaAccessService, VideoService],
 })
 export class MediaModule {}

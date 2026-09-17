@@ -9,6 +9,7 @@ export const VALID_SECTIONS = [
   'newsletter',
   'seguranca',
   'redacao',
+  'publicacao_social',
 ] as const;
 
 export type SectionName = (typeof VALID_SECTIONS)[number];
@@ -101,6 +102,33 @@ const DEFAULTS: Record<SectionName, Record<string, unknown>> = {
       'Uma vez por mês',
       'Uma vez a cada 2 meses',
     ],
+  },
+  /**
+   * The editorial half of the social-network publishing.
+   *
+   * ONLY the editorial half. The Meta credentials are NOT here and must
+   * never be: GET /admin/settings returns this whole blob to anybody
+   * holding `configuracoes.aceder`, so a Page access token stored here
+   * would be a token handed to the entire newsroom — and Meta Page
+   * tokens do not expire, so it would stay handed over. They live in the
+   * environment; see SocialConfig.
+   *
+   * What is here is what an editor should be able to change without a
+   * deploy: whether each network is on, how long the window to cancel a
+   * post is, and the wording. Placeholders: {titulo} {resumo} {link}
+   * {categoria}.
+   *
+   * The Instagram template deliberately contains no {link}. An Instagram
+   * caption cannot hold a clickable link, and a bare URL nobody can tap
+   * is worse than none — it reads like a mistake.
+   */
+  publicacao_social: {
+    facebookEnabled: true,
+    instagramEnabled: true,
+    delayMinutes: 10,
+    facebookTemplate: '{titulo}\n\n{resumo}',
+    instagramTemplate:
+      '{titulo}\n\n{resumo}\n\nLeia o artigo completo no link da bio.',
   },
 };
 

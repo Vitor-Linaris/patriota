@@ -11,7 +11,8 @@ export type SettingsSection =
   | "redes"
   | "newsletter"
   | "seguranca"
-  | "redacao";
+  | "redacao"
+  | "publicacao_social";
 
 export async function saveSettingsSectionAction(
   section: SettingsSection,

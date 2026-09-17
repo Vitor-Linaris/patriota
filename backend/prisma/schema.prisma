@@ -471,6 +471,15 @@ model Article {
   /// CommentsService so "Mais comentadas" is an indexed orderBy rather
   /// than a groupBy join on every article listing.
   commentCount          Int           @default(0)
+  /// Claim flag for the social-network fan-out. NULL means not yet
+  /// queued. Separate from notificationsQueuedAt on purpose: the two
+  /// pipelines fail independently, and a Facebook outage must not stop
+  /// the reader digests (nor the reverse).
+  ///
+  /// NOTE: the migration backfills this to now() for every already
+  /// published article. Without it the first tick would push the entire
+  /// archive to Instagram, against a 100-posts-per-day ceiling.
+  socialQueuedAt        DateTime?
   /// Claim flag for the notification fan-out. NULL means not yet queued.
   /// A poller keys off this instead of hooking the publish path, because
   /// an article can reach PUBLICADO through four different code paths:
@@ -510,6 +519,7 @@ model Article {
   favorites      ArticleFavorite[]
   readingEntries ReadingHistory[]
   notifications  ArticleNotification[]
+  socialPosts    SocialPost[]
   /// Which pacotes contain this article RIGHT NOW (editorial state).
   packageEntries PackageArticle[]
   /// Who has already PAID for this article, via a pacote. Survives the
@@ -519,6 +529,7 @@ model Article {
   @@index([categoryId, status, publishedAt])
   @@index([status, publishedAt])
   @@index([status, notificationsQueuedAt])
+  @@index([status, socialQueuedAt])
   /// The approval queue asks for these on every load.
   @@index([draftAwaitingReview])
 }
@@ -1153,5 +1164,77 @@ model PackagePurchaseItem {
   @@id([purchaseId, articleId])
   /// THE gate index. One index-only lookup answers the whole question.
   @@index([readerId, articleId])
+  @@index([articleId])
+}
+
+/// Onde um artigo é divulgado.
+///
+/// FACEBOOK publica um LINK, INSTAGRAM publica uma IMAGEM. Não é uma
+/// preferência: a legenda do Instagram não aceita links, e um post de
+/// foto no Facebook não produz o cartão clicável que faz as pessoas
+/// chegarem ao artigo. Os dois clientes falam APIs diferentes por baixo
+/// do mesmo token da Meta.
+enum SocialNetwork {
+  FACEBOOK
+  INSTAGRAM
+}
+
+enum SocialPostStatus {
+  /// Na fila, ainda dentro da janela em que a redacção pode cancelar.
+  AGENDADO
+  /// Reclamado por uma instância, a caminho da rede. Estado curto, e o
+  /// que impede duas instâncias de publicarem o mesmo post.
+  A_ENVIAR
+  ENVIADO
+  /// Esgotou as tentativas. Não bloqueia a fila.
+  FALHOU
+  /// A redacção travou-o a tempo.
+  CANCELADO
+}
+
+/// Outbox da publicação automática nas redes sociais.
+///
+/// Escrito por um poller sobre Article.socialQueuedAt, e não por um
+/// gancho no publish(), pela mesma razão que ArticleNotification: um
+/// artigo chega a PUBLICADO por cinco caminhos e só três passam por
+/// publish(). Ver SocialPublishingService.
+///
+/// @@unique([articleId, network]) É a garantia de idempotência, e não é
+/// teórica: publish() não é idempotente — republicar um artigo reescreve
+/// publishedAt — e sem esta restrição republicar publicava-o outra vez
+/// no Instagram. Um e-mail repetido é um aborrecimento; um post repetido
+/// não se apaga em silêncio.
+model SocialPost {
+  id        String           @id @default(cuid())
+  articleId String
+  network   SocialNetwork
+  status    SocialPostStatus @default(AGENDADO)
+  /// O texto tal como vai sair. Editável enquanto está AGENDADO — é o
+  /// que dá à redacção a hipótese de corrigir a gralha antes de ela
+  /// chegar ao Instagram, onde um post publicado não se edita na imagem.
+  message   String
+  /// A capa em JPEG, para o Instagram. NULL num post de link.
+  imageUrl  String?
+  /// O endereço canónico do artigo. Vai no post do Facebook, e no
+  /// Instagram serve só para o histórico aqui no admin.
+  linkUrl   String
+  /// A partir de quando pode sair. now() + o atraso configurado: a
+  /// janela de cancelamento.
+  scheduledFor DateTime
+  attempts     Int      @default(0)
+  lastError    String?
+  /// O que a rede devolveu. A prova de que saiu, e o caminho de volta ao
+  /// post se algum dia for preciso apagá-lo.
+  remoteId     String?
+  remoteUrl    String?
+  sentAt       DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@unique([articleId, network])
+  /// A pergunta do drenar: "o que está agendado e já passou da hora?".
+  @@index([status, scheduledFor])
   @@index([articleId])
 }
