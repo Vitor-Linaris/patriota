@@ -438,6 +438,102 @@ describe('PackagePurchasesService', () => {
   });
 });
 
+describe('PackagePurchasesService — createCheckoutSession Stripe payload', () => {
+  /**
+   * The bug this locks in: creating a Checkout Session with
+   * tax_id_collection ON and an EXISTING `customer` attached fails at
+   * Stripe with "Tax ID collection requires updating business name on
+   * the customer" unless customer_update.name is set to 'auto'. Seen for
+   * real on a second purchase by a reader who already had a
+   * stripeCustomerId from an earlier one. A first-time buyer
+   * (customer_email, no customer yet) never hits this — Checkout mints a
+   * brand-new Customer in that case, so there is no existing name to
+   * reconcile, and customer_update is invalid there anyway.
+   */
+  let service: PackagePurchasesService;
+  let prisma: Record<string, any>;
+  let createSession: jest.Mock;
+
+  const PKG = {
+    id: 'p1',
+    name: 'Dossiê',
+    slug: 'dossie',
+    priceCents: 990,
+    currency: 'EUR',
+    stripePriceId: 'price_1',
+    items: [{ articleId: 'a1' }],
+  };
+
+  beforeEach(async () => {
+    createSession = jest
+      .fn()
+      .mockResolvedValue({ id: 'cs_1', url: 'https://checkout.stripe.com/cs_1' });
+
+    prisma = {
+      package: { findFirst: jest.fn().mockResolvedValue(PKG) },
+      reader: { findUnique: jest.fn() },
+      packagePurchase: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'pur1' }),
+        update: jest.fn().mockResolvedValue({ id: 'pur1' }),
+      },
+    };
+
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        PackagePurchasesService,
+        { provide: PrismaService, useValue: prisma },
+        {
+          provide: StripeService,
+          useValue: {
+            enabled: true,
+            stripe: { checkout: { sessions: { create: createSession } } },
+          },
+        },
+        { provide: ActivityLogService, useValue: { record: jest.fn() } },
+        { provide: ConfigService, useValue: { get: () => 'http://localhost:3005' } },
+        {
+          provide: RbacService,
+          useValue: { getPermissionsForRole: jest.fn().mockResolvedValue([]) },
+        },
+      ],
+    }).compile();
+    service = moduleRef.get(PackagePurchasesService);
+  });
+
+  it('sets customer_update: { name: "auto" } for a reader who already has a Stripe customer', async () => {
+    prisma.reader.findUnique.mockResolvedValueOnce({
+      id: 'r1',
+      email: 'quem@sabe.pt',
+      stripeCustomerId: 'cus_1',
+      emailVerifiedAt: new Date(),
+    });
+
+    await service.createCheckoutSession({ id: 'r1', email: 'quem@sabe.pt' }, 'dossie');
+
+    const payload = createSession.mock.calls[0][0];
+    expect(payload.customer).toBe('cus_1');
+    expect(payload.customer_update).toEqual({ name: 'auto' });
+    expect(payload.tax_id_collection).toEqual({ enabled: true });
+  });
+
+  it('never sends customer_update for a first-time buyer — Stripe rejects it without an existing customer', async () => {
+    prisma.reader.findUnique.mockResolvedValueOnce({
+      id: 'r1',
+      email: 'quem@sabe.pt',
+      stripeCustomerId: null,
+      emailVerifiedAt: new Date(),
+    });
+
+    await service.createCheckoutSession({ id: 'r1', email: 'quem@sabe.pt' }, 'dossie');
+
+    const payload = createSession.mock.calls[0][0];
+    expect(payload.customer_email).toBe('quem@sabe.pt');
+    expect(payload.customer).toBeUndefined();
+    expect(payload).not.toHaveProperty('customer_update');
+  });
+});
+
 describe('PackagePurchasesService — listPurchases buyer identity', () => {
   let service: PackagePurchasesService;
   let prisma: Record<string, any>;

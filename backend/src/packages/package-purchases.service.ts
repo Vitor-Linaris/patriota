@@ -188,7 +188,18 @@ export class PackagePurchasesService {
       mode: 'payment',
       line_items: [{ price: pkg.stripePriceId, quantity: 1 }],
       ...(row.stripeCustomerId
-        ? { customer: row.stripeCustomerId }
+        ? {
+            customer: row.stripeCustomerId,
+            // Stripe refuses to create this session otherwise: with
+            // tax_id_collection on AND an EXISTING customer attached, it
+            // needs to know it may sync the name it collects back onto
+            // that customer record ("Tax ID collection requires
+            // updating business name on the customer"). The
+            // customer_email branch below (first-time buyers) never
+            // hits this — Checkout creates a brand-new Customer there,
+            // so there is no existing name to reconcile.
+            customer_update: { name: 'auto' as const },
+          }
         : { customer_email: row.email }),
       client_reference_id: row.id,
       metadata,
