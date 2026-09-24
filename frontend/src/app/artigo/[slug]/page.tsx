@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import { jsonLdHtml } from "@/lib/json-ld";
 import { Container } from "@/components/Container";
 import { TopBar } from "@/components/home/TopBar";
@@ -23,6 +24,7 @@ import { getAncestors } from "@/lib/categories";
 import { FEATURES } from "@/lib/features";
 import { getReaderToken } from "@/lib/reader-api";
 import { imageVariant } from "@/lib/images";
+import { siteUrl } from "@/lib/site-url";
 import {
   getAdsByPage,
   getArticleBySlug,
@@ -30,6 +32,67 @@ import {
   listRelated,
   timeAgo,
 } from "@/lib/public-api";
+
+/**
+ * The share card.
+ *
+ * This page had no metadata at all, which meant every article link ever
+ * posted to Facebook, LinkedIn or WhatsApp previewed as a bare URL under
+ * the site-wide "O Patriota / Notícias e informação." — the headline, the
+ * summary and the cover the newsroom chose were all present in the CMS
+ * and none of them reached the card. The automatic publishing to social
+ * networks depends on this: a Facebook link post IS this markup.
+ *
+ * metaTitle/metaDescription first, because those fields already exist in
+ * the editor and someone has been filling them in; title/summary are the
+ * fallback, not the other way round.
+ *
+ * This does not cost a second round trip: getArticleBySlug is a plain GET
+ * and Next memoises identical fetches across generateMetadata and the
+ * page component within one render pass, so the article is fetched once
+ * and read twice.
+ */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const article = await getArticleBySlug(slug);
+  if (!article) return { title: "Artigo não encontrado — O Patriota Notícias" };
+
+  // `||`, not `??`. The SEO fields are saved as empty strings when the
+  // journalist leaves them blank, not as null — so `??` would hand
+  // Facebook an empty description and never reach the summary. Checked
+  // against the real rows, where metaDescription is "".
+  const title = article.metaTitle?.trim() || article.title;
+  const description = article.metaDescription?.trim() || article.summary;
+  const url = `${siteUrl()}/artigo/${article.slug}`;
+
+  return {
+    title: `${title} — O Patriota Notícias`,
+    description,
+    alternates: { canonical: url },
+    openGraph: {
+      type: "article",
+      title,
+      description,
+      url,
+      siteName: "O Patriota Notícias",
+      locale: "pt_PT",
+      publishedTime: article.publishedAt ?? undefined,
+      section: article.category.name,
+      authors: article.author.name ? [article.author.name] : undefined,
+      images: article.coverImageUrl ? [article.coverImageUrl] : undefined,
+    },
+    twitter: {
+      card: article.coverImageUrl ? "summary_large_image" : "summary",
+      title,
+      description,
+      images: article.coverImageUrl ? [article.coverImageUrl] : undefined,
+    },
+  };
+}
 
 export default async function ArticlePage({
   params,
@@ -48,9 +111,7 @@ export default async function ArticlePage({
   // Built from the configured site URL rather than window.location so
   // what gets shared is always the canonical address, whichever host
   // the reader happened to arrive on.
-  const shareUrl = `${
-    process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.opatriota.pt"
-  }/artigo/${article.slug}`;
+  const shareUrl = `${siteUrl()}/artigo/${article.slug}`;
 
   const body = article.content ?? article.contentPreview ?? "";
   const signedIn = (await getReaderToken()) !== null;

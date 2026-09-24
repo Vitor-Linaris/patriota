@@ -27,6 +27,7 @@ import { ReadersModule } from './readers/readers.module';
 import { BillingModule } from './billing/billing.module';
 import { PackagesModule } from './packages/packages.module';
 import { ReaderNotificationsModule } from './reader-notifications/reader-notifications.module';
+import { SocialModule } from './social/social.module';
 
 @Module({
   imports: [
@@ -84,6 +85,7 @@ import { ReaderNotificationsModule } from './reader-notifications/reader-notific
     // else's dependency is one refactor away from vanishing.
     PackagesModule,
     ReaderNotificationsModule,
+    SocialModule,
   ],
   controllers: [AppController],
   providers: [

@@ -25,6 +25,7 @@ import {
   type ArticleFormPayload,
 } from "./actions";
 import { ArticlePackageField } from "./ArticlePackageField";
+import { ArticleSocialField } from "./ArticleSocialField";
 import { useAutosave } from "./useAutosave";
 import { AutosaveIndicator } from "./AutosaveIndicator";
 
@@ -940,6 +941,12 @@ function ArticleEditor({
               onChange={(url) => set({ coverImage: url })}
             />
           </div>
+
+          {/* Right under the cover, because the cover IS what goes to
+              Instagram. Only for a SAVED article: the queue is keyed on
+              the article id and a piece with no id yet has nothing
+              scheduled. See ArticleSocialField. */}
+          {form.id && <ArticleSocialField articleId={form.id} />}
 
           <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
             <p className="mb-1 text-xs font-black uppercase tracking-wider text-gray-400">

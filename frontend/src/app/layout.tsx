@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { siteUrl } from "@/lib/site-url";
 import "./globals.css";
 
 const inter = Inter({
@@ -9,6 +10,14 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
+  /**
+   * Without this, Next resolves every relative og:image against
+   * localhost:3000 and warns at build time. Most covers are absolute
+   * URLs on the API origin and would survive its absence — the seeded
+   * articles are not, and those are exactly the ones nobody notices
+   * are broken until a share card comes back blank.
+   */
+  metadataBase: new URL(siteUrl()),
   title: "O Patriota",
   description: "Notícias e informação.",
 };

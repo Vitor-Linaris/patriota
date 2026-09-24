@@ -70,6 +70,14 @@ const DEFAULTS: SettingsBundle = {
       "Uma vez a cada 2 meses",
     ],
   },
+  publicacao_social: {
+    facebookEnabled: true,
+    instagramEnabled: true,
+    delayMinutes: 10,
+    facebookTemplate: "{titulo}\n\n{resumo}",
+    instagramTemplate:
+      "{titulo}\n\n{resumo}\n\nLeia o artigo completo no link da bio.",
+  },
 };
 
 function mergeWithDefaults(remote: Partial<SettingsBundle>): SettingsBundle {
@@ -81,6 +89,10 @@ function mergeWithDefaults(remote: Partial<SettingsBundle>): SettingsBundle {
     newsletter: { ...DEFAULTS.newsletter, ...(remote.newsletter ?? {}) },
     seguranca: { ...DEFAULTS.seguranca, ...(remote.seguranca ?? {}) },
     redacao: { ...DEFAULTS.redacao, ...(remote.redacao ?? {}) },
+    publicacao_social: {
+      ...DEFAULTS.publicacao_social,
+      ...(remote.publicacao_social ?? {}),
+    },
   };
 }
 
