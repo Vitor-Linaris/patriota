@@ -96,3 +96,67 @@ describe('MediaAccessService.healIfPublished', () => {
     expect(prisma.media.findUnique).not.toHaveBeenCalled();
   });
 });
+
+describe('MediaAccessService.avatarIsPublic', () => {
+  /*
+   * The gap this closes: an avatar had exactly one rule — admin-only,
+   * always — from before the byline profile page existed to show one to
+   * the public. A visitor with no session got a 404 on the photo of
+   * anyone with a public /redator page, precisely the surface just
+   * built to show it. Same shape of bug as healIfPublished above:
+   * correct inside the newsroom, broken for everyone else, and
+   * invisible from a staff session because that session grants access
+   * on its own.
+   */
+  it('is public for the avatar of someone who has published something', async () => {
+    const { service, prisma } = harness();
+    prisma.article.findFirst.mockResolvedValueOnce({ id: 'a1' });
+
+    const isPublic = await service.avatarIsPublic(
+      'avatars/cku1a2b3c4d5e6f7g8h9i0j-a2d6968d.webp',
+    );
+
+    expect(isPublic).toBe(true);
+    expect(prisma.article.findFirst).toHaveBeenCalledWith({
+      where: { authorId: 'cku1a2b3c4d5e6f7g8h9i0j', status: 'PUBLICADO' },
+      select: { id: true },
+    });
+  });
+
+  it('stays private for staff who have never published anything', async () => {
+    const { service, prisma } = harness();
+    prisma.article.findFirst.mockResolvedValueOnce(null);
+
+    await expect(
+      service.avatarIsPublic('avatars/cku1a2b3c4d5e6f7g8h9i0j-a2d6968d.webp'),
+    ).resolves.toBe(false);
+  });
+
+  it('refuses a path that is not shaped like one of our avatars', async () => {
+    const { service, prisma } = harness();
+
+    await expect(
+      service.avatarIsPublic('avatars/../../etc/passwd'),
+    ).resolves.toBe(false);
+    expect(prisma.article.findFirst).not.toHaveBeenCalled();
+  });
+});
+
+describe('MediaAccessService.userIdFromAvatarPath', () => {
+  it('reads the id back out of the filename it was written into', () => {
+    expect(
+      MediaAccessService.userIdFromAvatarPath(
+        'avatars/cku1a2b3c4d5e6f7g8h9i0j-a2d6968d.webp',
+      ),
+    ).toBe('cku1a2b3c4d5e6f7g8h9i0j');
+  });
+
+  it('returns null for anything that does not match the shape', () => {
+    expect(
+      MediaAccessService.userIdFromAvatarPath('avatars/weird.png'),
+    ).toBeNull();
+    expect(
+      MediaAccessService.userIdFromAvatarPath('2026/09/abc-large.webp'),
+    ).toBeNull();
+  });
+});

@@ -25,6 +25,7 @@ import { FEATURES } from "@/lib/features";
 import { getReaderToken } from "@/lib/reader-api";
 import { imageVariant } from "@/lib/images";
 import { siteUrl } from "@/lib/site-url";
+import { roleLabel } from "@/lib/role-label";
 import {
   getAdsByPage,
   getArticleBySlug,
@@ -235,12 +236,35 @@ export default async function ArticlePage({
                 screen readers and on hover.
               */}
               <div className="mt-8 flex flex-wrap items-center gap-x-4 gap-y-3 border-y border-slate-200 py-4">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-patriota-pure text-[13px] font-bold text-patriota-accent">
-                  {authorInitials}
-                </span>
+                <Link
+                  href={`/redator/${article.author.id}`}
+                  aria-hidden="true"
+                  tabIndex={-1}
+                >
+                  {article.author.avatarUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={
+                        imageVariant(article.author.avatarUrl, "small") ??
+                        article.author.avatarUrl
+                      }
+                      alt=""
+                      className="h-10 w-10 shrink-0 rounded-full object-cover"
+                    />
+                  ) : (
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-patriota-pure text-[13px] font-bold text-patriota-accent">
+                      {authorInitials}
+                    </span>
+                  )}
+                </Link>
                 <div className="min-w-0">
                   <p className="text-[14px] font-bold text-slate-900">
-                    {article.author.name ?? "Redação"}
+                    <Link
+                      href={`/redator/${article.author.id}`}
+                      className="hover:text-patriota-medium hover:underline"
+                    >
+                      {article.author.name ?? "Redação"}
+                    </Link>
                   </p>
                   <p className="text-[12px] text-slate-500">
                     {timeAgo(article.publishedAt)} · {article.readMinutes} min leitura
@@ -371,13 +395,17 @@ export default async function ArticlePage({
                 <AdSlot ad={ads["article-incontent"]} variant="none" />
               </div>
 
-              {/* Author bio */}
+              {/* Author bio — the real person, not a fixed line about
+                  "a equipa editorial". Links through to the full profile,
+                  where the article count and the last 10 pieces live. */}
               <div className="mt-10">
                 <AuthorBio
                   initials={authorInitials}
+                  avatarUrl={article.author.avatarUrl}
                   name={article.author.name ?? "Redação"}
-                  role="O Patriota Notícias"
-                  bio="Jornalista da equipa editorial do O Patriota."
+                  role={roleLabel(article.author.role)}
+                  bio={article.author.bio ?? "Esta pessoa ainda não escreveu uma biografia."}
+                  profileHref={`/redator/${article.author.id}`}
                 />
               </div>
 

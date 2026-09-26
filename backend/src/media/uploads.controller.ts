@@ -104,7 +104,9 @@ export class UploadsController {
    *     the hot path. Answered from the Redis cache.
    *  2. Staff avatars, which have no Media row by design (they are
    *     written straight to /uploads/avatars and never enter the
-   *     library). Admin-only, so they need a session.
+   *     library). Public when the owner has a public byline
+   *     (MediaAccessService.avatarIsPublic); otherwise admin-only, so
+   *     they need a session.
    *  3. Private media, for its owner or a SUPER_ADMIN.
    *  4. Private media that is actually live on a published page — a
    *     promotion that was missed. Corrected and served rather than
@@ -121,7 +123,13 @@ export class UploadsController {
       // Avatars are the one path we write outside the media library.
       // Everything else unknown is an orphan or a guess: refused.
       if (!relative.startsWith('avatars/')) return null;
-      // An avatar is admin-only, so never cacheable by a proxy.
+
+      // Public exactly when the owner has a public byline — see
+      // MediaAccessService.avatarIsPublic for why that is the right
+      // test. Public and cacheable, same as any other public file.
+      if (await this.access.avatarIsPublic(relative)) return true;
+
+      // Otherwise admin-only, so never cacheable by a proxy.
       return (await this.staffFrom(req)) !== null ? false : null;
     }
 

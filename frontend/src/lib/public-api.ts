@@ -64,6 +64,20 @@ export interface ArticleDetail extends ArticleSummary {
    * opened by subscribing.
    */
   packageOffer?: PackageOffer | null;
+  /**
+   * Overrides ArticleSummary's `author` — the card select never fetches
+   * id/bio/role, only the detail one does (PUBLIC_ARTICLE_DETAIL_SELECT
+   * on the backend). Widening the shared shape instead would let a card
+   * consumer type-check against fields that were never actually
+   * fetched for it.
+   */
+  author: {
+    id: string;
+    name: string | null;
+    bio: string | null;
+    role: string;
+    avatarUrl: string | null;
+  };
 }
 
 export interface HomepageBundle {
@@ -120,6 +134,43 @@ export async function getArticleBySlug(
     );
     if (!res.ok) return null;
     return (await res.json()) as ArticleDetail;
+  } catch {
+    return null;
+  }
+}
+
+export interface AuthorProfile {
+  id: string;
+  name: string | null;
+  bio: string | null;
+  /** Raw Role enum value ("JORNALISTA", "EDITOR", …) — the caller maps
+   *  it to a Portuguese label, same as every admin screen already does. */
+  role: string;
+  /** One of the options in Configurações › Redacção, or null if never set. */
+  publishingCadence: string | null;
+  avatarUrl: string | null;
+  /** Total PUBLICADO articles, not just the length of `articles` below. */
+  articleCount: number;
+  /** The 10 most recent, newest first. */
+  articles: ArticleSummary[];
+}
+
+/**
+ * The byline profile behind /redator/[id]. No reader token — this is
+ * the same information for every visitor, unlike getArticleBySlug.
+ *
+ * Returns null both for a bogus id and for a member of staff who has
+ * never published anything: the backend does not distinguish the two,
+ * so neither does this.
+ */
+export async function getAuthorProfile(id: string): Promise<AuthorProfile | null> {
+  try {
+    const res = await fetch(
+      `${apiBaseUrl()}/public/authors/${encodeURIComponent(id)}`,
+      { cache: "no-store" },
+    );
+    if (!res.ok) return null;
+    return (await res.json()) as AuthorProfile;
   } catch {
     return null;
   }

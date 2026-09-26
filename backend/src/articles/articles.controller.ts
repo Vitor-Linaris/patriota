@@ -4,6 +4,7 @@ import {
   DefaultValuePipe,
   Delete,
   Get,
+  NotFoundException,
   Param,
   ParseIntPipe,
   Patch,
@@ -191,5 +192,17 @@ export class ArticlesController {
   @Get('public/homepage')
   homepage() {
     return this.service.getHomepageBundle();
+  }
+
+  // The byline profile — name, bio, cadence and the last 10 pieces.
+  // 404 for a staff id that has never authored anything PUBLICADO,
+  // which is also what a bogus id produces — the two are
+  // indistinguishable from the outside, on purpose.
+  @Public()
+  @Get('public/authors/:id')
+  async publicAuthorProfile(@Param('id') id: string) {
+    const profile = await this.service.publicAuthorProfile(id);
+    if (!profile) throw new NotFoundException('Autor não encontrado.');
+    return profile;
   }
 }
