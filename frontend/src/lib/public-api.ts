@@ -71,7 +71,13 @@ export interface ArticleDetail extends ArticleSummary {
    * consumer type-check against fields that were never actually
    * fetched for it.
    */
-  author: { id: string; name: string | null; bio: string | null; role: string };
+  author: {
+    id: string;
+    name: string | null;
+    bio: string | null;
+    role: string;
+    avatarUrl: string | null;
+  };
 }
 
 export interface HomepageBundle {

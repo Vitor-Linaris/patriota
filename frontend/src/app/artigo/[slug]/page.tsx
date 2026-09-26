@@ -238,11 +238,24 @@ export default async function ArticlePage({
               <div className="mt-8 flex flex-wrap items-center gap-x-4 gap-y-3 border-y border-slate-200 py-4">
                 <Link
                   href={`/redator/${article.author.id}`}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-patriota-pure text-[13px] font-bold text-patriota-accent"
                   aria-hidden="true"
                   tabIndex={-1}
                 >
-                  {authorInitials}
+                  {article.author.avatarUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={
+                        imageVariant(article.author.avatarUrl, "small") ??
+                        article.author.avatarUrl
+                      }
+                      alt=""
+                      className="h-10 w-10 shrink-0 rounded-full object-cover"
+                    />
+                  ) : (
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-patriota-pure text-[13px] font-bold text-patriota-accent">
+                      {authorInitials}
+                    </span>
+                  )}
                 </Link>
                 <div className="min-w-0">
                   <p className="text-[14px] font-bold text-slate-900">
@@ -388,6 +401,7 @@ export default async function ArticlePage({
               <div className="mt-10">
                 <AuthorBio
                   initials={authorInitials}
+                  avatarUrl={article.author.avatarUrl}
                   name={article.author.name ?? "Redação"}
                   role={roleLabel(article.author.role)}
                   bio={article.author.bio ?? "Esta pessoa ainda não escreveu uma biografia."}

@@ -101,16 +101,19 @@ export const PUBLIC_ARTICLE_SELECT = {
  * that displays it makes the paywall a single decision rather than four,
  * and drops the homepage payload to a fraction of what it was.
  *
- * The byline's author id lives here too, for the link. bio and role ride
- * along as well, so the author box under the article can show the real
- * person instead of a fixed line about "a equipa editorial" — see
- * AuthorBio's caller in the article page.
+ * The byline's author id lives here too, for the link. bio, role and
+ * avatarUrl ride along as well, so the byline circle and the author box
+ * under the article can show the real person — photo included — instead
+ * of a fixed line about "a equipa editorial" and a bare initials badge.
+ * See AuthorBio's caller in the article page.
  */
 const PUBLIC_ARTICLE_DETAIL_SELECT = {
   ...PUBLIC_ARTICLE_SELECT,
   content: true,
   videoEmbedUrl: true,
-  author: { select: { id: true, name: true, bio: true, role: true } },
+  author: {
+    select: { id: true, name: true, bio: true, role: true, avatarUrl: true },
+  },
 } as const;
 
 @Injectable()
