@@ -9,6 +9,13 @@ interface Props {
   email: string;
   roleLabel: string;
   initials: string;
+  /** Already run through adminMediaUrl by the caller — proxied so a
+   *  private avatar (nobody with a public byline yet) still loads
+   *  inside the admin, same as everywhere else media shows up here. */
+  avatarUrl: string | null;
+  /** Same permission the sidebar's "Configurações" entry already gates
+   *  on — this link was showing to every role regardless. */
+  canAccessSettings: boolean;
 }
 
 const ROLE_PILL: Record<string, string> = {
@@ -21,7 +28,14 @@ const ROLE_PILL: Record<string, string> = {
   Analista: "bg-gray-100 text-gray-600",
 };
 
-export function UserDropdown({ name, email, roleLabel, initials }: Props) {
+export function UserDropdown({
+  name,
+  email,
+  roleLabel,
+  initials,
+  avatarUrl,
+  canAccessSettings,
+}: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -50,9 +64,19 @@ export function UserDropdown({ name, email, roleLabel, initials }: Props) {
           onClick={() => setOpen((v) => !v)}
           aria-haspopup="menu"
           aria-expanded={open}
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0F2C6B] text-xs font-black text-[#FFCC66] transition-all hover:ring-2 hover:ring-[#FFCC66]/40"
+          aria-label="Menu da conta"
+          className="flex h-8 w-8 cursor-pointer items-center justify-center overflow-hidden rounded-full bg-[#0F2C6B] text-xs font-black text-[#FFCC66] transition-all hover:ring-2 hover:ring-[#FFCC66]/40"
         >
-          {initials}
+          {avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={avatarUrl}
+              alt=""
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            initials
+          )}
         </button>
         {open && (
           <div
@@ -70,13 +94,15 @@ export function UserDropdown({ name, email, roleLabel, initials }: Props) {
             >
               <span>◎</span> Ver perfil
             </Link>
-            <Link
-              href="/admin/configuracoes"
-              onClick={() => setOpen(false)}
-              className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50"
-            >
-              <span>⊙</span> Configurações
-            </Link>
+            {canAccessSettings && (
+              <Link
+                href="/admin/configuracoes"
+                onClick={() => setOpen(false)}
+                className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50"
+              >
+                <span>⊙</span> Configurações
+              </Link>
+            )}
             <form action={logoutAction} className="border-t border-gray-100">
               <button
                 type="submit"

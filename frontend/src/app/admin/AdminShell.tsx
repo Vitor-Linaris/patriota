@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
-import { logoutAction } from "./login/actions";
 import { apiFetch } from "@/lib/api";
+import { adminMediaUrl } from "@/lib/media-preview";
 import { UserDropdown } from "./UserDropdown";
 
 interface MeResponse {
@@ -10,6 +10,7 @@ interface MeResponse {
   name: string | null;
   role: string;
   permissions: string[];
+  avatarUrl: string | null;
 }
 
 interface NavItem {
@@ -163,6 +164,14 @@ export async function AdminShell({
       ? NAV.slice()
       : NAV.filter((n) => canSeeNav(n, permSet));
 
+  // Same question the sidebar already answers for "Configurações" —
+  // reused rather than re-checked, so the dropdown link in
+  // UserDropdown can never disagree with whether the sidebar entry is
+  // shown. It was shown unconditionally to every role until now.
+  const canAccessSettings = visibleNav.some(
+    (n) => n.href === "/admin/configuracoes",
+  );
+
   const activeItem = NAV.find((n) => n.href === active);
   const isProfile = active === "/admin/perfil";
 
@@ -204,36 +213,10 @@ export async function AdminShell({
           </nav>
         </div>
 
-        <div className="border-t border-white/5 px-4 py-5">
-          {/* User card → links to profile */}
-          <Link
-            href="/admin/perfil"
-            className="group flex items-center gap-3 rounded-[8px] bg-white/5 p-2 transition hover:bg-white/10"
-          >
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-patriota-accent/20 text-sm font-bold text-patriota-accent">
-              {initials}
-            </div>
-            <div className="flex min-w-0 flex-1 flex-col leading-tight">
-              <span className="truncate text-sm font-semibold text-white">
-                {displayName}
-              </span>
-              <span className="text-[10px] uppercase tracking-[0.5px] text-patriota-accent/80">
-                {roleLabel}
-              </span>
-            </div>
-            <span className="text-white/30 transition-colors group-hover:text-white/70">
-              ›
-            </span>
-          </Link>
-          <form action={logoutAction} className="mt-3">
-            <button
-              type="submit"
-              className="w-full rounded-[8px] border border-white/10 px-3 py-2 text-xs text-white/60 transition hover:border-white/20 hover:text-white"
-            >
-              Terminar sessão
-            </button>
-          </form>
-        </div>
+        {/* Nome, cargo e "Terminar sessão" viviam também aqui, em baixo
+            — duplicado do menu do avatar no canto superior direito, que
+            já tem "Ver perfil" e "Terminar sessão". Removido a pedido do
+            cliente; a barra lateral acaba na navegação. */}
       </aside>
 
       {/* Main */}
@@ -261,6 +244,8 @@ export async function AdminShell({
             email={me.email}
             roleLabel={roleLabel}
             initials={initials}
+            avatarUrl={adminMediaUrl(me.avatarUrl)}
+            canAccessSettings={canAccessSettings}
           />
         </header>
 
