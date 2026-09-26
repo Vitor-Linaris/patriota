@@ -166,6 +166,45 @@ export class MediaAccessService {
     return true;
   }
 
+  /**
+   * The user id embedded in an avatar's filename, or null if the shape
+   * doesn't match. See UsersService.uploadAvatar: `${userId}-${hex}.webp`
+   * — the id prefix is there on purpose ("makes ownership inspectable on
+   * disk"), which is exactly what this reads back.
+   */
+  static userIdFromAvatarPath(relative: string): string | null {
+    const m = /^avatars\/([a-z0-9]+)-[0-9a-f]{8}\.webp$/i.exec(relative);
+    return m ? m[1] : null;
+  }
+
+  /**
+   * Whether an avatar belongs to someone with a public byline.
+   *
+   * Avatars have no Media row (uploadAvatar writes straight to disk),
+   * so they never go through `forPath` above and were, until now,
+   * unconditionally staff-only — correct for most of the newsroom, but
+   * wrong the moment a public profile page exists to show one. The gate
+   * here is deliberately the SAME test as
+   * ArticlesService.publicAuthorProfile: at least one PUBLICADO
+   * article. A photo and a byline appear and disappear from public view
+   * together, because they answer the same question — "does this
+   * person have a public page?" — and a second copy of that rule is a
+   * second place for it to drift.
+   *
+   * Uncached, unlike `forPath`: avatar traffic is a sliver of article
+   * covers, and a stale "yes" here would keep a departed contributor's
+   * private photo public for up to a day — worse than the extra query.
+   */
+  async avatarIsPublic(relative: string): Promise<boolean> {
+    const userId = MediaAccessService.userIdFromAvatarPath(relative);
+    if (!userId) return false;
+    const row = await this.prisma.article.findFirst({
+      where: { authorId: userId, status: 'PUBLICADO' },
+      select: { id: true },
+    });
+    return row !== null;
+  }
+
   /** Drops a cached answer, so the next request re-reads the row. */
   async invalidate(storageKey: string): Promise<void> {
     try {

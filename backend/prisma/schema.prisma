@@ -532,6 +532,12 @@ model Article {
   @@index([status, socialQueuedAt])
   /// The approval queue asks for these on every load.
   @@index([draftAwaitingReview])
+  /// The byline profile's "how many, and which 10" (ArticlesService.
+  /// publicAuthorProfile), and now also the avatar's own visibility
+  /// check (MediaAccessService.avatarIsPublic) — both filter on exactly
+  /// this pair, and authorId had no index at all before this: every
+  /// load of either was a full table scan.
+  @@index([authorId, status])
 }
 
 /// Who did what. The platform's only accountability record: there is no
