@@ -101,13 +101,16 @@ export const PUBLIC_ARTICLE_SELECT = {
  * that displays it makes the paywall a single decision rather than four,
  * and drops the homepage payload to a fraction of what it was.
  *
- * The byline's author id lives here too, for the link.
+ * The byline's author id lives here too, for the link. bio and role ride
+ * along as well, so the author box under the article can show the real
+ * person instead of a fixed line about "a equipa editorial" — see
+ * AuthorBio's caller in the article page.
  */
 const PUBLIC_ARTICLE_DETAIL_SELECT = {
   ...PUBLIC_ARTICLE_SELECT,
   content: true,
   videoEmbedUrl: true,
-  author: { select: { id: true, name: true } },
+  author: { select: { id: true, name: true, bio: true, role: true } },
 } as const;
 
 @Injectable()
@@ -908,6 +911,50 @@ export class ArticlesService {
       select: PUBLIC_ARTICLE_SELECT,
     });
     return [...exact, ...extra];
+  }
+
+  /**
+   * The public byline profile: who this is, what they publish, and
+   * their most recent work.
+   *
+   * Gated on having actually authored something PUBLICADO — not on the
+   * user existing. Every member of staff has a User row, including
+   * roles that never write (MODERADOR, ANALISTA) and accounts created
+   * but never logged into. Requiring at least one published article
+   * keeps this route from becoming a directory of the whole newsroom;
+   * it only opens for the people readers already met in a byline.
+   *
+   * Returns null rather than throwing, so the controller can 404 —
+   * consistent with findPublicBySlug's pair (service returns, controller
+   * decides the HTTP shape).
+   */
+  async publicAuthorProfile(userId: string) {
+    const [user, articleCount] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          name: true,
+          bio: true,
+          role: true,
+          publishingCadence: true,
+          avatarUrl: true,
+        },
+      }),
+      this.prisma.article.count({
+        where: { authorId: userId, status: 'PUBLICADO' },
+      }),
+    ]);
+    if (!user || articleCount === 0) return null;
+
+    const articles = await this.prisma.article.findMany({
+      where: { authorId: userId, status: 'PUBLICADO' },
+      orderBy: { publishedAt: 'desc' },
+      take: 10,
+      select: PUBLIC_ARTICLE_SELECT,
+    });
+
+    return { ...user, articleCount, articles };
   }
 
   /**

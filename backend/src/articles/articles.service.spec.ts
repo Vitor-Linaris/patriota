@@ -27,6 +27,7 @@ function makePrismaMock() {
       aggregate: jest.fn(),
     },
     category: { findUnique: jest.fn() },
+    user: { findUnique: jest.fn() },
   };
 }
 
@@ -816,6 +817,73 @@ describe('ArticlesService', () => {
 
       expect(prisma.article.findMany).toHaveBeenCalledTimes(1);
       expect(tree.getById).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('publicAuthorProfile', () => {
+    const USER = {
+      id: 'u1',
+      name: 'Ana Ferreira',
+      bio: 'Cobre política e economia há três anos.',
+      role: 'JORNALISTA',
+      publishingCadence: 'Uma vez por semana',
+      avatarUrl: null,
+    };
+
+    it('returns the profile with the article count and the last 10 pieces', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce(USER);
+      prisma.article.count.mockResolvedValueOnce(37);
+      prisma.article.findMany.mockResolvedValueOnce([
+        { id: 'a1', slug: 'peca-1', title: 'Peça 1' },
+      ]);
+
+      const profile = await service.publicAuthorProfile('u1');
+
+      expect(profile).toEqual({
+        ...USER,
+        articleCount: 37,
+        articles: [{ id: 'a1', slug: 'peca-1', title: 'Peça 1' }],
+      });
+      expect(prisma.article.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { authorId: 'u1', status: 'PUBLICADO' },
+          orderBy: { publishedAt: 'desc' },
+          take: 10,
+        }),
+      );
+    });
+
+    // Anyone with a User row and zero published pieces — a MODERADOR,
+    // an ANALISTA, an account created and never used — must 404 exactly
+    // like a bogus id. Otherwise this route becomes a directory of
+    // every login the newsroom has ever created.
+    it('returns null for a member of staff who has never published anything', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce(USER);
+      prisma.article.count.mockResolvedValueOnce(0);
+
+      await expect(service.publicAuthorProfile('u1')).resolves.toBeNull();
+      expect(prisma.article.findMany).not.toHaveBeenCalled();
+    });
+
+    it('returns null for an id that matches no user at all', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce(null);
+      prisma.article.count.mockResolvedValueOnce(0);
+
+      await expect(
+        service.publicAuthorProfile('nao-existe'),
+      ).resolves.toBeNull();
+    });
+
+    it('only counts PUBLICADO articles, never drafts or archived pieces', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce(USER);
+      prisma.article.count.mockResolvedValueOnce(1);
+      prisma.article.findMany.mockResolvedValueOnce([]);
+
+      await service.publicAuthorProfile('u1');
+
+      expect(prisma.article.count).toHaveBeenCalledWith({
+        where: { authorId: 'u1', status: 'PUBLICADO' },
+      });
     });
   });
 });
