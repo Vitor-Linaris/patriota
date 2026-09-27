@@ -35,13 +35,15 @@ export async function makeUser(
     create: { email, name, role, isActive: true, password: passwordHash },
   });
 
-  // Must mirror AuthService.login exactly, including typ — JwtAuthGuard
-  // requires it, so an unstamped test token would 401 everywhere.
+  // Must mirror AuthService.login exactly, including typ and tv —
+  // AuthService.resolveSession rejects a staff token without the
+  // session version, so a token missing either would 401 everywhere.
   const token = await jwt.signAsync({
     sub: user.id,
     email: user.email,
     role,
     typ: 'staff',
+    tv: user.tokenVersion,
   });
   return { id: user.id, email: user.email, name, role, token };
 }
