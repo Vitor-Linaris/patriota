@@ -69,4 +69,13 @@ export class UpdateOwnDto {
   @IsOptional()
   @IsObject()
   notificationPrefs?: Record<string, boolean>;
+
+  /**
+   * O sino de notificações internas, um interruptor por área
+   * (StaffNotificationType). Separado de notificationPrefs de propósito
+   * — ver o comentário em User.staffNotifPrefs no schema.
+   */
+  @IsOptional()
+  @IsObject()
+  staffNotifPrefs?: Record<string, boolean>;
 }

@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { StaffNotificationsService } from '../staff-notifications/staff-notifications.service';
 import {
   ALL_PERMISSIONS,
   ALL_PLAN_PERMISSIONS,
@@ -75,7 +76,10 @@ export interface MatrixResponse {
 export class RbacService implements OnModuleInit {
   private readonly logger = new Logger(RbacService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly staffNotifications: StaffNotificationsService,
+  ) {}
 
   /**
    * Ensure every Role has a RolePermissions row on boot.
@@ -221,7 +225,11 @@ export class RbacService implements OnModuleInit {
     };
   }
 
-  async updateRolePermissions(role: Role, permissions: string[]) {
+  async updateRolePermissions(
+    role: Role,
+    permissions: string[],
+    actorId?: string,
+  ) {
     if (role === 'SUPER_ADMIN') {
       throw new BadRequestException('SUPER_ADMIN é imutável.');
     }
@@ -231,11 +239,18 @@ export class RbacService implements OnModuleInit {
         `Permissões desconhecidas: ${invalid.join(', ')}`,
       );
     }
-    return this.prisma.rolePermissions.upsert({
+    const updated = await this.prisma.rolePermissions.upsert({
       where: { role },
       update: { permissions },
       create: { role, permissions },
     });
+    void this.staffNotifications.notify({
+      type: 'PERMISSOES',
+      title: `As permissões do papel ${ROLE_LABELS[role]} foram alteradas.`,
+      href: '/admin/permissions',
+      excludeUserId: actorId,
+    });
+    return updated;
   }
 
   async updatePlanPermissions(plan: ReaderPlan, permissions: string[]) {

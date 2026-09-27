@@ -28,6 +28,7 @@ import { BillingModule } from './billing/billing.module';
 import { PackagesModule } from './packages/packages.module';
 import { ReaderNotificationsModule } from './reader-notifications/reader-notifications.module';
 import { SocialModule } from './social/social.module';
+import { StaffNotificationsModule } from './staff-notifications/staff-notifications.module';
 
 @Module({
   imports: [
@@ -86,6 +87,7 @@ import { SocialModule } from './social/social.module';
     PackagesModule,
     ReaderNotificationsModule,
     SocialModule,
+    StaffNotificationsModule,
   ],
   controllers: [AppController],
   providers: [

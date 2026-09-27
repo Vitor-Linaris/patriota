@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { StaffNotificationsService } from '../staff-notifications/staff-notifications.service';
 
 export const VALID_SECTIONS = [
   'geral',
@@ -134,7 +135,10 @@ const DEFAULTS: Record<SectionName, Record<string, unknown>> = {
 
 @Injectable()
 export class SettingsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly staffNotifications: StaffNotificationsService,
+  ) {}
 
   async getAll(): Promise<Record<SectionName, Record<string, unknown>>> {
     const rows = await this.prisma.setting.findMany();
@@ -200,10 +204,16 @@ export class SettingsService {
       }
       data = { ...data, cadencias: clean };
     }
-    return this.prisma.setting.upsert({
+    const result = await this.prisma.setting.upsert({
       where: { section },
       update: { data: data as never },
       create: { section, data: data as never },
     });
+    void this.staffNotifications.notify({
+      type: 'CONFIGURACOES',
+      title: `A secção "${section}" de Configurações foi alterada.`,
+      href: '/admin/configuracoes',
+    });
+    return result;
   }
 }

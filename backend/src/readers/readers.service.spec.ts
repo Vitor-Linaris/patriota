@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { CommentsService } from '../comments/comments.service';
 import { ReaderMailService } from '../reader-auth/reader-mail.service';
+import { StaffNotificationsService } from '../staff-notifications/staff-notifications.service';
 
 /**
  * The moderation history.
@@ -53,6 +54,10 @@ describe('ReadersService — histórico de moderação', () => {
         {
           provide: ReaderMailService,
           useValue: { sendSuspended: jest.fn(), sendUnsuspended: jest.fn() },
+        },
+        {
+          provide: StaffNotificationsService,
+          useValue: { notify: jest.fn() },
         },
       ],
     }).compile();

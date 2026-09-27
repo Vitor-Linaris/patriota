@@ -8,6 +8,7 @@ import { RbacService } from '../rbac/rbac.service';
 import { CategoryTreeService } from '../categories/category-tree.service';
 import { ConfigService } from '@nestjs/config';
 import { PackageAccessService } from '../packages/package-access.service';
+import { StaffNotificationsService } from '../staff-notifications/staff-notifications.service';
 
 function makePrismaMock() {
   return {
@@ -103,6 +104,10 @@ describe('ArticlesService', () => {
           useValue: { promoteForPublication: jest.fn().mockResolvedValue(0) },
         },
         { provide: PackageAccessService, useValue: packageAccess },
+        {
+          provide: StaffNotificationsService,
+          useValue: { notify: jest.fn(), notifyAuthorPublished: jest.fn() },
+        },
       ],
     }).compile();
     service = moduleRef.get(ArticlesService);

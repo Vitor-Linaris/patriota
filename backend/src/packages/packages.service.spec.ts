@@ -11,6 +11,7 @@ import { RbacService } from '../rbac/rbac.service';
 import { ArticlesService } from '../articles/articles.service';
 import { PackageStripeService } from './package-stripe.service';
 import { MediaService } from '../media/media.service';
+import { StaffNotificationsService } from '../staff-notifications/staff-notifications.service';
 
 const member = (
   id: string,
@@ -74,6 +75,10 @@ describe('PackagesService', () => {
         { provide: ArticlesService, useValue: articles },
         { provide: PackageStripeService, useValue: stripe },
         { provide: MediaService, useValue: media },
+        {
+          provide: StaffNotificationsService,
+          useValue: { notify: jest.fn() },
+        },
       ],
     }).compile();
     service = moduleRef.get(PackagesService);

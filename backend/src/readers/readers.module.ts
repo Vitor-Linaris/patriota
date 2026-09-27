@@ -4,6 +4,7 @@ import { AdminReadersController } from './admin-readers.controller';
 import { CommentsModule } from '../comments/comments.module';
 import { ActivityLogModule } from '../activity-log/activity-log.module';
 import { ReaderAuthModule } from '../reader-auth/reader-auth.module';
+import { StaffNotificationsModule } from '../staff-notifications/staff-notifications.module';
 
 /**
  * Newsroom-side administration of readers.
@@ -17,7 +18,12 @@ import { ReaderAuthModule } from '../reader-auth/reader-auth.module';
  * one place that knows how is CommentsService.
  */
 @Module({
-  imports: [CommentsModule, ActivityLogModule, ReaderAuthModule],
+  imports: [
+    CommentsModule,
+    ActivityLogModule,
+    ReaderAuthModule,
+    StaffNotificationsModule,
+  ],
   providers: [ReadersService],
   controllers: [AdminReadersController],
   exports: [ReadersService],

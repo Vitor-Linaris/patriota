@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { CommentsService, type ActingStaff } from '../comments/comments.service';
 import { ReaderMailService } from '../reader-auth/reader-mail.service';
+import { StaffNotificationsService } from '../staff-notifications/staff-notifications.service';
 import {
   toSkipTake,
   type PageResult,
@@ -163,6 +164,7 @@ export class ReadersService {
     private readonly activity: ActivityLogService,
     private readonly comments: CommentsService,
     private readonly readerMail: ReaderMailService,
+    private readonly staffNotifications: StaffNotificationsService,
   ) {}
 
   /**
@@ -583,6 +585,12 @@ export class ReadersService {
       // that still exists — see ActivityLogService.list().
       targetLabel:
         label + (purged > 0 ? ` (${purged} comentários eliminados)` : ''),
+    });
+    void this.staffNotifications.notify({
+      type: 'COMENTARIO',
+      title: `${updated.name ?? updated.email} foi suspenso (${label}).`,
+      href: `/admin/leitores?id=${readerId}`,
+      excludeUserId: staff.id,
     });
 
     return { ...updated, purgedComments: purged };

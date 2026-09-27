@@ -5,6 +5,8 @@ import { UsersService } from './users.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { SettingsService } from '../settings/settings.service';
+import { StaffNotificationsService } from '../staff-notifications/staff-notifications.service';
+import { RbacService } from '../rbac/rbac.service';
 
 function makePrismaMock() {
   return {
@@ -45,6 +47,14 @@ describe('UsersService', () => {
         // A lista que o perfil oferece no menu de cadência. As quatro
         // que vêm de origem, salvo quando um teste diz outra coisa.
         { provide: SettingsService, useValue: settings },
+        {
+          provide: StaffNotificationsService,
+          useValue: { notify: jest.fn() },
+        },
+        {
+          provide: RbacService,
+          useValue: { getPermissionsForRole: jest.fn().mockResolvedValue([]) },
+        },
       ],
     }).compile();
     service = moduleRef.get(UsersService);

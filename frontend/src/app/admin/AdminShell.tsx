@@ -3,6 +3,7 @@ import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import { adminMediaUrl } from "@/lib/media-preview";
 import { UserDropdown } from "./UserDropdown";
+import { NotificationBell } from "./NotificationBell";
 
 interface MeResponse {
   id: string;
@@ -239,14 +240,17 @@ export async function AdminShell({
               </>
             )}
           </div>
-          <UserDropdown
-            name={displayName}
-            email={me.email}
-            roleLabel={roleLabel}
-            initials={initials}
-            avatarUrl={adminMediaUrl(me.avatarUrl)}
-            canAccessSettings={canAccessSettings}
-          />
+          <div className="flex items-center gap-3">
+            <NotificationBell />
+            <UserDropdown
+              name={displayName}
+              email={me.email}
+              roleLabel={roleLabel}
+              initials={initials}
+              avatarUrl={adminMediaUrl(me.avatarUrl)}
+              canAccessSettings={canAccessSettings}
+            />
+          </div>
         </header>
 
         {/* Page content */}

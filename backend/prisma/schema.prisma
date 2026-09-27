@@ -361,10 +361,19 @@ model User {
   phone             String?
   avatarUrl         String?
   notificationPrefs Json     @default("{}")
+  /// Interruptores do sino de notificações internas — um por área
+  /// (StaffNotificationType), `{ "ARTIGO_REVISAO": false, ... }`.
+  /// Chave ausente conta como ligada: a omissão é o estado de quem
+  /// nunca mexeu nisto, e uma notificação nunca entregue por defeito é
+  /// pior do que uma que sobra por desligar. Separado de
+  /// notificationPrefs de propósito — aquele é sobre e-mail (ainda
+  /// inerte, à espera do SMTP); isto é sobre o sino, que funciona já.
+  staffNotifPrefs   Json     @default("{}")
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  activities        ActivityLog[]
+  activities         ActivityLog[]
+  staffNotifications StaffNotification[]
   articles          Article[]
   moderatedComments Comment[]         @relation("CommentModerator")
   suspendedReaders  Reader[]          @relation("ReaderSuspender")
@@ -480,6 +489,15 @@ model Article {
   /// published article. Without it the first tick would push the entire
   /// archive to Instagram, against a 100-posts-per-day ceiling.
   socialQueuedAt        DateTime?
+  /// Claim flag for telling the AUTHOR their piece went out — the
+  /// in-app bell, not the reader-facing e-mail digest above. Same
+  /// reason as the other two: publish() is only one of five paths to
+  /// PUBLICADO, so a poller with an atomic claim, not a hook.
+  ///
+  /// NOTE: the migration backfills this to now() for every already
+  /// published article, or the first tick notifies every author of
+  /// every piece the newspaper has ever run.
+  authorNotifiedAt      DateTime?
   /// Claim flag for the notification fan-out. NULL means not yet queued.
   /// A poller keys off this instead of hooking the publish path, because
   /// an article can reach PUBLICADO through four different code paths:
@@ -530,6 +548,7 @@ model Article {
   @@index([status, publishedAt])
   @@index([status, notificationsQueuedAt])
   @@index([status, socialQueuedAt])
+  @@index([status, authorNotifiedAt])
   /// The approval queue asks for these on every load.
   @@index([draftAwaitingReview])
   /// The byline profile's "how many, and which 10" (ArticlesService.
@@ -1243,4 +1262,67 @@ model SocialPost {
   /// A pergunta do drenar: "o que está agendado e já passou da hora?".
   @@index([status, scheduledFor])
   @@index([articleId])
+}
+
+/// Uma área do admin, para o efeito do sino de notificações internas.
+/// Cada valor corresponde a um interruptor próprio em
+/// User.staffNotifPrefs e a uma permissão que decide quem é elegível
+/// para a receber — ver StaffNotificationsService.RECIPIENT_PERMISSION.
+enum StaffNotificationType {
+  /// Um artigo entrou na fila de aprovação. Vai para quem tem
+  /// artigos.aprovar, excluindo quem submeteu.
+  ARTIGO_REVISAO
+  /// O SEU artigo foi publicado. Vai só para o autor — não é uma
+  /// notificação de área, é pessoal, e por isso não é filtrada por
+  /// permissão nenhuma além de ser o próprio autor.
+  ARTIGO_PUBLICADO
+  /// Um pacote foi criado ou publicado. Vai para quem tem pacotes.ver.
+  PACOTE
+  /// A palavra-passe de outra pessoa foi reposta. Vai para quem tem
+  /// utilizadores.editar.
+  UTILIZADOR
+  /// A matriz RBAC foi gravada. Vai para quem tem
+  /// configuracoes.permissoes.
+  PERMISSOES
+  /// Um comentário foi eliminado em definitivo, ou um leitor foi
+  /// suspenso/banido. Vai para quem tem comentarios.eliminar ou
+  /// leitores.suspender.
+  COMENTARIO
+  /// Uma categoria foi criada ou editada. Vai para quem tem
+  /// categorias.editar.
+  CATEGORIA
+  /// Um anúncio foi criado ou editado. Vai para quem tem
+  /// configuracoes.editar.
+  PUBLICIDADE
+  /// Uma secção de Configurações foi gravada. Vai para quem tem
+  /// configuracoes.editar.
+  CONFIGURACOES
+}
+
+/// O sino no topo do admin. Um outbox de leitura, não de envio: a
+/// linha nasce já "entregue" (não há fila nem retry, ao contrário de
+/// ArticleNotification/SocialPost) — o único estado que muda depois é
+/// `readAt`, quando a pessoa a abre ou carrega em "marcar como lida".
+///
+/// `href` guarda o destino como texto simples em vez de uma chave
+/// estrangeira polimórfica: os eventos aqui apontam para seis tabelas
+/// diferentes (Article, Package, User, Category, Ad, nada no caso de
+/// Configurações), e um FK nullable para cada uma delas é mais estrutura
+/// do que a pergunta precisa. Custa sobreviver a uma futura eliminação
+/// do alvo com um link morto — aceitável; o título já ficou
+/// desnormalizado ao lado, por isso a notificação continua legível.
+model StaffNotification {
+  id          String                @id @default(cuid())
+  recipientId String
+  recipient   User                  @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  type        StaffNotificationType
+  title       String
+  href        String?
+  readAt      DateTime?
+  createdAt   DateTime              @default(now())
+
+  /// A contagem de não lidas, no sino, a cada carregamento do admin.
+  @@index([recipientId, readAt])
+  /// A lista, mais recente primeiro.
+  @@index([recipientId, createdAt])
 }

@@ -29,6 +29,8 @@ import { InviteUserDto } from './dto/invite-user.dto';
 import { UpdateOwnDto } from './dto/update-own.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { ListUsersQueryDto } from './dto/list-users.query.dto';
+import { StaffNotificationsService } from '../staff-notifications/staff-notifications.service';
+import { RbacService } from '../rbac/rbac.service';
 
 interface ActingUser {
   id: string;
@@ -65,6 +67,7 @@ const USER_PUBLIC_SELECT = {
   phone: true,
   avatarUrl: true,
   notificationPrefs: true,
+  staffNotifPrefs: true,
   createdAt: true,
   password: false,
 };
@@ -81,6 +84,8 @@ export class UsersService {
     private readonly prisma: PrismaService,
     private readonly activity: ActivityLogService,
     private readonly settings: SettingsService,
+    private readonly staffNotifications: StaffNotificationsService,
+    private readonly rbac: RbacService,
   ) {}
 
   async list(query: ListUsersQueryDto): Promise<PageResult<unknown>> {
@@ -323,6 +328,12 @@ export class UsersService {
       targetId: target.id,
       targetLabel: target.email,
     });
+    void this.staffNotifications.notify({
+      type: 'UTILIZADOR',
+      title: `A palavra-passe de ${target.email} foi reposta.`,
+      href: `/admin/utilizadores?id=${target.id}`,
+      excludeUserId: actor.id,
+    });
     return { id: target.id, email: target.email, temporaryPassword };
   }
 
@@ -403,7 +414,12 @@ export class UsersService {
       this.settings.cadences(),
     ]);
     if (!u) throw new NotFoundException('Utilizador não encontrado.');
-    return { ...u, cadenceOptions };
+    // Decide quais interruptores do sino esta pessoa pode ver — o
+    // ecrã de perfil não tem forma própria de perguntar "que permissões
+    // tenho", e /auth/me é um pedido diferente que o cliente não
+    // costuma fazer só para desenhar esta página.
+    const permissions = await this.rbac.getPermissionsForRole(u.role);
+    return { ...u, cadenceOptions, permissions };
   }
 
   async updateOwn(id: string, dto: UpdateOwnDto) {
@@ -417,6 +433,9 @@ export class UsersService {
     }
     if (dto.notificationPrefs !== undefined) {
       data.notificationPrefs = dto.notificationPrefs;
+    }
+    if (dto.staffNotifPrefs !== undefined) {
+      data.staffNotifPrefs = dto.staffNotifPrefs;
     }
 
     /*

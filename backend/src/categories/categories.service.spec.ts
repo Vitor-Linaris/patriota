@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { CategoriesService } from './categories.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CategoryTreeService } from './category-tree.service';
+import { StaffNotificationsService } from '../staff-notifications/staff-notifications.service';
 import {
   BadRequestException,
   ConflictException,
@@ -64,6 +65,10 @@ describe('CategoriesService', () => {
         CategoriesService,
         { provide: PrismaService, useValue: prisma },
         { provide: CategoryTreeService, useValue: tree },
+        {
+          provide: StaffNotificationsService,
+          useValue: { notify: jest.fn() },
+        },
       ],
     }).compile();
     service = moduleRef.get(CategoriesService);

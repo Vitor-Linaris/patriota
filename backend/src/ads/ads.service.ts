@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediaService } from '../media/media.service';
+import { StaffNotificationsService } from '../staff-notifications/staff-notifications.service';
 import { AdType } from '../../generated/prisma/enums';
 
 /**
@@ -68,6 +69,7 @@ export class AdsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly media: MediaService,
+    private readonly staffNotifications: StaffNotificationsService,
   ) {}
 
   /**
@@ -125,6 +127,11 @@ export class AdsService {
       if (updated.enabled && updated.imageUrl) {
         await this.media.promoteForPublication(updated.imageUrl);
       }
+      void this.staffNotifications.notify({
+        type: 'PUBLICIDADE',
+        title: `O anúncio "${updated.name}" foi actualizado.`,
+        href: '/admin/publicidade',
+      });
       return updated;
     } catch (e) {
       if ((e as { code?: string }).code === 'P2025') {

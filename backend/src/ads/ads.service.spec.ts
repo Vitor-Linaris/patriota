@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { AdsService, DEFAULT_ADS } from './ads.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediaService } from '../media/media.service';
+import { StaffNotificationsService } from '../staff-notifications/staff-notifications.service';
 
 describe('AdsService', () => {
   let service: AdsService;
@@ -22,6 +23,10 @@ describe('AdsService', () => {
         AdsService,
         { provide: PrismaService, useValue: prisma },
         { provide: MediaService, useValue: media },
+        {
+          provide: StaffNotificationsService,
+          useValue: { notify: jest.fn() },
+        },
       ],
     }).compile();
     service = moduleRef.get(AdsService);

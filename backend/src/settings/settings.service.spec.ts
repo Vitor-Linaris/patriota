@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
 import { SettingsService } from './settings.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { StaffNotificationsService } from '../staff-notifications/staff-notifications.service';
 
 describe('SettingsService', () => {
   let service: SettingsService;
@@ -19,6 +20,10 @@ describe('SettingsService', () => {
       providers: [
         SettingsService,
         { provide: PrismaService, useValue: prisma },
+        {
+          provide: StaffNotificationsService,
+          useValue: { notify: jest.fn() },
+        },
       ],
     }).compile();
     service = moduleRef.get(SettingsService);

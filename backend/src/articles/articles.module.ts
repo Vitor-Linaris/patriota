@@ -7,6 +7,7 @@ import { CategoriesModule } from '../categories/categories.module';
 import { ReaderAuthModule } from '../reader-auth/reader-auth.module';
 import { MediaModule } from '../media/media.module';
 import { PackageAccessModule } from '../packages/package-access.module';
+import { StaffNotificationsModule } from '../staff-notifications/staff-notifications.module';
 
 @Module({
   // CategoriesModule for CategoryTreeService (the funnel), and
@@ -25,6 +26,10 @@ import { PackageAccessModule } from '../packages/package-access.module';
     // ArticlesService back (publishing a pacote publishes its drafts), so
     // importing that here would be a cycle. See PackageAccessModule.
     PackageAccessModule,
+    // The "para revisão" bell notification, fired from
+    // submitForReview(). StaffNotificationsModule needs nothing back
+    // from here, so no cycle.
+    StaffNotificationsModule,
   ],
   providers: [ArticlesService, ArticlesScheduler],
   controllers: [ArticlesController],
