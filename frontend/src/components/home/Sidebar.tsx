@@ -1,5 +1,9 @@
 import { SectionHeading } from "./SectionHeading";
-import { listMostRead, listPublicArticles } from "@/lib/public-api";
+import {
+  listMostCommented,
+  listMostRead,
+  listPublicArticles,
+} from "@/lib/public-api";
 import { NewsletterForm } from "./NewsletterForm";
 import { AdSlot } from "@/components/ads/AdSlot";
 import type { Ad } from "@/lib/ads";
@@ -22,17 +26,22 @@ export async function Sidebar({
   ad?: Ad | null;
   adBelowNewsletter?: Ad | null;
 } = {}) {
-  // Pre-fetch both lists server-side; the client widget just toggles
-  // between them — no extra round-trip on tab change.
-  const [mostRead, recent, opinion] = await Promise.all([
+  // Pre-fetch all three lists server-side; the client widget just
+  // toggles between them — no extra round-trip on tab change.
+  const [mostRead, recent, mostCommented, opinion] = await Promise.all([
     listMostRead(4),
     listPublicArticles({ pageSize: 4 }).then((r) => r.items),
+    listMostCommented(4),
     listPublicArticles({ category: "opiniao", pageSize: 3 }),
   ]);
 
   return (
     <aside className="flex flex-col gap-8">
-      <SidebarTopList recent={recent} mostRead={mostRead} />
+      <SidebarTopList
+        recent={recent}
+        mostRead={mostRead}
+        mostCommented={mostCommented}
+      />
 
       {/* Sidebar ad slot (homepage-sidebar, 300×250 IAB MPU). The
           AdSlot collapses to nothing when the admin hasn't configured

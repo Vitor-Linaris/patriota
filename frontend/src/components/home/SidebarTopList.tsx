@@ -1,31 +1,34 @@
 "use client";
 
 import { useState } from "react";
-import { FEATURES } from "@/lib/features";
 import { imageVariant } from "@/lib/images";
 import type { ArticleSummary } from "@/lib/public-api";
 
-type Tab = "recentes" | "lidas";
+type Tab = "recentes" | "lidas" | "comentadas";
 
 /**
- * Sidebar widget with two functional tabs: Mais Recentes / Mais
- * Lidas. The parent server component pre-fetches both lists so this
- * client component is purely UI state — no extra round-trip on tab
- * switch.
+ * Sidebar widget with three functional tabs: Mais Recentes / Mais
+ * Lidas / Mais Comentadas. The parent server component pre-fetches all
+ * three lists so this client component is purely UI state — no extra
+ * round-trip on tab switch.
  *
- * The "Mais Comentadas" / "Escolha da Redação" tabs from the old
- * design are gone — they relied on comments + editorial picks which
- * we don't surface yet.
+ * "Escolha da Redação" (an editorial pick, not a ranking) is gone —
+ * there is no curated-pick feature behind it, so the button did
+ * nothing. "Mais Comentadas" replaces it with a real ranking, the same
+ * kind as the other two.
  */
 export function SidebarTopList({
   recent,
   mostRead,
+  mostCommented,
 }: {
   recent: ArticleSummary[];
   mostRead: ArticleSummary[];
+  mostCommented: ArticleSummary[];
 }) {
   const [tab, setTab] = useState<Tab>("recentes");
-  const items = tab === "recentes" ? recent : mostRead;
+  const items =
+    tab === "recentes" ? recent : tab === "lidas" ? mostRead : mostCommented;
 
   return (
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -37,6 +40,7 @@ export function SidebarTopList({
           [
             { key: "recentes" as const, label: "Mais Recentes" },
             { key: "lidas" as const, label: "Mais Lidas" },
+            { key: "comentadas" as const, label: "Mais Comentadas" },
           ]
         ).map((t) => {
           const isActive = tab === t.key;
@@ -55,13 +59,6 @@ export function SidebarTopList({
             </button>
           );
         })}
-        {FEATURES.comments && (
-          <button className="flex-1 px-4 py-4 text-center font-semibold leading-tight text-slate-500 hover:text-slate-700">
-            Escolha da
-            <br />
-            Redação
-          </button>
-        )}
       </nav>
       {items.length === 0 ? (
         <p className="px-4 py-6 text-center text-[12px] text-slate-400">
