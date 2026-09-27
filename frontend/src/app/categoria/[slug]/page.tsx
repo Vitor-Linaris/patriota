@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { Container } from "@/components/Container";
 import { TopBar } from "@/components/home/TopBar";
 import { BreakingNews } from "@/components/home/BreakingNews";
@@ -162,13 +163,14 @@ export default async function CategoryPage({
                   {FILTERS.map((f) => {
                     const isActive = f.key === sort;
                     return (
-                      <a
+                      <Link
                         key={f.key}
                         href={
                           f.key === "publishedAt"
                             ? `/categoria/${slug}`
                             : `/categoria/${slug}?sort=${f.key}`
                         }
+                        scroll={false}
                         role="tab"
                         aria-selected={isActive}
                         className={
@@ -179,7 +181,7 @@ export default async function CategoryPage({
                         }
                       >
                         {f.label}
-                      </a>
+                      </Link>
                     );
                   })}
                 </div>
