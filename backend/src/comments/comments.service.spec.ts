@@ -4,6 +4,7 @@ import { CommentsService, type ActingStaff } from './comments.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { CommentMailService } from './comment-mail.service';
+import { StaffNotificationsService } from '../staff-notifications/staff-notifications.service';
 
 function makePrismaMock() {
   return {
@@ -56,6 +57,10 @@ describe('CommentsService — moderate() and hardDelete()', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: ActivityLogService, useValue: { record: jest.fn() } },
         { provide: CommentMailService, useValue: mail },
+        {
+          provide: StaffNotificationsService,
+          useValue: { notify: jest.fn() },
+        },
       ],
     }).compile();
     service = moduleRef.get(CommentsService);

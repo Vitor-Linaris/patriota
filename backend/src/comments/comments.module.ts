@@ -4,6 +4,7 @@ import { CommentMailService } from './comment-mail.service';
 import { CommentsController } from './comments.controller';
 import { ReaderAuthModule } from '../reader-auth/reader-auth.module';
 import { ActivityLogModule } from '../activity-log/activity-log.module';
+import { StaffNotificationsModule } from '../staff-notifications/staff-notifications.module';
 
 /**
  * Public reader comments plus the newsroom moderation queue, in one
@@ -14,7 +15,7 @@ import { ActivityLogModule } from '../activity-log/activity-log.module';
  * REVISOR and MODERADOR — nothing to add, nothing to backfill.
  */
 @Module({
-  imports: [ReaderAuthModule, ActivityLogModule],
+  imports: [ReaderAuthModule, ActivityLogModule, StaffNotificationsModule],
   providers: [CommentsService, CommentMailService],
   controllers: [CommentsController],
   exports: [CommentsService],

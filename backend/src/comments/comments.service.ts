@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { CommentMailService } from './comment-mail.service';
+import { StaffNotificationsService } from '../staff-notifications/staff-notifications.service';
 import {
   toSkipTake,
   type PageQueryDto,
@@ -66,6 +67,7 @@ export class CommentsService {
     private readonly prisma: PrismaService,
     private readonly activity: ActivityLogService,
     private readonly mail: CommentMailService,
+    private readonly staffNotifications: StaffNotificationsService,
   ) {}
 
   /**
@@ -572,6 +574,12 @@ export class CommentsService {
       targetType: 'comment',
       targetId: commentId,
       targetLabel: `${existing.article.title} — ${existing.body.slice(0, 60)}`,
+    });
+    void this.staffNotifications.notify({
+      type: 'COMENTARIO',
+      title: `Um comentário em "${existing.article.title}" foi eliminado em definitivo.`,
+      href: '/admin/comentarios',
+      excludeUserId: staff.id,
     });
 
     return { id: commentId };

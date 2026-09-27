@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { RbacService } from './rbac.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { StaffNotificationsService } from '../staff-notifications/staff-notifications.service';
 import { ALL_PERMISSIONS } from './rbac.constants';
 
 /**
@@ -36,7 +37,14 @@ describe('RbacService — retired permissions', () => {
       },
     };
     const moduleRef = await Test.createTestingModule({
-      providers: [RbacService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        RbacService,
+        { provide: PrismaService, useValue: prisma },
+        {
+          provide: StaffNotificationsService,
+          useValue: { notify: jest.fn() },
+        },
+      ],
     }).compile();
     service = moduleRef.get(RbacService);
   });
@@ -112,7 +120,14 @@ describe('RbacService — onModuleInit does not undo revocations', () => {
       },
     };
     const moduleRef = await Test.createTestingModule({
-      providers: [RbacService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        RbacService,
+        { provide: PrismaService, useValue: prisma },
+        {
+          provide: StaffNotificationsService,
+          useValue: { notify: jest.fn() },
+        },
+      ],
     }).compile();
     service = moduleRef.get(RbacService);
   });

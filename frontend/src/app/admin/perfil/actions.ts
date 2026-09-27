@@ -16,6 +16,7 @@ export interface UpdateProfilePayload {
   phone?: string;
   avatarUrl?: string;
   notificationPrefs?: Record<string, boolean>;
+  staffNotifPrefs?: Record<string, boolean>;
 }
 
 export async function updateProfileAction(payload: UpdateProfilePayload) {

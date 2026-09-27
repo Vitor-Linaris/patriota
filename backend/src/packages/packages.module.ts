@@ -8,6 +8,7 @@ import { StripeModule } from '../billing/stripe.module';
 import { ArticlesModule } from '../articles/articles.module';
 import { MediaModule } from '../media/media.module';
 import { ReaderAuthModule } from '../reader-auth/reader-auth.module';
+import { StaffNotificationsModule } from '../staff-notifications/staff-notifications.module';
 
 /**
  * Pacotes exclusivos: sets of articles sold for one payment.
@@ -39,6 +40,7 @@ import { ReaderAuthModule } from '../reader-auth/reader-auth.module';
     PackageAccessModule,
     StripeModule,
     ReaderAuthModule,
+    StaffNotificationsModule,
   ],
   providers: [PackagesService, PackagePurchasesService, PackageStripeService],
   controllers: [PackagesController],

@@ -14,6 +14,7 @@ import {
   type CategoryTreeNode,
 } from './category-tree.service';
 import type { Prisma } from '../../generated/prisma/client';
+import { StaffNotificationsService } from '../staff-notifications/staff-notifications.service';
 
 /** Max depth is 4 levels: categoria(0) -> subcategoria -> topico -> subtopico(3). */
 const MAX_DEPTH = 3;
@@ -76,6 +77,7 @@ export class CategoriesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tree: CategoryTreeService,
+    private readonly staffNotifications: StaffNotificationsService,
   ) {}
 
   /**
@@ -325,6 +327,11 @@ export class CategoriesService {
         });
       });
       await this.tree.invalidate();
+      void this.staffNotifications.notify({
+        type: 'CATEGORIA',
+        title: `Nova categoria criada: "${result.name}".`,
+        href: '/admin/categorias',
+      });
       return result;
     } catch (e) {
       if (isPrismaCode(e, 'P2002')) {
@@ -430,6 +437,11 @@ export class CategoriesService {
         return tx.category.update({ where: { id }, data: fields });
       });
       await this.tree.invalidate();
+      void this.staffNotifications.notify({
+        type: 'CATEGORIA',
+        title: `A categoria "${result.name}" foi editada.`,
+        href: '/admin/categorias',
+      });
       return result;
     } catch (e) {
       if (isPrismaCode(e, 'P2025')) {

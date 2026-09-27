@@ -21,6 +21,7 @@ import { SetPackageArticlesDto } from './dto/set-package-articles.dto';
 import { ListPackagesQueryDto } from './dto/list-packages.query.dto';
 import { PageResult, toSkipTake } from '../common/dto/pagination.dto';
 import type { Role } from '../rbac/rbac.constants';
+import { StaffNotificationsService } from '../staff-notifications/staff-notifications.service';
 
 interface ActingUser {
   id: string;
@@ -88,6 +89,7 @@ export class PackagesService {
     private readonly articles: ArticlesService,
     private readonly stripe: PackageStripeService,
     private readonly media: MediaService,
+    private readonly staffNotifications: StaffNotificationsService,
   ) {}
 
   // ── admin CRUD ─────────────────────────────────────────────────────
@@ -192,6 +194,12 @@ export class PackagesService {
         targetType: 'package',
         targetId: created.id,
         targetLabel: created.name,
+      });
+      void this.staffNotifications.notify({
+        type: 'PACOTE',
+        title: `Novo pacote criado: "${created.name}".`,
+        href: `/admin/pacotes?id=${created.id}`,
+        excludeUserId: user.id,
       });
       return created;
     } catch (e) {
@@ -570,6 +578,12 @@ export class PackagesService {
       targetType: 'package',
       targetId: id,
       targetLabel: `${pkg.name} — ${drafts.length} artigo(s) publicados`,
+    });
+    void this.staffNotifications.notify({
+      type: 'PACOTE',
+      title: `Pacote publicado: "${pkg.name}".`,
+      href: `/admin/pacotes?id=${id}`,
+      excludeUserId: user.id,
     });
     return updated;
   }

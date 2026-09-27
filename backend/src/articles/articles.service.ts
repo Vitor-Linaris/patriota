@@ -23,6 +23,7 @@ import { previewOf } from './paywall';
 import { sanitizeArticleContent } from './sanitize-content';
 import { MediaService } from '../media/media.service';
 import { PackageAccessService } from '../packages/package-access.service';
+import { StaffNotificationsService } from '../staff-notifications/staff-notifications.service';
 
 interface ActingUser {
   id: string;
@@ -126,6 +127,7 @@ export class ArticlesService {
     private readonly config: ConfigService,
     private readonly media: MediaService,
     private readonly packageAccess: PackageAccessService,
+    private readonly staffNotifications: StaffNotificationsService,
   ) {}
 
   // ── helpers ────────────────────────────────────────────────────────
@@ -648,6 +650,12 @@ export class ArticlesService {
       targetType: 'article',
       targetId: a.id,
       targetLabel: a.title,
+    });
+    void this.staffNotifications.notify({
+      type: 'ARTIGO_REVISAO',
+      title: `"${a.title}" foi submetido para revisão.`,
+      href: `/admin/artigos?id=${updated.slug}`,
+      excludeUserId: user.id,
     });
     return updated;
   }

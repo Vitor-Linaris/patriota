@@ -10,6 +10,8 @@ import {
 } from '@nestjs/common';
 import { Roles } from '../auth/roles.decorator';
 import { RequirePermissions } from '../auth/permissions.decorator';
+import { CurrentUser } from '../auth/current-user.decorator';
+import type { AuthUser } from '../auth/auth.service';
 import { RbacService } from './rbac.service';
 import { UpdateRolePermissionsDto } from './dto/update-role-permissions.dto';
 import {
@@ -35,11 +37,16 @@ export class RbacController {
   update(
     @Param('role') role: string,
     @Body() dto: UpdateRolePermissionsDto,
+    @CurrentUser() user: AuthUser,
   ) {
     if (!ROLE_ORDER.includes(role as Role)) {
       throw new BadRequestException(`Role desconhecida: ${role}`);
     }
-    return this.rbac.updateRolePermissions(role as Role, dto.permissions);
+    return this.rbac.updateRolePermissions(
+      role as Role,
+      dto.permissions,
+      user.id,
+    );
   }
 
   /**

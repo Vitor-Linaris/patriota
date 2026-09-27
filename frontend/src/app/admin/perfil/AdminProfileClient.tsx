@@ -24,12 +24,16 @@ interface ProfileData {
 }
 
 interface NotificationPrefs {
-  newArticle: boolean;
-  comments: boolean;
-  newsletter: boolean;
   weeklyReport: boolean;
-  systemAlerts: boolean;
-  loginAlerts: boolean;
+}
+
+/** Uma linha do sino — já filtrada, no servidor, às áreas que esta
+ *  pessoa tem permissão para ver. */
+interface StaffNotifArea {
+  key: string;
+  label: string;
+  desc: string;
+  checked: boolean;
 }
 
 type Section = "perfil" | "seguranca" | "notificacoes" | "sessoes";
@@ -57,12 +61,18 @@ interface Props {
   initialNotifs: NotificationPrefs;
   /** The list the newsroom configures in /admin/configuracoes. */
   cadenceOptions: string[];
+  /** Newsletter e relatório semanal só fazem sentido para quem olha
+   *  para o jornal como um todo. */
+  canSeeReports: boolean;
+  staffAreas: StaffNotifArea[];
 }
 
 export default function AdminProfileClient({
   initial,
   initialNotifs,
   cadenceOptions,
+  canSeeReports,
+  staffAreas,
 }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -87,6 +97,16 @@ export default function AdminProfileClient({
   const [notifs, setNotifs] = useState<NotificationPrefs>(initialNotifs);
   const [notifsSaved, setNotifsSaved] = useState(false);
   const [notifsError, setNotifsError] = useState<string | null>(null);
+
+  // O sino — um estado à parte de `notifs` acima, gravado num campo
+  // diferente (staffNotifPrefs, não notificationPrefs). São dois
+  // sistemas de propósito: aquele é e-mail e ainda não envia nada; este
+  // é o sino, e já funciona.
+  const [staffPrefs, setStaffPrefs] = useState<Record<string, boolean>>(
+    () => Object.fromEntries(staffAreas.map((a) => [a.key, a.checked])),
+  );
+  const [staffPrefsSaved, setStaffPrefsSaved] = useState(false);
+  const [staffPrefsError, setStaffPrefsError] = useState<string | null>(null);
 
   /**
    * Avatar upload — talks to the dedicated /users/me/avatar endpoint
@@ -210,6 +230,19 @@ export default function AdminProfileClient({
       }
       setNotifsSaved(true);
       setTimeout(() => setNotifsSaved(false), 3000);
+    });
+  }
+
+  function saveStaffPrefs() {
+    setStaffPrefsError(null);
+    startTransition(async () => {
+      const res = await updateProfileAction({ staffNotifPrefs: staffPrefs });
+      if (!res.ok) {
+        setStaffPrefsError(res.error);
+        return;
+      }
+      setStaffPrefsSaved(true);
+      setTimeout(() => setStaffPrefsSaved(false), 3000);
     });
   }
 
@@ -701,108 +734,154 @@ export default function AdminProfileClient({
           )}
 
           {section === "notificacoes" && (
-            <div className="rounded-2xl border border-gray-200 bg-white p-6">
-              <h2 className="mb-1 text-base font-black text-[#0F2C6B]">
-                Preferências de notificação
-              </h2>
-              <p className="mb-3 text-xs text-gray-400">
-                Escolha que avisos quer receber. As preferências ficam
-                guardadas na sua conta.
-              </p>
-              <div className="mb-5 flex items-start gap-2 rounded-lg border-l-4 border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
-                <span className="text-base">⚠</span>
-                <p>
-                  As preferências são guardadas, mas o envio real de
-                  e-mails ainda não está activo — depende da integração
-                  SMTP futura.
+            <div className="flex flex-col gap-6">
+              {/* O sino — funciona já, hoje. */}
+              <div className="rounded-2xl border border-gray-200 bg-white p-6">
+                <h2 className="mb-1 text-base font-black text-[#0F2C6B]">
+                  🔔 Sino de notificações
+                </h2>
+                <p className="mb-5 text-xs text-gray-400">
+                  O que aparece no sino, no canto superior direito. Só vê
+                  aqui as áreas às quais já tem acesso — dar-lhe acesso a
+                  mais uma área acrescenta a opção sozinho, a seguir.
                 </p>
-              </div>
-              <div className="space-y-0 divide-y divide-gray-100">
-                {(
-                  [
-                    {
-                      key: "newArticle",
-                      label: "Novo artigo publicado",
-                      desc: "Quando um artigo for publicado por qualquer membro da redação.",
-                    },
-                    {
-                      key: "comments",
-                      label: "Novos comentários",
-                      desc: "Quando um leitor comentar num artigo da sua autoria.",
-                    },
-                    {
-                      key: "newsletter",
-                      label: "Relatórios de newsletter",
-                      desc: "Estatísticas de abertura e cliques após cada envio.",
-                    },
-                    {
-                      key: "weeklyReport",
-                      label: "Relatório semanal",
-                      desc: "Resumo de visitas, artigos e analytics às segundas-feiras.",
-                    },
-                    {
-                      key: "systemAlerts",
-                      label: "Alertas do sistema",
-                      desc: "Erros técnicos, atualizações e manutenção programada.",
-                    },
-                    {
-                      key: "loginAlerts",
-                      label: "Alertas de acesso",
-                      desc: "Notificação sempre que iniciar sessão de um novo dispositivo.",
-                    },
-                  ] as {
-                    key: keyof NotificationPrefs;
-                    label: string;
-                    desc: string;
-                  }[]
-                ).map((item) => (
-                  <div
-                    key={item.key}
-                    className="flex items-center justify-between gap-4 py-4"
-                  >
-                    <div className="flex-1">
-                      <p className="text-sm font-bold text-gray-800">
-                        {item.label}
-                      </p>
-                      <p className="mt-0.5 text-xs text-gray-400">
-                        {item.desc}
-                      </p>
-                    </div>
+                {staffAreas.length === 0 ? (
+                  <p className="rounded-lg bg-gray-50 px-3 py-2.5 text-xs text-gray-400">
+                    O seu papel não dá acesso a nenhuma área com
+                    notificação própria.
+                  </p>
+                ) : (
+                  <div className="space-y-0 divide-y divide-gray-100">
+                    {staffAreas.map((item) => (
+                      <div
+                        key={item.key}
+                        className="flex items-center justify-between gap-4 py-4"
+                      >
+                        <div className="flex-1">
+                          <p className="text-sm font-bold text-gray-800">
+                            {item.label}
+                          </p>
+                          <p className="mt-0.5 text-xs text-gray-400">
+                            {item.desc}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setStaffPrefs((p) => ({
+                              ...p,
+                              [item.key]: !p[item.key],
+                            }))
+                          }
+                          aria-pressed={staffPrefs[item.key]}
+                          className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full px-0.5 transition-colors ${staffPrefs[item.key] ? "bg-[#0F2C6B]" : "bg-gray-300"}`}
+                        >
+                          <span
+                            className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${staffPrefs[item.key] ? "translate-x-5" : "translate-x-0"}`}
+                          />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {staffAreas.length > 0 && (
+                  <div className="mt-5 flex items-center justify-end gap-3">
+                    {staffPrefsError && (
+                      <span className="text-sm font-semibold text-red-600">
+                        {staffPrefsError}
+                      </span>
+                    )}
+                    {!staffPrefsError && staffPrefsSaved && (
+                      <span className="text-sm font-semibold text-green-600">
+                        ✓ Preferências guardadas
+                      </span>
+                    )}
                     <button
                       type="button"
-                      onClick={() =>
-                        setNotifs((n) => ({ ...n, [item.key]: !n[item.key] }))
-                      }
-                      aria-pressed={notifs[item.key]}
-                      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full px-0.5 transition-colors ${notifs[item.key] ? "bg-[#0F2C6B]" : "bg-gray-300"}`}
+                      onClick={saveStaffPrefs}
+                      disabled={pending}
+                      className="rounded-xl bg-[#0F2C6B] px-6 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#0A1F4E] disabled:opacity-50"
                     >
-                      <span
-                        className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${notifs[item.key] ? "translate-x-5" : "translate-x-0"}`}
-                      />
+                      {pending ? "A guardar…" : "Guardar preferências"}
                     </button>
                   </div>
-                ))}
-              </div>
-              <div className="mt-5 flex items-center justify-end gap-3">
-                {notifsError && (
-                  <span className="text-sm font-semibold text-red-600">
-                    {notifsError}
-                  </span>
                 )}
-                {!notifsError && notifsSaved && (
-                  <span className="text-sm font-semibold text-green-600">
-                    ✓ Preferências guardadas
-                  </span>
-                )}
-                <button
-                  type="button"
-                  onClick={saveNotifs}
-                  disabled={pending}
-                  className="rounded-xl bg-[#0F2C6B] px-6 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#0A1F4E] disabled:opacity-50"
-                >
-                  {pending ? "A guardar…" : "Guardar preferências"}
-                </button>
               </div>
+
+              {/* Só existe para quem tem a visão de conjunto — ver
+                  canSeeReports. Sem isso não sobra nenhum aviso para
+                  mostrar aqui, e um cartão vazio é pior do que nenhum. */}
+              {canSeeReports && (
+              <div className="rounded-2xl border border-gray-200 bg-white p-6">
+                <h2 className="mb-1 text-base font-black text-[#0F2C6B]">
+                  ✉ Notificações por e-mail
+                </h2>
+                <p className="mb-3 text-xs text-gray-400">
+                  Escolha que avisos quer receber por e-mail.
+                </p>
+                <div className="space-y-0 divide-y divide-gray-100">
+                  {(
+                    [
+                      {
+                        key: "weeklyReport",
+                        label: "Relatório semanal",
+                        desc: "Resumo de artigos, visitas, assinaturas e permissões, todas as segundas-feiras às 8h.",
+                      },
+                    ] as {
+                      key: keyof NotificationPrefs;
+                      label: string;
+                      desc: string;
+                    }[]
+                  ).map((item) => (
+                    <div
+                      key={item.key}
+                      className="flex items-center justify-between gap-4 py-4"
+                    >
+                      <div className="flex-1">
+                        <p className="text-sm font-bold text-gray-800">
+                          {item.label}
+                        </p>
+                        <p className="mt-0.5 text-xs text-gray-400">
+                          {item.desc}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setNotifs((n) => ({ ...n, [item.key]: !n[item.key] }))
+                        }
+                        aria-pressed={notifs[item.key]}
+                        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full px-0.5 transition-colors ${notifs[item.key] ? "bg-[#0F2C6B]" : "bg-gray-300"}`}
+                      >
+                        <span
+                          className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${notifs[item.key] ? "translate-x-5" : "translate-x-0"}`}
+                        />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-5 flex items-center justify-end gap-3">
+                  {notifsError && (
+                    <span className="text-sm font-semibold text-red-600">
+                      {notifsError}
+                    </span>
+                  )}
+                  {!notifsError && notifsSaved && (
+                    <span className="text-sm font-semibold text-green-600">
+                      ✓ Preferências guardadas
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={saveNotifs}
+                    disabled={pending}
+                    className="rounded-xl bg-[#0F2C6B] px-6 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#0A1F4E] disabled:opacity-50"
+                  >
+                    {pending ? "A guardar…" : "Guardar preferências"}
+                  </button>
+                </div>
+              </div>
+              )}
             </div>
           )}
 
