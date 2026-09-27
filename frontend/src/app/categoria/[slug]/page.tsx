@@ -33,8 +33,13 @@ export async function generateStaticParams() {
   return cats.map((c) => ({ slug: c.slug }));
 }
 
-const FILTERS = ["Mais Recentes", "Mais Lidas", "Mais Comentadas"] as const;
+type SortKey = "publishedAt" | "views" | "comments";
 
+const FILTERS: { key: SortKey; label: string }[] = [
+  { key: "publishedAt", label: "Mais Recentes" },
+  { key: "views", label: "Mais Lidas" },
+  { key: "comments", label: "Mais Comentadas" },
+];
 
 const PAGE_SIZE = 10;
 
@@ -43,19 +48,22 @@ export default async function CategoryPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; sort?: string }>;
 }) {
   const { slug } = await params;
-  const { page: pageParam } = await searchParams;
+  const { page: pageParam, sort: sortParam } = await searchParams;
   const category = await getCategoryBySlug(slug);
   if (!category) notFound();
 
   // 1-based, clamp to a sane lower bound.
   const page = Math.max(1, Number(pageParam) || 1);
+  const sort: SortKey = FILTERS.some((f) => f.key === sortParam)
+    ? (sortParam as SortKey)
+    : "publishedAt";
 
   const [{ items: rawArticles, total }, breaking, ads, trail] =
     await Promise.all([
-      listPublicArticles({ category: slug, page, pageSize: PAGE_SIZE }),
+      listPublicArticles({ category: slug, page, pageSize: PAGE_SIZE, sort }),
       listBreaking(4),
       getAdsByPage("Categoria"),
       getAncestors(slug),
@@ -151,21 +159,29 @@ export default async function CategoryPage({
                   aria-label="Ordenar artigos"
                   className="inline-flex rounded-lg border border-slate-200 bg-white p-1 text-[13px]"
                 >
-                  {FILTERS.map((f, i) => (
-                    <button
-                      key={f}
-                      role="tab"
-                      aria-selected={i === 0}
-                      className={
-                        "rounded-md px-3 py-1.5 font-semibold transition " +
-                        (i === 0
-                          ? "bg-patriota-dark text-white"
-                          : "text-slate-600 hover:text-slate-900")
-                      }
-                    >
-                      {f}
-                    </button>
-                  ))}
+                  {FILTERS.map((f) => {
+                    const isActive = f.key === sort;
+                    return (
+                      <a
+                        key={f.key}
+                        href={
+                          f.key === "publishedAt"
+                            ? `/categoria/${slug}`
+                            : `/categoria/${slug}?sort=${f.key}`
+                        }
+                        role="tab"
+                        aria-selected={isActive}
+                        className={
+                          "rounded-md px-3 py-1.5 font-semibold transition " +
+                          (isActive
+                            ? "bg-patriota-dark text-white"
+                            : "text-slate-600 hover:text-slate-900")
+                        }
+                      >
+                        {f.label}
+                      </a>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -192,11 +208,13 @@ export default async function CategoryPage({
               <Pagination
                 current={page}
                 totalPages={totalPages}
-                hrefForPage={(p) =>
-                  p === 1
-                    ? `/categoria/${slug}`
-                    : `/categoria/${slug}?page=${p}`
-                }
+                hrefForPage={(p) => {
+                  const params = new URLSearchParams();
+                  if (sort !== "publishedAt") params.set("sort", sort);
+                  if (p !== 1) params.set("page", String(p));
+                  const qs = params.toString();
+                  return `/categoria/${slug}${qs ? `?${qs}` : ""}`;
+                }}
               />
             </div>
 

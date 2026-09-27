@@ -848,7 +848,9 @@ export class ArticlesService {
     const orderBy =
       query.sort === 'views'
         ? { views: 'desc' as const }
-        : { publishedAt: 'desc' as const };
+        : query.sort === 'comments'
+          ? { commentCount: 'desc' as const }
+          : { publishedAt: 'desc' as const };
     const [items, total] = await Promise.all([
       this.prisma.article.findMany({
         where,

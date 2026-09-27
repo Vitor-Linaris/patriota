@@ -568,6 +568,14 @@ describe('ArticlesService', () => {
       expect(args.orderBy).toEqual({ views: 'desc' });
     });
 
+    it('orders by commentCount desc when sort=comments is given', async () => {
+      prisma.article.findMany.mockResolvedValueOnce([]);
+      prisma.article.count.mockResolvedValueOnce(0);
+      await service.listPublic({ sort: 'comments' } as never);
+      const args = prisma.article.findMany.mock.calls[0][0];
+      expect(args.orderBy).toEqual({ commentCount: 'desc' });
+    });
+
     it('funnels a category down to its whole subtree', async () => {
       tree.resolveSubtreeIds.mockResolvedValueOnce(['pt', 'ma', 'fu', 'se']);
       prisma.article.findMany.mockResolvedValueOnce([]);

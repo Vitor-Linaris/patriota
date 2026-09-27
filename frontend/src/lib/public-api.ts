@@ -182,7 +182,7 @@ export interface PublicListQuery {
   q?: string;
   page?: number;
   pageSize?: number;
-  sort?: "publishedAt" | "views";
+  sort?: "publishedAt" | "views" | "comments";
 }
 
 export async function listPublicArticles(
@@ -214,6 +214,15 @@ export async function listPublicArticles(
 export async function listMostRead(limit = 4): Promise<ArticleSummary[]> {
   const { items } = await listPublicArticles({
     sort: "views",
+    pageSize: limit,
+  });
+  return items;
+}
+
+/** Most-commented published articles, descending (approved comments only). */
+export async function listMostCommented(limit = 4): Promise<ArticleSummary[]> {
+  const { items } = await listPublicArticles({
+    sort: "comments",
     pageSize: limit,
   });
   return items;

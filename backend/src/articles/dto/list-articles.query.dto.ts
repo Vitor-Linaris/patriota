@@ -8,7 +8,7 @@ import {
 import { Transform } from 'class-transformer';
 import { PageQueryDto } from '../../common/dto/pagination.dto';
 
-export type ArticleSort = 'publishedAt' | 'views';
+export type ArticleSort = 'publishedAt' | 'views' | 'comments';
 
 export class ListArticlesQueryDto extends PageQueryDto {
   @IsOptional()
@@ -31,9 +31,13 @@ export class ListArticlesQueryDto extends PageQueryDto {
   @IsString({ each: true })
   status?: string[];
 
-  /** Order: `publishedAt` (default) or `views` (most-read). */
+  /**
+   * Order: `publishedAt` (default), `views` (most-read) or `comments`
+   * (most-commented — Article.commentCount, which only ever counts
+   * APROVADO comments; see CommentsService.recount).
+   */
   @IsOptional()
-  @IsIn(['publishedAt', 'views'])
+  @IsIn(['publishedAt', 'views', 'comments'])
   sort?: ArticleSort;
 
   /**
