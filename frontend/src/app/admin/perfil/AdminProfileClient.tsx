@@ -24,8 +24,6 @@ interface ProfileData {
 }
 
 interface NotificationPrefs {
-  newArticle: boolean;
-  newsletter: boolean;
   weeklyReport: boolean;
 }
 
@@ -810,7 +808,10 @@ export default function AdminProfileClient({
                 )}
               </div>
 
-              {/* E-mail — ainda inerte, à espera do SMTP. */}
+              {/* Só existe para quem tem a visão de conjunto — ver
+                  canSeeReports. Sem isso não sobra nenhum aviso para
+                  mostrar aqui, e um cartão vazio é pior do que nenhum. */}
+              {canSeeReports && (
               <div className="rounded-2xl border border-gray-200 bg-white p-6">
                 <h2 className="mb-1 text-base font-black text-[#0F2C6B]">
                   ✉ Notificações por e-mail
@@ -818,36 +819,14 @@ export default function AdminProfileClient({
                 <p className="mb-3 text-xs text-gray-400">
                   Escolha que avisos quer receber por e-mail.
                 </p>
-                <div className="mb-5 flex items-start gap-2 rounded-lg border-l-4 border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
-                  <span className="text-base">⚠</span>
-                  <p>
-                    As preferências são guardadas, mas o envio real de
-                    e-mails ainda não está activo — depende da integração
-                    SMTP futura.
-                  </p>
-                </div>
                 <div className="space-y-0 divide-y divide-gray-100">
                   {(
                     [
                       {
-                        key: "newArticle",
-                        label: "Novo artigo publicado",
-                        desc: "Quando um artigo for publicado por qualquer membro da redação.",
+                        key: "weeklyReport",
+                        label: "Relatório semanal",
+                        desc: "Resumo de artigos, visitas, assinaturas e permissões, todas as segundas-feiras às 8h.",
                       },
-                      ...(canSeeReports
-                        ? ([
-                            {
-                              key: "newsletter",
-                              label: "Relatórios de newsletter",
-                              desc: "Estatísticas de abertura e cliques após cada envio.",
-                            },
-                            {
-                              key: "weeklyReport",
-                              label: "Relatório semanal",
-                              desc: "Resumo de visitas, artigos e analytics às segundas-feiras.",
-                            },
-                          ] as const)
-                        : []),
                     ] as {
                       key: keyof NotificationPrefs;
                       label: string;
@@ -902,6 +881,7 @@ export default function AdminProfileClient({
                   </button>
                 </div>
               </div>
+              )}
             </div>
           )}
 

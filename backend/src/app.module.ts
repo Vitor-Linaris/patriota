@@ -29,6 +29,7 @@ import { PackagesModule } from './packages/packages.module';
 import { ReaderNotificationsModule } from './reader-notifications/reader-notifications.module';
 import { SocialModule } from './social/social.module';
 import { StaffNotificationsModule } from './staff-notifications/staff-notifications.module';
+import { WeeklyReportModule } from './weekly-report/weekly-report.module';
 
 @Module({
   imports: [
@@ -88,6 +89,7 @@ import { StaffNotificationsModule } from './staff-notifications/staff-notificati
     ReaderNotificationsModule,
     SocialModule,
     StaffNotificationsModule,
+    WeeklyReportModule,
   ],
   controllers: [AppController],
   providers: [

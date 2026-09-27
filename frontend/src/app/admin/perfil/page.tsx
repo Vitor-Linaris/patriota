@@ -55,15 +55,13 @@ function getInitials(name: string | null, email: string): string {
  * any yet. Kept here so the empty JSON field on a fresh account
  * doesn't render as all-off (the previous defaults were friendlier).
  *
- * Só "Novo artigo publicado" sobrevive das seis originais — as outras
- * três (comentários, alertas do sistema, alertas de acesso) foram
- * retiradas a pedido do cliente, e as duas que restam (newsletter,
- * relatório semanal) ficam reservadas a papéis mais graduados — ver
- * `canSeeReports` abaixo.
+ * Só "Relatório semanal" sobrevive das seis originais. "Novo artigo
+ * publicado" e "Relatórios de newsletter" foram removidos — o primeiro
+ * nunca teve nenhum consumidor no backend, e o segundo reportaria
+ * números que nunca são escritos (ver WeeklyReportService). Fica
+ * reservado a quem tem a visão de conjunto — ver `canSeeReports` abaixo.
  */
 const DEFAULT_NOTIFS = {
-  newArticle: true,
-  newsletter: false,
   weeklyReport: true,
 };
 
@@ -178,8 +176,6 @@ export default async function Page() {
         }}
         cadenceOptions={me.cadenceOptions ?? []}
         initialNotifs={{
-          newArticle: toBool(prefs.newArticle, DEFAULT_NOTIFS.newArticle),
-          newsletter: toBool(prefs.newsletter, DEFAULT_NOTIFS.newsletter),
           weeklyReport: toBool(prefs.weeklyReport, DEFAULT_NOTIFS.weeklyReport),
         }}
         // Só Super Admin e Editor-Chefe têm a visão de conjunto que estes
