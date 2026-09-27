@@ -5,6 +5,7 @@ import { VideoService } from './video.service';
 import { MediaController } from './media.controller';
 import { UploadsController } from './uploads.controller';
 import { SocialImageController } from './social-image.controller';
+import { MediaPublishScheduler } from './media-publish.scheduler';
 
 /**
  * The media library, and the route that serves its files.
@@ -19,7 +20,12 @@ import { SocialImageController } from './social-image.controller';
  * the guard (it is @Public()).
  */
 @Module({
-  providers: [MediaService, MediaAccessService, VideoService],
+  providers: [
+    MediaService,
+    MediaAccessService,
+    VideoService,
+    MediaPublishScheduler,
+  ],
   controllers: [MediaController, UploadsController, SocialImageController],
   exports: [MediaService, MediaAccessService, VideoService],
 })

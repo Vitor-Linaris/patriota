@@ -73,12 +73,15 @@ export class SocialConfig {
   }
 
   /**
-   * The origin Meta will fetch the cover image from.
+   * The origin Meta will fetch the cover image from — this API, where
+   * the /social-image route lives.
    *
-   * Derived from UPLOADS_PUBLIC_BASE_URL rather than given its own
-   * variable: that one is already the address images are served from and
-   * is already correct in every environment, and a second variable
-   * saying almost the same thing is a second variable to get wrong.
+   * API_PUBLIC_URL when set. It used to be derived from
+   * UPLOADS_PUBLIC_BASE_URL alone, which is the API only while the API
+   * serves the uploads: once images are served from the R2 bucket's own
+   * domain, that origin has no /social-image route and every Instagram
+   * post would fail. Falling back to it keeps an environment that has
+   * not set the new variable working exactly as before.
    *
    * It must be reachable from the internet. The Instagram container step
    * hands Meta a URL and Meta fetches it — an internal Docker hostname
@@ -87,6 +90,7 @@ export class SocialConfig {
    */
   get apiOrigin(): string | null {
     const base =
+      this.config.get<string>('API_PUBLIC_URL') ??
       this.config.get<string>('UPLOADS_PUBLIC_BASE_URL') ??
       'http://localhost:8585/uploads';
     try {

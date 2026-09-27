@@ -30,6 +30,7 @@ import { ReaderNotificationsModule } from './reader-notifications/reader-notific
 import { SocialModule } from './social/social.module';
 import { StaffNotificationsModule } from './staff-notifications/staff-notifications.module';
 import { WeeklyReportModule } from './weekly-report/weekly-report.module';
+import { StorageModule } from './storage/storage.module';
 
 @Module({
   imports: [
@@ -57,6 +58,9 @@ import { WeeklyReportModule } from './weekly-report/weekly-report.module';
       skipIf: () => process.env.JEST_WORKER_ID !== undefined,
     }),
     PrismaModule,
+    // @Global — media, avatars and the social image route read and write
+    // uploads through it. Local disk or R2, by STORAGE_DRIVER.
+    StorageModule,
     RedisModule,
     RbacModule,
     AuthModule,

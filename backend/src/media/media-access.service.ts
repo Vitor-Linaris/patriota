@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { StorageService } from '../storage/storage.service';
 
 /** What the serving route needs to know about one path. */
 export interface FileAccess {
@@ -48,6 +49,7 @@ export class MediaAccessService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
+    private readonly storage: StorageService,
   ) {}
 
   /**
@@ -158,12 +160,68 @@ export class MediaAccessService {
     this.logger.warn(
       `Media ${key} was private but is live on ${where}. Publishing it now.`,
     );
-    await this.prisma.media.update({
-      where: { id: row.id },
+    // True even if the copy fails: this request is served by the API,
+    // which reads the private copy, and the file IS live. The flag stays
+    // private, so the next promotion or sweep tries the copy again.
+    await this.publishKeys([key]);
+    return true;
+  }
+
+  /**
+   * Makes these media public — the copy first, the flag after.
+   *
+   * The only place a Media row becomes PUBLICO. With R2 behind it,
+   * public means a copy in the public bucket, and the order is the whole
+   * point: a flag that says public over a copy that failed would never
+   * be retried, and the image would 404 on the live site for good. A
+   * failed copy leaves the row private, and the next promotion or the
+   * sweep (MediaService.sweepPublished) picks it up again.
+   *
+   * The poster is published with its video: it is what a `<video>` shows
+   * before anybody presses play.
+   *
+   * Returns how many rows it published. Rows already public are skipped.
+   */
+  async publishKeys(keys: string[]): Promise<number> {
+    if (keys.length === 0) return 0;
+
+    const rows = await this.prisma.media.findMany({
+      where: { storageKey: { in: keys }, visibility: 'PRIVADO' },
+      select: {
+        id: true,
+        storageKey: true,
+        url: true,
+        urlMedium: true,
+        urlSmall: true,
+        posterUrl: true,
+      },
+    });
+
+    const published: { id: string; storageKey: string }[] = [];
+    for (const row of rows) {
+      const rels = [row.url, row.urlMedium, row.urlSmall, row.posterUrl]
+        .map((u) => (u ? this.storage.relativeFromUrl(u) : null))
+        .filter((r): r is string => r !== null);
+      try {
+        await this.storage.publish(rels);
+        published.push({ id: row.id, storageKey: row.storageKey! });
+      } catch (e) {
+        this.logger.error(
+          `Could not publish media ${row.storageKey}: ${(e as Error).message}`,
+        );
+      }
+    }
+    if (published.length === 0) return 0;
+
+    await this.prisma.media.updateMany({
+      where: { id: { in: published.map((p) => p.id) } },
       data: { visibility: 'PUBLICO' },
     });
-    await this.invalidate(key);
-    return true;
+    // The cached answer still says "private", and it is what the serving
+    // route reads. Without this, an article that has just gone out shows
+    // broken images to every reader until that entry expires.
+    await Promise.all(published.map((p) => this.invalidate(p.storageKey)));
+    return published.length;
   }
 
   /**

@@ -7,10 +7,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
-import { mkdir, unlink, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import sharp from 'sharp';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import {
   PageQueryDto,
@@ -131,10 +133,6 @@ function loadSizes(): SizeSpec[] {
 @Injectable()
 export class MediaService {
   private readonly logger = new Logger(MediaService.name);
-  private readonly uploadsDir =
-    process.env.UPLOADS_DIR ?? '/usr/src/app/uploads';
-  private readonly publicBase =
-    process.env.UPLOADS_PUBLIC_BASE_URL ?? 'http://localhost:8585/uploads';
   private readonly quality = Number(process.env.IMAGE_QUALITY ?? 80);
   private readonly sizes = loadSizes();
 
@@ -143,6 +141,7 @@ export class MediaService {
     private readonly activity: ActivityLogService,
     private readonly video: VideoService,
     private readonly access: MediaAccessService,
+    private readonly storage: StorageService,
   ) {}
 
   /**
@@ -439,8 +438,6 @@ export class MediaService {
     const now = new Date();
     const yyyy = String(now.getUTCFullYear());
     const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
-    const dir = join(this.uploadsDir, yyyy, mm);
-    await mkdir(dir, { recursive: true });
 
     // Checked BEFORE any work is done, against the size of what was
     // sent. The variants are smaller than the original in every
@@ -462,22 +459,18 @@ export class MediaService {
     const urls: Record<SizeSpec['key'], string> = {} as never;
     let largeBytes = 0;
     let totalBytes = 0;
-
-    // The written paths, so a failure part-way through can undo itself.
-    const written: string[] = [];
+    const variants: { rel: string; buf: Buffer }[] = [];
 
     try {
       for (const size of this.sizes) {
-        const filename = `${baseId}-${size.key}.webp`;
-        const outPath = join(dir, filename);
+        const rel = `${yyyy}/${mm}/${baseId}-${size.key}.webp`;
         const buf = await sharp(file.buffer, readOptions)
           .rotate()
           .resize({ width: size.width, withoutEnlargement: true })
           .webp({ quality: this.quality })
           .toBuffer();
-        await writeFile(outPath, buf);
-        written.push(outPath);
-        urls[size.key] = `${this.publicBase}/${yyyy}/${mm}/${filename}`;
+        variants.push({ rel, buf });
+        urls[size.key] = this.storage.urlFor(rel);
         totalBytes += buf.length;
         if (size.key === 'large') largeBytes = buf.length;
       }
@@ -489,33 +482,42 @@ export class MediaService {
       // download, a half-written export — only fails here, at
       // toBuffer(). The uploader was told "erro interno do servidor"
       // about their own bad file.
-      //
-      // Whatever variants did get written are removed: leaving them
-      // would be files on disk that no row points at, invisible for
-      // ever and counting against a quota.
-      await this.unlinkVariants(
-        written.map((p) => `${this.publicBase}/${yyyy}/${mm}/${p.split(/[\\/]/).pop()}`),
-      );
       throw new BadRequestException(
         `Não foi possível processar a imagem: ${(e as Error).message}`,
       );
     }
 
-    // Re-checked against what was actually written. The estimate above
-    // used the size of the upload; an animation can come out larger
-    // than it went in, and two uploads racing each other would both
-    // have passed the first check.
+    // Re-checked against what is about to be written. The estimate
+    // above used the size of the upload; an animation can come out
+    // larger than it went in, and two uploads racing each other would
+    // both have passed the first check.
     //
     // Re-read rather than reused, for the same reason: the other upload
     // may have committed in between.
     const after = await this.usageFor(userId);
     if (totalBytes > after.remaining) {
-      await this.unlinkVariants(Object.values(urls));
       throw new ConflictException(
         `Sem espaço: este ficheiro ocupa ${formatBytes(totalBytes)} e ` +
           `restam-lhe ${formatBytes(after.remaining)} de ` +
           `${formatBytes(after.limit)}.`,
       );
+    }
+
+    // Written only once the image has been processed and the quota
+    // agrees, and kept apart from the processing above on purpose: a
+    // storage failure is ours, not a bad file, and must not come back
+    // to the uploader as a 400 about their image. Whatever did get
+    // written is removed — a file no row points at is invisible for
+    // ever and counts against nobody's quota.
+    const written: string[] = [];
+    try {
+      for (const v of variants) {
+        await this.storage.put(v.rel, v.buf, 'image/webp');
+        written.push(v.rel);
+      }
+    } catch (e) {
+      await this.storage.delete(written);
+      throw e;
     }
 
     const created = await this.prisma.media.create({
@@ -643,7 +645,10 @@ export class MediaService {
       // unlink fails we are left with an orphaned file, which costs
       // disk. The other order would leave a row pointing at nothing,
       // which costs a broken image on a page.
-      await this.unlinkVariants(variants);
+      //
+      // The poster too — a video's still is never referenced on its own,
+      // and leaving it was a file nobody could see or delete.
+      await this.unlinkVariants([...variants, media.posterUrl]);
       void this.activity.record({
         userId: actor.id,
         action: 'deleted',
@@ -711,41 +716,43 @@ export class MediaService {
     const now = new Date();
     const yyyy = String(now.getUTCFullYear());
     const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
-    const dir = join(this.uploadsDir, yyyy, mm);
-    await mkdir(dir, { recursive: true });
 
     const baseId = randomBytes(8).toString('hex');
     const ext = detected.mime === 'video/webm' ? 'webm' : 'mp4';
-    const videoName = `${baseId}-video.${ext}`;
-    const videoPath = join(dir, videoName);
+    const videoRel = `${yyyy}/${mm}/${baseId}-video.${ext}`;
+    const posterRel = `${yyyy}/${mm}/${baseId}-poster.webp`;
     const written: string[] = [];
 
-    await writeFile(videoPath, file.buffer);
-    written.push(videoPath);
+    // ffprobe and ffmpeg read a file path, not a buffer, so the video is
+    // put in a scratch directory to be looked at. Kept apart from where
+    // uploads live — with R2 there is no "where uploads live" on this
+    // machine — and removed whatever happens.
+    const scratch = await mkdtemp(join(tmpdir(), 'patriota-video-'));
+    const scratchPath = join(scratch, `video.${ext}`);
+    await writeFile(scratchPath, file.buffer);
 
     try {
-      const info = await this.video.probe(videoPath);
+      const info = await this.video.probe(scratchPath);
       this.video.assertAcceptable(info);
 
       // A still, so the grid and the picker do not show a hole. Its
       // absence is tolerated; see grabPoster.
-      let posterUrl: string | null = null;
-      let posterBytes = 0;
-      const frame = await this.video.grabPoster(videoPath, info.durationSeconds);
+      let poster: Buffer | null = null;
+      const frame = await this.video.grabPoster(
+        scratchPath,
+        info.durationSeconds,
+      );
       if (frame) {
-        const posterName = `${baseId}-poster.webp`;
-        const posterPath = join(dir, posterName);
-        const buf = await sharp(frame)
-          .resize({ width: this.sizes[1]?.width ?? 800, withoutEnlargement: true })
+        poster = await sharp(frame)
+          .resize({
+            width: this.sizes[1]?.width ?? 800,
+            withoutEnlargement: true,
+          })
           .webp({ quality: this.quality })
           .toBuffer();
-        await writeFile(posterPath, buf);
-        written.push(posterPath);
-        posterUrl = `${this.publicBase}/${yyyy}/${mm}/${posterName}`;
-        posterBytes = buf.length;
       }
 
-      const totalBytes = file.buffer.length + posterBytes;
+      const totalBytes = file.buffer.length + (poster?.length ?? 0);
       const after = await this.usageFor(userId);
       if (totalBytes > after.remaining) {
         throw new ConflictException(
@@ -754,9 +761,17 @@ export class MediaService {
         );
       }
 
+      await this.storage.put(videoRel, file.buffer, detected.mime);
+      written.push(videoRel);
+      if (poster) {
+        await this.storage.put(posterRel, poster, 'image/webp');
+        written.push(posterRel);
+      }
+      const posterUrl = poster ? this.storage.urlFor(posterRel) : null;
+
       const created = await this.prisma.media.create({
         data: {
-          url: `${this.publicBase}/${yyyy}/${mm}/${videoName}`,
+          url: this.storage.urlFor(videoRel),
           name: stripExtension(file.originalname) || baseId,
           mimeType: detected.mime,
           kind: 'VIDEO',
@@ -785,13 +800,15 @@ export class MediaService {
       });
       return created;
     } catch (e) {
-      // Anything from the probe onwards leaves the file on disk with no
-      // row pointing at it, which is exactly the invisible-file problem
-      // the quota exists to avoid.
-      for (const p of written) {
-        await unlink(p).catch(() => undefined);
-      }
+      // Anything written before the failure has no row pointing at it,
+      // which is exactly the invisible-file problem the quota exists to
+      // avoid.
+      await this.storage.delete(written);
       throw e;
+    } finally {
+      await rm(scratch, { recursive: true, force: true }).catch(
+        () => undefined,
+      );
     }
   }
 
@@ -844,8 +861,8 @@ export class MediaService {
    *
    * Never throws. A failure here means an image 404s on a live page,
    * which is bad — but throwing would fail the publish itself, which is
-   * worse. It is logged loudly and the serving route heals it on the
-   * next request (see the uploads controller).
+   * worse. It is logged loudly, and both the serving route (on the next
+   * request) and sweepPublished (within minutes) try again.
    */
   async promoteForPublication(
     ...texts: (string | null | undefined)[]
@@ -854,19 +871,8 @@ export class MediaService {
     if (keys.length === 0) return 0;
 
     try {
-      const { count } = await this.prisma.media.updateMany({
-        where: { storageKey: { in: keys }, visibility: 'PRIVADO' },
-        data: { visibility: 'PUBLICO' },
-      });
-      if (count > 0) {
-        this.logger.log(`${count} media file(s) published.`);
-        // The cached answer still says "private", and it is what the
-        // serving route reads. Without this, an article that has just
-        // gone out shows broken images to every reader until that entry
-        // expires — the exact failure the short TTL on private answers
-        // was chosen to limit, and which this removes instead.
-        await Promise.all(keys.map((k) => this.access.invalidate(k)));
-      }
+      const count = await this.access.publishKeys(keys);
+      if (count > 0) this.logger.log(`${count} media file(s) published.`);
       return count;
     } catch (e) {
       this.logger.error(
@@ -876,20 +882,6 @@ export class MediaService {
     }
   }
 
-  /**
-   * Removes the WebP variants from disk.
-   *
-   * Until now deleting media dropped the row and left every file behind
-   * for ever. Nobody noticed because three WebP variants are small —
-   * but the library is about to take 100 MB videos, and an upload
-   * quota, at which point invisible files are somebody's quota being
-   * eaten by things they already deleted.
-   *
-   * URLs that are not ours — the paste-a-link path stores whatever
-   * address it was given — are skipped rather than guessed at. So is a
-   * path that climbs out of the uploads directory, which no URL we
-   * generate can produce but which is not worth trusting.
-   */
   /**
    * Deletes an ad banner outright — row, files, and the reference from
    * the slot that pointed at it.
@@ -976,7 +968,7 @@ export class MediaService {
     }
 
     await this.prisma.media.delete({ where: { id: media.id } });
-    await this.unlinkVariants(variants);
+    await this.unlinkVariants([...variants, media.posterUrl]);
     if (media.storageKey) await this.access.invalidate(media.storageKey);
 
     void this.activity.record({
@@ -990,27 +982,96 @@ export class MediaService {
     return { ok: true, fileDeleted: true, reason: 'eliminada' as const };
   }
 
-  private async unlinkVariants(urls: string[]): Promise<void> {
-    for (const url of urls) {
-      if (!url.startsWith(this.publicBase)) continue;
+  /**
+   * Removes a media row's files from storage.
+   *
+   * Until now deleting media dropped the row and left every file behind
+   * for ever. Nobody noticed because three WebP variants are small —
+   * but the library takes 100 MB videos, and an upload quota, at which
+   * point invisible files are somebody's quota being eaten by things
+   * they already deleted.
+   *
+   * URLs that are not ours — the paste-a-link path stores whatever
+   * address it was given — are skipped rather than guessed at. So is a
+   * path that climbs out of the uploads root (StorageService.relativeFromUrl).
+   */
+  private async unlinkVariants(urls: (string | null)[]): Promise<void> {
+    const rels = urls
+      .map((u) => (u ? this.storage.relativeFromUrl(u) : null))
+      .filter((r): r is string => r !== null);
+    await this.storage.delete(rels);
+  }
 
-      const relative = url.slice(this.publicBase.length).replace(/^\/+/, '');
-      const target = resolve(this.uploadsDir, relative);
-      if (!target.startsWith(resolve(this.uploadsDir))) {
-        this.logger.warn(`Refusing to unlink outside uploads: ${url}`);
-        continue;
-      }
+  /**
+   * Publishes whatever live content uses but is still private.
+   *
+   * The safety net behind promoteForPublication, run every few minutes
+   * by MediaPublishScheduler. Today the uploads route catches a missed
+   * promotion on the next request (MediaAccessService.healIfPublished).
+   * Once the public bucket is served straight from a CDN, requests for
+   * it never reach this API, and this sweep is the only thing that can
+   * — and it is also what retries a copy that failed.
+   *
+   * Bounded rather than exhaustive: articles changed in the last day,
+   * plus every live ad and pacote (a handful each). An article published
+   * a week ago whose promotion failed is already being healed by
+   * readers' requests today, and will be here once served from the CDN,
+   * because anything touching it again brings it back into the window.
+   *
+   * Also copies the avatars of those articles' authors: an avatar is
+   * public exactly when its owner has a published article
+   * (MediaAccessService.avatarIsPublic), and a first article is the
+   * moment that becomes true. Copying one already copied is harmless.
+   */
+  async sweepPublished(now = new Date()): Promise<number> {
+    const since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
+    const [articles, ads, packages] = await Promise.all([
+      this.prisma.article.findMany({
+        where: { status: 'PUBLICADO', updatedAt: { gte: since } },
+        select: {
+          coverImageUrl: true,
+          content: true,
+          author: { select: { avatarUrl: true } },
+        },
+      }),
+      this.prisma.ad.findMany({
+        where: { enabled: true, imageUrl: { not: null } },
+        select: { imageUrl: true },
+      }),
+      this.prisma.package.findMany({
+        where: { status: 'PUBLICADO', coverImageUrl: { not: null } },
+        select: { coverImageUrl: true },
+      }),
+    ]);
+
+    const keys = extractStorageKeys(
+      ...articles.flatMap((a) => [a.coverImageUrl, a.content]),
+      ...ads.map((a) => a.imageUrl),
+      ...packages.map((p) => p.coverImageUrl),
+    );
+    const published = await this.access.publishKeys(keys);
+    if (published > 0) {
+      this.logger.warn(
+        `Sweep published ${published} media file(s) a promotion had missed.`,
+      );
+    }
+
+    const avatars = [
+      ...new Set(
+        articles
+          .map((a) => a.author?.avatarUrl)
+          .map((u) => (u ? this.storage.relativeFromUrl(u) : null))
+          .filter((r): r is string => r !== null && r.startsWith('avatars/')),
+      ),
+    ];
+    if (avatars.length > 0) {
       try {
-        await unlink(target);
+        await this.storage.publish(avatars);
       } catch (e) {
-        // ENOENT is the normal case for a file already gone; anything
-        // else is worth knowing about but never worth failing the
-        // delete over — the row is already committed.
-        if ((e as { code?: string }).code !== 'ENOENT') {
-          this.logger.warn(`Could not unlink ${target}: ${(e as Error).message}`);
-        }
+        this.logger.error(`Could not publish avatars: ${(e as Error).message}`);
       }
     }
+    return published;
   }
 }

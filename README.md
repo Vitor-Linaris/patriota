@@ -198,8 +198,11 @@ Email/password do seed (definidos em `backend/.env`). Por defeito:
 | `CORS_ORIGIN`             | ✓ em prod | Lista separada por vírgulas de origens permitidas |
 | `SUPERADMIN_EMAIL`        |   | Email do utilizador semeado no boot |
 | `SUPERADMIN_PASSWORD`     |   | Password do utilizador semeado |
-| `UPLOADS_DIR`             |   | Pasta onde o sharp grava as imagens |
-| `UPLOADS_PUBLIC_BASE_URL` | ✓ em prod | URL público que serve `/uploads` (CDN recomendado) |
+| `STORAGE_DRIVER`          |   | `local` (default, disco) ou `r2` (Cloudflare R2) |
+| `UPLOADS_DIR`             |   | Pasta das imagens com o driver `local` |
+| `UPLOADS_PUBLIC_BASE_URL` | ✓ em prod | Endereço guardado na BD para cada ficheiro — a API (`https://api.<dominio>/uploads`) ou, na fase 2, o domínio do bucket público |
+| `API_PUBLIC_URL`          |   | Endereço público da API, para a imagem que o Instagram vai buscar. Default: origem de `UPLOADS_PUBLIC_BASE_URL` |
+| `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_PRIVATE`, `R2_BUCKET_PUBLIC` | ✓ com `STORAGE_DRIVER=r2` | Credenciais e buckets do R2. Se faltar alguma, a API não arranca |
 | `IMAGE_QUALITY`           |   | Default 80, controla compressão WebP |
 | `IMAGE_SIZE_SMALL/MEDIUM/LARGE` |   | Larguras das 3 variantes (400/800/1600) |
 | `FEATURE_READER_AREA`     |   | Interruptor do lado do servidor para a área de leitores. Sem prefixo `NEXT_PUBLIC_` de propósito — toda a rota de leitores devolve 404 enquanto não for `true` |
@@ -784,33 +787,57 @@ durante o crescimento. Por ordem de impacto:
 
 ### 🔴 Crítico para produção
 
-#### 1. Armazenamento de imagens em serviço externo
+#### 1. Armazenamento de imagens no Cloudflare R2
 
-**Estado actual:** as imagens vão para um volume Docker local
-(`/uploads/YYYY/MM/...`).
+**Estado actual:** implementado (`backend/src/storage/`), por omissão
+ainda em disco local. `STORAGE_DRIVER=r2` passa tudo para o R2 — o
+pipeline `sharp` é o mesmo, só muda onde os ficheiros são escritos.
 
-**Porquê migrar:**
-- Em hosts efémeros (Vercel, Railway, Render, Fly) o filesystem **não
-  persiste** entre deploys → todas as imagens desaparecem
-- Não há CDN — cada visitante carrega do servidor de origem
-- Sem backup automático
-- Sem geo-distribuição
+**Dois buckets**, para manter "privado até publicar"
+(`Media.visibility`):
+- o **privado** recebe todos os uploads e é de onde a API lê;
+- ao publicar um artigo/anúncio/pacote, os ficheiros são **copiados**
+  para o **público** (`MediaAccessService.publishKeys`) — primeiro a
+  cópia, depois a flag. Uma cópia que falhe deixa a linha privada, e o
+  varrimento de 10 em 10 minutos (`MediaService.sweepPublished`) tenta
+  outra vez.
 
-**Recomendações (por ordem de preferência):**
+**Fase 1 — R2 sem mudar DNS.** Os URLs continuam
+`https://api.<dominio>/uploads/...` e a API serve a partir do R2, com as
+mesmas regras de acesso. Resolve a durabilidade (o disco do VPS deixa de
+ser o único sítio onde as imagens existem).
 
-1. **Cloudinary** — mais simples, transforms on-the-fly, plano grátis até
-   25 GB. Substituir o pipeline `sharp` por upload directo ao Cloudinary;
-   eles devolvem URLs CDN com transformações por query string
-   (`?w=400&q=80`).
-2. **Cloudflare R2** — preço imbatível (sem custos de egress) + CDN
-   incorporado. Mantém o pipeline `sharp` actual mas escreve para R2 em
-   vez do disco. API compatível com S3.
-3. **AWS S3 + CloudFront** — opção enterprise. Mais configuração, mais
-   ferramentas. Indicado se já estiver na AWS.
+1. Na Cloudflare: criar os dois buckets (jurisdição UE recomendada) e um
+   token "Object Read & Write" restrito a eles.
+2. No `.env` do VPS: `STORAGE_DRIVER=r2` e as cinco `R2_*` (ver
+   `backend/.env.example`).
+3. Copiar o que já existe (simulação primeiro, sempre):
+   ```bash
+   npx ts-node scripts/migrate-uploads-to-r2.ts copy
+   npx ts-node scripts/migrate-uploads-to-r2.ts copy --apply
+   ```
+   É idempotente: correr outra vez logo antes de reiniciar a API apanha
+   o que tiver sido carregado entretanto. O disco local **não é
+   apagado** — fica como cópia até a fase 1 estar confirmada.
+4. Reiniciar a API.
 
-**Estimativa de esforço:** 1-2 dias para abstrair o `MediaService` por trás
-de um interface `StorageProvider` com implementações `LocalStorage` e
-`CloudinaryStorage`/`S3Storage`.
+**Fase 2 — CDN.** Quando o DNS do domínio estiver na Cloudflare:
+1. Ligar `media.<dominio>` ao bucket público (R2 › bucket › Settings ›
+   Custom Domains).
+2. `API_PUBLIC_URL=https://api.<dominio>` e
+   `UPLOADS_PUBLIC_BASE_URL=https://media.<dominio>/uploads`.
+3. Reescrever os endereços guardados — tudo numa transacção:
+   ```bash
+   npx ts-node scripts/migrate-uploads-to-r2.ts rewrite-urls \
+     --from=https://api.<dominio>/uploads \
+     --to=https://media.<dominio>/uploads          # simulação
+   # … e o mesmo com --apply
+   ```
+4. Reiniciar a API. O site público passa a carregar as imagens da CDN.
+
+> O `tsconfig.json` tem uma opção de `watchOptions` que o `ts-node`
+> recusa. Se `npx ts-node` falhar com `TS5078`, use
+> `npx ts-node --transpile-only --skipProject -O '{"module":"commonjs","esModuleInterop":true,"target":"ES2023"}' scripts/…`
 
 #### 2. SMTP — envio real de emails
 
