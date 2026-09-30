@@ -115,7 +115,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
         blocks: [
           ...identificacaoBlocks(),
           p(
-            "Estes Termos aplicam-se a todos os visitantes, leitores registados e assinantes do Site, e complementam — sem substituir — a Política de Privacidade, a Política de Cookies e o Estatuto Editorial, disponíveis nesta secção Legal.",
+            "Estes Termos aplicam-se a todos os visitantes, leitores registados e assinantes do Site, e complementam — sem substituir — a Política de Protecção de Dados e Privacidade, a Política de Cookies e o Estatuto Editorial, disponíveis nesta secção Legal.",
           ),
         ],
       },
@@ -200,7 +200,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
             "Uma conta suspensa mantém acesso de leitura ao Site nos mesmos termos de um visitante sem conta, mas perde a possibilidade de comentar e, durante suspensão definitiva, de voltar a registar-se com o mesmo endereço de e-mail.",
           ),
           p(
-            "O utilizador pode encerrar a sua própria conta a qualquer momento nas definições da área de leitor — ver secção 12 da Política de Privacidade sobre o que acontece aos dados nesse caso.",
+            "O utilizador pode encerrar a sua própria conta a qualquer momento nas definições da área de leitor — ver secção 12 da Política de Protecção de Dados e Privacidade sobre o que acontece aos dados nesse caso.",
           ),
         ],
       },
@@ -211,7 +211,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
             "Um pacote exclusivo é um conjunto de artigos vendido numa compra única, com acesso permanente à conta que o adquiriu — mesmo que esses artigos sejam mais tarde retirados do pacote ou reorganizados. Uma assinatura paga, quando disponibilizada, dá acesso a todo o conteúdo marcado como exclusivo enquanto estiver activa.",
           ),
           p(
-            "Os pagamentos são processados pela Stripe, um prestador de serviços de pagamento terceiro. O Site nunca recebe nem armazena o número do seu cartão — ver Política de Privacidade, secção 4.",
+            "Os pagamentos são processados pela Stripe, um prestador de serviços de pagamento terceiro. O Site nunca recebe nem armazena o número do seu cartão — ver Política de Protecção de Dados e Privacidade, secção 4.",
           ),
           p(
             "As assinaturas com renovação automática são cobradas antecipadamente, no início de cada período, e renovam-se automaticamente até serem canceladas. O cancelamento pode ser feito a qualquer momento na área de leitor, através do portal de faturação, e produz efeito no final do período já pago — não há reembolso do período em curso, salvo o disposto abaixo.",
@@ -288,7 +288,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
 
   privacidade: {
     slug: "privacidade",
-    title: "Política de Privacidade",
+    title: "Protecção de Dados e Privacidade",
     crumb: "Legal",
     updatedAt: "Setembro 2026",
     sidebarToc: true,
@@ -582,6 +582,71 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
         blocks: [
           p(
             "Reclamações relativas a conteúdos podem ser dirigidas à redacção em correcoes@opatriota.pt, nos termos da Política de Correcções. Em caso de discordância com a resposta da redacção, o leitor pode recorrer à ERC — www.erc.pt.",
+          ),
+        ],
+      },
+    ],
+  },
+
+  /**
+   * Lei n.º 19/2018 (Lei da Transparência dos Meios de Comunicação
+   * Social) obriga órgãos de comunicação social a publicar, todos os
+   * anos, um conjunto de dados financeiros concretos — não uma
+   * descrição qualitativa das fontes de financiamento, que já está na
+   * página "Transparência" (Editorial). São coisas diferentes: aquela
+   * explica COMO o jornal se sustenta; esta publica OS NÚMEROS.
+   *
+   * Os valores ficam em branco de propósito — são figuras contabilísticas
+   * reais (capital próprio, activo, passivo, EBITDA, resultados), não
+   * inventáveis, e nem sequer está confirmado que esta lei se aplica ao
+   * porte actual da empresa (depende de volume de negócios/dimensão).
+   * Antes de publicar esta página, confirmar com o cliente/contabilista:
+   * (1) se a lei se aplica; (2) os valores reais, do último exercício.
+   */
+  "lei-da-transparencia": {
+    slug: "lei-da-transparencia",
+    title: "Lei da Transparência",
+    crumb: "Legal",
+    updatedAt: "Setembro 2026",
+    intro: `A Lei n.º 19/2018 obriga os órgãos de comunicação social a publicar anualmente um conjunto de dados financeiros, para que qualquer leitor possa perceber quem é o proprietário e como o órgão se sustenta. Esta página existe para cumprir essa obrigação — ver nota sobre a sua aplicabilidade abaixo.`,
+    sections: [
+      {
+        heading: "Aplicabilidade desta lei",
+        blocks: [
+          p(
+            "Está a ser confirmado com o cliente se, ao porte actual da empresa, esta obrigação se aplica — a Lei n.º 19/2018 tem critérios próprios de dimensão e volume de negócios. Enquanto essa confirmação não chega, esta página assume que se aplica, por prudência, e os campos abaixo ficam por preencher.",
+          ),
+        ],
+      },
+      {
+        heading: "Titularidade e financiamento",
+        blocks: [
+          p(
+            "A identidade da entidade proprietária está na ficha de identificação, disponível nos Termos e Condições. As fontes de financiamento (publicidade, subscrições, parcerias) estão descritas, de forma qualitativa, na página Transparência.",
+          ),
+        ],
+      },
+      {
+        heading: "Dados financeiros do último exercício",
+        blocks: [
+          ul([
+            "Capital próprio: a confirmar com o cliente/contabilista",
+            "Activo total: a confirmar com o cliente/contabilista",
+            "Passivo total: a confirmar com o cliente/contabilista",
+            "Resultados operacionais (EBITDA): a confirmar com o cliente/contabilista",
+            "Resultados líquidos: a confirmar com o cliente/contabilista",
+            "Montante dos rendimentos totais: a confirmar com o cliente/contabilista",
+          ]),
+          p(
+            "Estes valores são retirados das contas anuais da empresa e não podem ser estimados nem inventados — a lei exige que sejam os reais. Serão publicados assim que fornecidos.",
+          ),
+        ],
+      },
+      {
+        heading: "Alterações a esta página",
+        blocks: [
+          p(
+            "Os dados financeiros são actualizados uma vez por ano, após o encerramento de cada exercício. A data da última revisão está sempre indicada no topo desta página.",
           ),
         ],
       },

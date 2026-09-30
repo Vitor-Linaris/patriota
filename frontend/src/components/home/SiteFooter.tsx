@@ -48,9 +48,10 @@ const COLUMNS: FooterColumn[] = [
     title: "Legal",
     items: [
       { label: "Termos de Uso", href: "/p/termos" },
-      { label: "Privacidade", href: "/p/privacidade" },
+      { label: "Protecção de Dados", href: "/p/privacidade" },
       { label: "Cookies", href: "/p/cookies" },
       { label: "ERC", href: "/p/erc" },
+      { label: "Lei da Transparência", href: "/p/lei-da-transparencia" },
       // Enquanto o livro físico não existe: encaminha para a plataforma
       // oficial do Governo, a mesma que a lei aceita como equivalente.
       {
