@@ -130,18 +130,6 @@ export default async function ContaDashboardPage() {
               </div>
             </div>
 
-            {/* ── How they are reading ────────────────────────────── */}
-            {/* Above the counters, because it is the only thing here that
-                can change what a reader is able to read. The chip next to
-                their name says the same in three words and is easy to
-                look past. */}
-            <AccessCard
-              planActive={me.planActive}
-              ownedPackages={me.counts.pacotes ?? 0}
-              packages={packages}
-              billingLive={FEATURES.billing}
-            />
-
             {/* ── Unverified-email banner ─────────────────────────── */}
             {!me.emailVerifiedAt && (
               <div className="mt-6 rounded-[12px] border border-amber-300 bg-amber-50 px-5 py-4">
@@ -220,6 +208,19 @@ export default async function ContaDashboardPage() {
                 );
               })}
             </div>
+
+            {/* ── How they are reading ────────────────────────────── */}
+            {/* Below the reader's own area on purpose: this is the offer,
+                and leading the page with it every single visit is the
+                annoying kind of upsell. The chip beside their name
+                already marks account status; this is where someone
+                goes looking once they decide to act on it. */}
+            <AccessCard
+              planActive={me.planActive}
+              ownedPackages={me.counts.pacotes ?? 0}
+              packages={packages}
+              billingLive={FEATURES.billing}
+            />
 
             {/* ── Account details ─────────────────────────────────── */}
             <div className="mt-4 rounded-[12px] border border-slate-200 bg-white p-5">
