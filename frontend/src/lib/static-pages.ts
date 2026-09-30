@@ -23,7 +23,47 @@ export interface StaticPage {
   intro: string;
   /** Optional one-line crumb shown above the title ("Legal", "Sobre", etc.) */
   crumb?: string;
+  /**
+   * Shows a clickable "Sumário" sidebar that jumps to each section's
+   * anchor, the way dnoticias.pt's legal pages do. Opt-in per page
+   * rather than automatic: it only earns its place on a page with
+   * enough numbered sections to need a map — most static pages (Sobre,
+   * Redacção, Imprensa) are short enough to just scroll.
+   */
+  sidebarToc?: boolean;
   sections: { heading: string; blocks: Block[] }[];
+}
+
+/**
+ * The anchor id for a section heading, and the label the sidebar shows
+ * for it. Headings here are numbered ("1. Quem é...") for cross-
+ * reference between pages (see Termos §12 pointing at Privacidade
+ * §6) — the sidebar itself echoes dnoticias' own, which drops the
+ * numbers ("Definições", not "1. Definições").
+ */
+export function sectionAnchor(heading: string): string {
+  return heading
+    .replace(/^\d+\.\s*/, "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+export function sectionLabel(heading: string): string {
+  return heading.replace(/^\d+\.\s*/, "");
+}
+
+/** Every word of a section, flattened — what LegalSearch matches against. */
+export function sectionPlainText(section: {
+  heading: string;
+  blocks: Block[];
+}): string {
+  const bodies = section.blocks.map((b) =>
+    b.type === "p" ? b.text : b.items.join(" "),
+  );
+  return [section.heading, ...bodies].join(" ");
 }
 
 const p = (text: string): Block => ({ type: "p", text });
@@ -36,24 +76,27 @@ const SITE_URL = "www.opatriota.pt";
  * A ficha de identificação da entidade editora, repetida em Termos,
  * Privacidade e Registo ERC.
  *
- * Os quatro primeiros valores são placeholders deliberados: não existe
- * em nenhum sítio deste projecto um NIF, morada ou número de registo ERC
- * real — procurei. Uma página legal com um valor inventado é pior do
- * que uma com um campo por preencher; por isso ficam marcados como
- * "a confirmar" em vez de um número a la sorte. ANTES de publicar
- * qualquer uma destas páginas, o cliente tem de fornecer os dados reais
- * e estes quatro pontos têm de ser actualizados.
+ * Dados fornecidos pelo cliente em 2026-09-30 (Sérgio Costa — AdGency
+ * Ads). O registo na ERC fica deliberadamente em branco: o cliente
+ * confirmou que ainda não existe, não que falta perguntar — ver a
+ * secção "Sobre o número de registo" na página do Registo ERC.
+ *
+ * Um único e-mail, geral@opatriota.pt, a pedido do cliente — via as
+ * páginas legais tinham endereços diferentes consoante a secção
+ * (redaccao@, privacidade@), e isso é exactamente o que ele apontou
+ * como confuso. As páginas fora do Legal (Redacção, Publicidade,
+ * Imprensa, Correcções) mantêm os seus próprios endereços — são canais
+ * genuinamente distintos, não a ficha de identificação da entidade.
  */
 function identificacaoBlocks(): Block[] {
   return [
     ul([
-      "Entidade editora: [nome da entidade — a confirmar com o cliente]",
-      "NIF / NIPC: [a confirmar com o cliente]",
-      "Sede: [morada da sede — a confirmar com o cliente]",
-      "Registo na Entidade Reguladora para a Comunicação Social (ERC): [número de registo — a confirmar com o cliente; ver secção \"Registo ERC\" nesta página]",
+      "Entidade editora: VCapital, Lda.",
+      "NIF / NIPC: 517267489",
+      "Sede: Rua Dr. Fernão de Ornelas, n.º 56, 4.º A/C, 9050-021 Funchal",
+      "Registo na Entidade Reguladora para a Comunicação Social (ERC): registo ainda não concluído — ver secção \"Registo ERC\" nesta página",
       "Director: ver página \"A nossa equipa\"",
-      "Contacto geral: redaccao@opatriota.pt",
-      "Contacto para assuntos de protecção de dados: privacidade@opatriota.pt",
+      "Contacto geral, incluindo pedidos de protecção de dados: geral@opatriota.pt",
     ]),
   ];
 }
@@ -65,6 +108,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
     title: "Termos e Condições",
     crumb: "Legal",
     updatedAt: "Setembro 2026",
+    sidebarToc: true,
     intro: `Estes Termos e Condições regulam o acesso e a utilização do website ${SITE_URL} (doravante "${SITE_NAME}" ou "Site"), da conta de leitor, dos pacotes exclusivos e de qualquer assinatura paga disponibilizada. Ao aceder ao Site ou criar conta, o utilizador declara ter lido e aceite integralmente as condições aqui descritas. Quem não concordar deve abster-se de utilizar o Site.`,
     sections: [
       {
@@ -72,7 +116,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
         blocks: [
           ...identificacaoBlocks(),
           p(
-            "Estes Termos aplicam-se a todos os visitantes, leitores registados e assinantes do Site, e complementam — sem substituir — a Política de Privacidade, a Política de Cookies e o Estatuto Editorial, disponíveis nesta secção Legal.",
+            "Estes Termos aplicam-se a todos os visitantes, leitores registados e assinantes do Site, e complementam — sem substituir — a Política de Protecção de Dados e Privacidade, a Política de Cookies e o Estatuto Editorial, disponíveis nesta secção Legal.",
           ),
         ],
       },
@@ -106,7 +150,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
             "Criar conta é gratuito e não obriga a qualquer pagamento. Ao registar-se, o utilizador compromete-se a fornecer um endereço de e-mail verdadeiro e ao qual tenha acesso — é para lá que seguem a confirmação de conta, os avisos de segurança e, se activados, os resumos de notícias.",
           ),
           p(
-            "A conta é pessoal e intransmissível. O utilizador é responsável por manter a confidencialidade da sua palavra-passe e por toda a actividade realizada com a sua sessão iniciada. Suspeitando de acesso não autorizado, deve mudar a palavra-passe de imediato e contactar redaccao@opatriota.pt.",
+            "A conta é pessoal e intransmissível. O utilizador é responsável por manter a confidencialidade da sua palavra-passe e por toda a actividade realizada com a sua sessão iniciada. Suspeitando de acesso não autorizado, deve mudar a palavra-passe de imediato e contactar geral@opatriota.pt.",
           ),
           p(
             "Idade mínima: nos termos da Lei n.º 58/2019, o registo de conta está disponível a partir dos 13 anos. A compra de assinaturas ou pacotes exclusivos, por envolver um pagamento, exige capacidade legal para contratar (18 anos) ou autorização de quem exerça as responsabilidades parentais.",
@@ -157,7 +201,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
             "Uma conta suspensa mantém acesso de leitura ao Site nos mesmos termos de um visitante sem conta, mas perde a possibilidade de comentar e, durante suspensão definitiva, de voltar a registar-se com o mesmo endereço de e-mail.",
           ),
           p(
-            "O utilizador pode encerrar a sua própria conta a qualquer momento nas definições da área de leitor — ver secção 12 da Política de Privacidade sobre o que acontece aos dados nesse caso.",
+            "O utilizador pode encerrar a sua própria conta a qualquer momento nas definições da área de leitor — ver secção 12 da Política de Protecção de Dados e Privacidade sobre o que acontece aos dados nesse caso.",
           ),
         ],
       },
@@ -168,7 +212,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
             "Um pacote exclusivo é um conjunto de artigos vendido numa compra única, com acesso permanente à conta que o adquiriu — mesmo que esses artigos sejam mais tarde retirados do pacote ou reorganizados. Uma assinatura paga, quando disponibilizada, dá acesso a todo o conteúdo marcado como exclusivo enquanto estiver activa.",
           ),
           p(
-            "Os pagamentos são processados pela Stripe, um prestador de serviços de pagamento terceiro. O Site nunca recebe nem armazena o número do seu cartão — ver Política de Privacidade, secção 4.",
+            "Os pagamentos são processados pela Stripe, um prestador de serviços de pagamento terceiro. O Site nunca recebe nem armazena o número do seu cartão — ver Política de Protecção de Dados e Privacidade, secção 4.",
           ),
           p(
             "As assinaturas com renovação automática são cobradas antecipadamente, no início de cada período, e renovam-se automaticamente até serem canceladas. O cancelamento pode ser feito a qualquer momento na área de leitor, através do portal de faturação, e produz efeito no final do período já pago — não há reembolso do período em curso, salvo o disposto abaixo.",
@@ -236,7 +280,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
         heading: "15. Contacto",
         blocks: [
           p(
-            "Dúvidas sobre estes Termos podem ser dirigidas a redaccao@opatriota.pt. Reclamações de consumo podem também ser apresentadas junto do Centro de Arbitragem de Conflitos de Consumo da sua área de residência, ou através do Portal da Queixa / Livro de Reclamações Eletrónico.",
+            "Dúvidas sobre estes Termos podem ser dirigidas a geral@opatriota.pt. Reclamações de consumo podem também ser apresentadas junto do Centro de Arbitragem de Conflitos de Consumo da sua área de residência, ou através do Livro de Reclamações — ver rodapé do Site.",
           ),
         ],
       },
@@ -245,9 +289,10 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
 
   privacidade: {
     slug: "privacidade",
-    title: "Política de Privacidade",
+    title: "Protecção de Dados e Privacidade",
     crumb: "Legal",
     updatedAt: "Setembro 2026",
+    sidebarToc: true,
     intro: `Esta Política descreve, de forma concreta e sem linguagem genérica, que dados pessoais o ${SITE_NAME} recolhe através da conta de leitor, da newsletter e da navegação no Site, para quê, com que base legal, durante quanto tempo, e como pode exercer os seus direitos — em conformidade com o Regulamento Geral sobre a Protecção de Dados (RGPD) e a Lei n.º 58/2019.`,
     sections: [
       {
@@ -362,7 +407,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
             "Apresentar reclamação junto da Comissão Nacional de Protecção de Dados (CNPD) — www.cnpd.pt — se considerar que os seus direitos não foram respeitados.",
           ]),
           p(
-            "Para pedidos que não possam ser feitos directamente na sua área de leitor, escreva para privacidade@opatriota.pt. Respondemos no prazo de um mês, salvo pedidos particularmente complexos, caso em que o prazo pode ser prorrogado e explicaremos porquê.",
+            "Para pedidos que não possam ser feitos directamente na sua área de leitor, escreva para geral@opatriota.pt. Respondemos no prazo de um mês, salvo pedidos particularmente complexos, caso em que o prazo pode ser prorrogado e explicaremos porquê.",
           ),
         ],
       },
@@ -413,7 +458,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
         heading: "13. Contacto",
         blocks: [
           p(
-            "Para qualquer questão sobre esta Política ou sobre o tratamento dos seus dados, escreva para privacidade@opatriota.pt.",
+            "Para qualquer questão sobre esta Política ou sobre o tratamento dos seus dados, escreva para geral@opatriota.pt.",
           ),
         ],
       },
@@ -425,6 +470,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
     title: "Política de Cookies",
     crumb: "Legal",
     updatedAt: "Setembro 2026",
+    sidebarToc: true,
     intro: `Esta Política explica, de forma concreta, o que são cookies e tecnologias semelhantes, exactamente quais utilizamos no ${SITE_NAME}, para quê, e como pode geri-las.`,
     sections: [
       {
@@ -516,12 +562,12 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
             "Tipo: Publicação periódica online",
             "Periodicidade: Diária",
             "Âmbito territorial: Portugal",
-            "Número de registo ERC: [a confirmar com o cliente — obrigatório antes desta página ir ao ar; ver nota abaixo]",
+            "Número de registo ERC: ainda não atribuído — ver nota abaixo",
             "Estatuto editorial: ver página dedicada",
             "Entidade proprietária e director: ver ficha de identificação nos Termos e Condições e em \"A nossa equipa\"",
           ]),
           p(
-            "A ficha técnica completa está disponível mediante pedido em redaccao@opatriota.pt.",
+            "A ficha técnica completa está disponível mediante pedido em geral@opatriota.pt.",
           ),
         ],
       },
@@ -529,7 +575,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
         heading: "Sobre o número de registo",
         blocks: [
           p(
-            "Um órgão de comunicação social só pode operar legalmente depois de concluído o registo na ERC. Publicar esta página com o número de registo por preencher não é uma opção — a Lei de Imprensa exige que esta informação esteja acessível e correcta. O número real, uma vez atribuído, deve substituir o texto entre parênteses rectos acima.",
+            "Um órgão de comunicação social só pode operar legalmente depois de concluído o registo na ERC. O processo de registo está em curso; esta página será actualizada com o número assim que for atribuído — a Lei de Imprensa exige que esta informação esteja acessível e correcta, e por isso não inventamos um número antes de o termos.",
           ),
         ],
       },
@@ -538,6 +584,72 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
         blocks: [
           p(
             "Reclamações relativas a conteúdos podem ser dirigidas à redacção em correcoes@opatriota.pt, nos termos da Política de Correcções. Em caso de discordância com a resposta da redacção, o leitor pode recorrer à ERC — www.erc.pt.",
+          ),
+        ],
+      },
+    ],
+  },
+
+  /**
+   * Lei n.º 19/2018 (Lei da Transparência dos Meios de Comunicação
+   * Social) obriga órgãos de comunicação social a publicar, todos os
+   * anos, um conjunto de dados financeiros concretos — não uma
+   * descrição qualitativa das fontes de financiamento, que já está na
+   * página "Transparência" (Editorial). São coisas diferentes: aquela
+   * explica COMO o jornal se sustenta; esta publica OS NÚMEROS.
+   *
+   * Os valores ficam em branco de propósito — são figuras contabilísticas
+   * reais (capital próprio, activo, passivo, EBITDA, resultados), não
+   * inventáveis, e nem sequer está confirmado que esta lei se aplica ao
+   * porte actual da empresa (depende de volume de negócios/dimensão).
+   * Antes de publicar esta página, confirmar com o cliente/contabilista:
+   * (1) se a lei se aplica; (2) os valores reais, do último exercício.
+   */
+  "lei-da-transparencia": {
+    slug: "lei-da-transparencia",
+    title: "Lei da Transparência",
+    crumb: "Legal",
+    updatedAt: "Setembro 2026",
+    sidebarToc: true,
+    intro: `A Lei n.º 19/2018 obriga os órgãos de comunicação social a publicar anualmente um conjunto de dados financeiros, para que qualquer leitor possa perceber quem é o proprietário e como o órgão se sustenta. Esta página existe para cumprir essa obrigação — ver nota sobre a sua aplicabilidade abaixo.`,
+    sections: [
+      {
+        heading: "Aplicabilidade desta lei",
+        blocks: [
+          p(
+            "Está a ser confirmado com o cliente se, ao porte actual da empresa, esta obrigação se aplica — a Lei n.º 19/2018 tem critérios próprios de dimensão e volume de negócios. Enquanto essa confirmação não chega, esta página assume que se aplica, por prudência, e os campos abaixo ficam por preencher.",
+          ),
+        ],
+      },
+      {
+        heading: "Titularidade e financiamento",
+        blocks: [
+          p(
+            "A identidade da entidade proprietária está na ficha de identificação, disponível nos Termos e Condições. As fontes de financiamento (publicidade, subscrições, parcerias) estão descritas, de forma qualitativa, na página Transparência.",
+          ),
+        ],
+      },
+      {
+        heading: "Dados financeiros do último exercício",
+        blocks: [
+          ul([
+            "Capital próprio: a confirmar com o cliente/contabilista",
+            "Activo total: a confirmar com o cliente/contabilista",
+            "Passivo total: a confirmar com o cliente/contabilista",
+            "Resultados operacionais (EBITDA): a confirmar com o cliente/contabilista",
+            "Resultados líquidos: a confirmar com o cliente/contabilista",
+            "Montante dos rendimentos totais: a confirmar com o cliente/contabilista",
+          ]),
+          p(
+            "Estes valores são retirados das contas anuais da empresa e não podem ser estimados nem inventados — a lei exige que sejam os reais. Serão publicados assim que fornecidos.",
+          ),
+        ],
+      },
+      {
+        heading: "Alterações a esta página",
+        blocks: [
+          p(
+            "Os dados financeiros são actualizados uma vez por ano, após o encerramento de cada exercício. A data da última revisão está sempre indicada no topo desta página.",
           ),
         ],
       },
