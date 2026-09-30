@@ -108,6 +108,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
     title: "Termos e Condições",
     crumb: "Legal",
     updatedAt: "Setembro 2026",
+    sidebarToc: true,
     intro: `Estes Termos e Condições regulam o acesso e a utilização do website ${SITE_URL} (doravante "${SITE_NAME}" ou "Site"), da conta de leitor, dos pacotes exclusivos e de qualquer assinatura paga disponibilizada. Ao aceder ao Site ou criar conta, o utilizador declara ter lido e aceite integralmente as condições aqui descritas. Quem não concordar deve abster-se de utilizar o Site.`,
     sections: [
       {
@@ -469,6 +470,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
     title: "Política de Cookies",
     crumb: "Legal",
     updatedAt: "Setembro 2026",
+    sidebarToc: true,
     intro: `Esta Política explica, de forma concreta, o que são cookies e tecnologias semelhantes, exactamente quais utilizamos no ${SITE_NAME}, para quê, e como pode geri-las.`,
     sections: [
       {
@@ -608,6 +610,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
     title: "Lei da Transparência",
     crumb: "Legal",
     updatedAt: "Setembro 2026",
+    sidebarToc: true,
     intro: `A Lei n.º 19/2018 obriga os órgãos de comunicação social a publicar anualmente um conjunto de dados financeiros, para que qualquer leitor possa perceber quem é o proprietário e como o órgão se sustenta. Esta página existe para cumprir essa obrigação — ver nota sobre a sua aplicabilidade abaixo.`,
     sections: [
       {
