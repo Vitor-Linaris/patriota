@@ -12,9 +12,13 @@ import { FEATURES } from "@/lib/features";
 import {
   STATIC_PAGES,
   STATIC_PAGE_SLUGS,
+  sectionAnchor,
+  sectionLabel,
+  sectionPlainText,
   type Block,
 } from "@/lib/static-pages";
 import { SubscribeButton } from "@/components/article/SubscribeButton";
+import { LegalSearch } from "@/components/legal/LegalSearch";
 
 export function generateStaticParams() {
   return STATIC_PAGE_SLUGS.map((slug) => ({ slug }));
@@ -64,6 +68,46 @@ export default async function StaticPageRoute({
   if (!page) notFound();
   const breaking = await listBreaking(4);
 
+  // Every page under Legal (Termos, Privacidade, Cookies, ERC) gets the
+  // search box — these are the long, numbered documents someone lands
+  // on looking for ONE clause, not the short institutional pages.
+  const isLegal = page.crumb === "Legal";
+  const legalContact = "geral@opatriota.pt";
+
+  const articleBody = (
+    <>
+      <div className="space-y-10">
+        {page.sections.map((section, i) => (
+          <section key={i} id={sectionAnchor(section.heading)}>
+            <h2 className="mb-4 scroll-mt-24 text-[20px] font-black text-patriota-dark">
+              {section.heading}
+            </h2>
+            <div className="space-y-3">{section.blocks.map(renderBlock)}</div>
+          </section>
+        ))}
+      </div>
+
+      <hr className="my-10 border-slate-100" />
+      <p className="text-[13px] text-slate-500">
+        Tem dúvidas sobre esta página?{" "}
+        <a
+          href={`mailto:${isLegal ? legalContact : "redaccao@opatriota.pt"}`}
+          className="font-semibold text-patriota-medium hover:underline"
+        >
+          {isLegal ? legalContact : "redaccao@opatriota.pt"}
+        </a>
+      </p>
+    </>
+  );
+
+  const searchItems = isLegal
+    ? page.sections.map((section) => ({
+        label: sectionLabel(section.heading),
+        anchor: sectionAnchor(section.heading),
+        text: sectionPlainText(section),
+      }))
+    : [];
+
   return (
     <div className="flex flex-1 flex-col bg-white text-slate-900">
       <TopBar />
@@ -75,7 +119,12 @@ export default async function StaticPageRoute({
 
       <main className="bg-slate-50 py-12">
         <Container>
-          <article className="mx-auto max-w-3xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm md:p-12">
+          <article
+            className={
+              "rounded-2xl border border-slate-200 bg-white p-8 shadow-sm md:p-12 " +
+              (page.sidebarToc ? "mx-auto max-w-5xl" : "mx-auto max-w-3xl")
+            }
+          >
             {/* Breadcrumb */}
             <nav
               aria-label="Breadcrumb"
@@ -156,29 +205,39 @@ export default async function StaticPageRoute({
               </div>
             )}
 
-            <div className="mt-10 space-y-10">
-              {page.sections.map((section, i) => (
-                <section key={i}>
-                  <h2 className="mb-4 text-[20px] font-black text-patriota-dark">
-                    {section.heading}
-                  </h2>
-                  <div className="space-y-3">
-                    {section.blocks.map(renderBlock)}
-                  </div>
-                </section>
-              ))}
-            </div>
+            {isLegal && (
+              <div className="mt-8">
+                <LegalSearch items={searchItems} />
+              </div>
+            )}
 
-            <hr className="my-10 border-slate-100" />
-            <p className="text-[13px] text-slate-500">
-              Tem dúvidas sobre esta página?{" "}
-              <a
-                href="mailto:redaccao@opatriota.pt"
-                className="font-semibold text-patriota-medium hover:underline"
-              >
-                redaccao@opatriota.pt
-              </a>
-            </p>
+            {page.sidebarToc ? (
+              <div className="mt-2 grid grid-cols-1 gap-10 lg:grid-cols-[220px_1fr]">
+                <nav
+                  aria-label="Sumário"
+                  className="lg:sticky lg:top-24 lg:self-start"
+                >
+                  <p className="text-[12px] font-bold uppercase tracking-wider text-slate-400">
+                    Sumário
+                  </p>
+                  <ul className="mt-3 space-y-2 border-l border-slate-200 text-[13px]">
+                    {page.sections.map((section) => (
+                      <li key={section.heading}>
+                        <a
+                          href={`#${sectionAnchor(section.heading)}`}
+                          className="block border-l-2 border-transparent py-0.5 pl-3 -ml-px text-slate-600 transition-colors hover:border-patriota-medium hover:text-patriota-medium"
+                        >
+                          {sectionLabel(section.heading)}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </nav>
+                <div className="min-w-0">{articleBody}</div>
+              </div>
+            ) : (
+              <div className="mt-10">{articleBody}</div>
+            )}
           </article>
         </Container>
       </main>
