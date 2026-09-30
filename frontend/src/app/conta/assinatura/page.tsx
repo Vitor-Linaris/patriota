@@ -208,10 +208,10 @@ export default async function AssinaturaPage({
                   não há nada a pagar nem a gerir. Se tiver dúvidas, fale
                   connosco em{" "}
                   <a
-                    href="mailto:redaccao@opatriota.pt"
+                    href="mailto:geral@opatriota.pt"
                     className="font-semibold text-patriota-medium hover:underline"
                   >
-                    redaccao@opatriota.pt
+                    geral@opatriota.pt
                   </a>
                   .
                 </p>

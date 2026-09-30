@@ -72,7 +72,10 @@ export default async function StaticPageRoute({
   // search box — these are the long, numbered documents someone lands
   // on looking for ONE clause, not the short institutional pages.
   const isLegal = page.crumb === "Legal";
-  const legalContact = "geral@opatriota.pt";
+  // The only inbox that actually exists — see the comment on
+  // identificacaoBlocks() in static-pages.ts. Every page on the site
+  // points here, not just the legal ones.
+  const CONTACT_EMAIL = "geral@opatriota.pt";
 
   const articleBody = (
     <>
@@ -91,10 +94,10 @@ export default async function StaticPageRoute({
       <p className="text-[13px] text-slate-500">
         Tem dúvidas sobre esta página?{" "}
         <a
-          href={`mailto:${isLegal ? legalContact : "redaccao@opatriota.pt"}`}
+          href={`mailto:${CONTACT_EMAIL}`}
           className="font-semibold text-patriota-medium hover:underline"
         >
-          {isLegal ? legalContact : "redaccao@opatriota.pt"}
+          {CONTACT_EMAIL}
         </a>
       </p>
     </>
