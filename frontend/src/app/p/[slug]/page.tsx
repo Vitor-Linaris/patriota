@@ -14,9 +14,11 @@ import {
   STATIC_PAGE_SLUGS,
   sectionAnchor,
   sectionLabel,
+  sectionPlainText,
   type Block,
 } from "@/lib/static-pages";
 import { SubscribeButton } from "@/components/article/SubscribeButton";
+import { LegalSearch } from "@/components/legal/LegalSearch";
 
 export function generateStaticParams() {
   return STATIC_PAGE_SLUGS.map((slug) => ({ slug }));
@@ -66,6 +68,12 @@ export default async function StaticPageRoute({
   if (!page) notFound();
   const breaking = await listBreaking(4);
 
+  // Every page under Legal (Termos, Privacidade, Cookies, ERC) gets the
+  // search box — these are the long, numbered documents someone lands
+  // on looking for ONE clause, not the short institutional pages.
+  const isLegal = page.crumb === "Legal";
+  const legalContact = "geral@opatriota.pt";
+
   const articleBody = (
     <>
       <div className="space-y-10">
@@ -83,14 +91,22 @@ export default async function StaticPageRoute({
       <p className="text-[13px] text-slate-500">
         Tem dúvidas sobre esta página?{" "}
         <a
-          href="mailto:redaccao@opatriota.pt"
+          href={`mailto:${isLegal ? legalContact : "redaccao@opatriota.pt"}`}
           className="font-semibold text-patriota-medium hover:underline"
         >
-          redaccao@opatriota.pt
+          {isLegal ? legalContact : "redaccao@opatriota.pt"}
         </a>
       </p>
     </>
   );
+
+  const searchItems = isLegal
+    ? page.sections.map((section) => ({
+        label: sectionLabel(section.heading),
+        anchor: sectionAnchor(section.heading),
+        text: sectionPlainText(section),
+      }))
+    : [];
 
   return (
     <div className="flex flex-1 flex-col bg-white text-slate-900">
@@ -189,8 +205,14 @@ export default async function StaticPageRoute({
               </div>
             )}
 
+            {isLegal && (
+              <div className="mt-8">
+                <LegalSearch items={searchItems} />
+              </div>
+            )}
+
             {page.sidebarToc ? (
-              <div className="mt-10 grid grid-cols-1 gap-10 lg:grid-cols-[220px_1fr]">
+              <div className="mt-2 grid grid-cols-1 gap-10 lg:grid-cols-[220px_1fr]">
                 <nav
                   aria-label="Sumário"
                   className="lg:sticky lg:top-24 lg:self-start"

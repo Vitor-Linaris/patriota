@@ -55,6 +55,17 @@ export function sectionLabel(heading: string): string {
   return heading.replace(/^\d+\.\s*/, "");
 }
 
+/** Every word of a section, flattened — what LegalSearch matches against. */
+export function sectionPlainText(section: {
+  heading: string;
+  blocks: Block[];
+}): string {
+  const bodies = section.blocks.map((b) =>
+    b.type === "p" ? b.text : b.items.join(" "),
+  );
+  return [section.heading, ...bodies].join(" ");
+}
+
 const p = (text: string): Block => ({ type: "p", text });
 const ul = (items: string[]): Block => ({ type: "ul", items });
 
@@ -69,6 +80,13 @@ const SITE_URL = "www.opatriota.pt";
  * Ads). O registo na ERC fica deliberadamente em branco: o cliente
  * confirmou que ainda não existe, não que falta perguntar — ver a
  * secção "Sobre o número de registo" na página do Registo ERC.
+ *
+ * Um único e-mail, geral@opatriota.pt, a pedido do cliente — via as
+ * páginas legais tinham endereços diferentes consoante a secção
+ * (redaccao@, privacidade@), e isso é exactamente o que ele apontou
+ * como confuso. As páginas fora do Legal (Redacção, Publicidade,
+ * Imprensa, Correcções) mantêm os seus próprios endereços — são canais
+ * genuinamente distintos, não a ficha de identificação da entidade.
  */
 function identificacaoBlocks(): Block[] {
   return [
@@ -78,8 +96,7 @@ function identificacaoBlocks(): Block[] {
       "Sede: Rua Dr. Fernão de Ornelas, n.º 56, 4.º A/C, 9050-021 Funchal",
       "Registo na Entidade Reguladora para a Comunicação Social (ERC): registo ainda não concluído — ver secção \"Registo ERC\" nesta página",
       "Director: ver página \"A nossa equipa\"",
-      "Contacto geral: geral@opatriota.pt",
-      "Contacto para assuntos de protecção de dados: privacidade@opatriota.pt",
+      "Contacto geral, incluindo pedidos de protecção de dados: geral@opatriota.pt",
     ]),
   ];
 }
@@ -132,7 +149,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
             "Criar conta é gratuito e não obriga a qualquer pagamento. Ao registar-se, o utilizador compromete-se a fornecer um endereço de e-mail verdadeiro e ao qual tenha acesso — é para lá que seguem a confirmação de conta, os avisos de segurança e, se activados, os resumos de notícias.",
           ),
           p(
-            "A conta é pessoal e intransmissível. O utilizador é responsável por manter a confidencialidade da sua palavra-passe e por toda a actividade realizada com a sua sessão iniciada. Suspeitando de acesso não autorizado, deve mudar a palavra-passe de imediato e contactar redaccao@opatriota.pt.",
+            "A conta é pessoal e intransmissível. O utilizador é responsável por manter a confidencialidade da sua palavra-passe e por toda a actividade realizada com a sua sessão iniciada. Suspeitando de acesso não autorizado, deve mudar a palavra-passe de imediato e contactar geral@opatriota.pt.",
           ),
           p(
             "Idade mínima: nos termos da Lei n.º 58/2019, o registo de conta está disponível a partir dos 13 anos. A compra de assinaturas ou pacotes exclusivos, por envolver um pagamento, exige capacidade legal para contratar (18 anos) ou autorização de quem exerça as responsabilidades parentais.",
@@ -262,7 +279,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
         heading: "15. Contacto",
         blocks: [
           p(
-            "Dúvidas sobre estes Termos podem ser dirigidas a redaccao@opatriota.pt. Reclamações de consumo podem também ser apresentadas junto do Centro de Arbitragem de Conflitos de Consumo da sua área de residência, ou através do Portal da Queixa / Livro de Reclamações Eletrónico.",
+            "Dúvidas sobre estes Termos podem ser dirigidas a geral@opatriota.pt. Reclamações de consumo podem também ser apresentadas junto do Centro de Arbitragem de Conflitos de Consumo da sua área de residência, ou através do Livro de Reclamações — ver rodapé do Site.",
           ),
         ],
       },
@@ -389,7 +406,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
             "Apresentar reclamação junto da Comissão Nacional de Protecção de Dados (CNPD) — www.cnpd.pt — se considerar que os seus direitos não foram respeitados.",
           ]),
           p(
-            "Para pedidos que não possam ser feitos directamente na sua área de leitor, escreva para privacidade@opatriota.pt. Respondemos no prazo de um mês, salvo pedidos particularmente complexos, caso em que o prazo pode ser prorrogado e explicaremos porquê.",
+            "Para pedidos que não possam ser feitos directamente na sua área de leitor, escreva para geral@opatriota.pt. Respondemos no prazo de um mês, salvo pedidos particularmente complexos, caso em que o prazo pode ser prorrogado e explicaremos porquê.",
           ),
         ],
       },
@@ -440,7 +457,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
         heading: "13. Contacto",
         blocks: [
           p(
-            "Para qualquer questão sobre esta Política ou sobre o tratamento dos seus dados, escreva para privacidade@opatriota.pt.",
+            "Para qualquer questão sobre esta Política ou sobre o tratamento dos seus dados, escreva para geral@opatriota.pt.",
           ),
         ],
       },
@@ -548,7 +565,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
             "Entidade proprietária e director: ver ficha de identificação nos Termos e Condições e em \"A nossa equipa\"",
           ]),
           p(
-            "A ficha técnica completa está disponível mediante pedido em redaccao@opatriota.pt.",
+            "A ficha técnica completa está disponível mediante pedido em geral@opatriota.pt.",
           ),
         ],
       },
