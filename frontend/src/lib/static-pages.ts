@@ -23,7 +23,36 @@ export interface StaticPage {
   intro: string;
   /** Optional one-line crumb shown above the title ("Legal", "Sobre", etc.) */
   crumb?: string;
+  /**
+   * Shows a clickable "Sumário" sidebar that jumps to each section's
+   * anchor, the way dnoticias.pt's legal pages do. Opt-in per page
+   * rather than automatic: it only earns its place on a page with
+   * enough numbered sections to need a map — most static pages (Sobre,
+   * Redacção, Imprensa) are short enough to just scroll.
+   */
+  sidebarToc?: boolean;
   sections: { heading: string; blocks: Block[] }[];
+}
+
+/**
+ * The anchor id for a section heading, and the label the sidebar shows
+ * for it. Headings here are numbered ("1. Quem é...") for cross-
+ * reference between pages (see Termos §12 pointing at Privacidade
+ * §6) — the sidebar itself echoes dnoticias' own, which drops the
+ * numbers ("Definições", not "1. Definições").
+ */
+export function sectionAnchor(heading: string): string {
+  return heading
+    .replace(/^\d+\.\s*/, "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+export function sectionLabel(heading: string): string {
+  return heading.replace(/^\d+\.\s*/, "");
 }
 
 const p = (text: string): Block => ({ type: "p", text });
@@ -36,23 +65,20 @@ const SITE_URL = "www.opatriota.pt";
  * A ficha de identificação da entidade editora, repetida em Termos,
  * Privacidade e Registo ERC.
  *
- * Os quatro primeiros valores são placeholders deliberados: não existe
- * em nenhum sítio deste projecto um NIF, morada ou número de registo ERC
- * real — procurei. Uma página legal com um valor inventado é pior do
- * que uma com um campo por preencher; por isso ficam marcados como
- * "a confirmar" em vez de um número a la sorte. ANTES de publicar
- * qualquer uma destas páginas, o cliente tem de fornecer os dados reais
- * e estes quatro pontos têm de ser actualizados.
+ * Dados fornecidos pelo cliente em 2026-09-30 (Sérgio Costa — AdGency
+ * Ads). O registo na ERC fica deliberadamente em branco: o cliente
+ * confirmou que ainda não existe, não que falta perguntar — ver a
+ * secção "Sobre o número de registo" na página do Registo ERC.
  */
 function identificacaoBlocks(): Block[] {
   return [
     ul([
-      "Entidade editora: [nome da entidade — a confirmar com o cliente]",
-      "NIF / NIPC: [a confirmar com o cliente]",
-      "Sede: [morada da sede — a confirmar com o cliente]",
-      "Registo na Entidade Reguladora para a Comunicação Social (ERC): [número de registo — a confirmar com o cliente; ver secção \"Registo ERC\" nesta página]",
+      "Entidade editora: VCapital, Lda.",
+      "NIF / NIPC: 517267489",
+      "Sede: Rua Dr. Fernão de Ornelas, n.º 56, 4.º A/C, 9050-021 Funchal",
+      "Registo na Entidade Reguladora para a Comunicação Social (ERC): registo ainda não concluído — ver secção \"Registo ERC\" nesta página",
       "Director: ver página \"A nossa equipa\"",
-      "Contacto geral: redaccao@opatriota.pt",
+      "Contacto geral: geral@opatriota.pt",
       "Contacto para assuntos de protecção de dados: privacidade@opatriota.pt",
     ]),
   ];
@@ -248,6 +274,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
     title: "Política de Privacidade",
     crumb: "Legal",
     updatedAt: "Setembro 2026",
+    sidebarToc: true,
     intro: `Esta Política descreve, de forma concreta e sem linguagem genérica, que dados pessoais o ${SITE_NAME} recolhe através da conta de leitor, da newsletter e da navegação no Site, para quê, com que base legal, durante quanto tempo, e como pode exercer os seus direitos — em conformidade com o Regulamento Geral sobre a Protecção de Dados (RGPD) e a Lei n.º 58/2019.`,
     sections: [
       {
@@ -516,7 +543,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
             "Tipo: Publicação periódica online",
             "Periodicidade: Diária",
             "Âmbito territorial: Portugal",
-            "Número de registo ERC: [a confirmar com o cliente — obrigatório antes desta página ir ao ar; ver nota abaixo]",
+            "Número de registo ERC: ainda não atribuído — ver nota abaixo",
             "Estatuto editorial: ver página dedicada",
             "Entidade proprietária e director: ver ficha de identificação nos Termos e Condições e em \"A nossa equipa\"",
           ]),
@@ -529,7 +556,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
         heading: "Sobre o número de registo",
         blocks: [
           p(
-            "Um órgão de comunicação social só pode operar legalmente depois de concluído o registo na ERC. Publicar esta página com o número de registo por preencher não é uma opção — a Lei de Imprensa exige que esta informação esteja acessível e correcta. O número real, uma vez atribuído, deve substituir o texto entre parênteses rectos acima.",
+            "Um órgão de comunicação social só pode operar legalmente depois de concluído o registo na ERC. O processo de registo está em curso; esta página será actualizada com o número assim que for atribuído — a Lei de Imprensa exige que esta informação esteja acessível e correcta, e por isso não inventamos um número antes de o termos.",
           ),
         ],
       },

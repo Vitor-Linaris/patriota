@@ -11,6 +11,8 @@ import type { Ad } from "@/lib/ads";
 interface FooterLink {
   label: string;
   href: string;
+  /** Opens in a new tab — for addresses that leave the site. */
+  external?: boolean;
 }
 
 interface FooterColumn {
@@ -49,6 +51,13 @@ const COLUMNS: FooterColumn[] = [
       { label: "Privacidade", href: "/p/privacidade" },
       { label: "Cookies", href: "/p/cookies" },
       { label: "ERC", href: "/p/erc" },
+      // Enquanto o livro físico não existe: encaminha para a plataforma
+      // oficial do Governo, a mesma que a lei aceita como equivalente.
+      {
+        label: "Livro de Reclamações",
+        href: "https://www.livroreclamacoes.pt/inicio/",
+        external: true,
+      },
     ],
   },
 ];
@@ -191,6 +200,9 @@ export async function SiteFooter({
                       <a
                         className="transition-colors hover:text-patriota-accent"
                         href={it.href}
+                        {...(it.external
+                          ? { target: "_blank", rel: "noopener noreferrer" }
+                          : {})}
                       >
                         {it.label}
                       </a>
