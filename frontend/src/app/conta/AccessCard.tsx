@@ -105,18 +105,12 @@ export function AccessCard({
   }
 
   // ── free account, owns nothing ───────────────────────────────────
+  // No "está a ler com uma conta gratuita" preamble: the chip beside
+  // the reader's name already says that, and a free reader landing on
+  // their own dashboard doesn't need to be told it a second time
+  // before getting to the two actual offers below.
   return (
     <div className="mt-6 overflow-hidden rounded-[12px] border border-slate-200 bg-white">
-      <div className="border-b border-slate-100 px-5 py-4">
-        <p className="text-[14px] font-bold text-slate-900">
-          Está a ler com uma conta gratuita
-        </p>
-        <p className="mt-1 text-[13px] leading-relaxed text-slate-500">
-          Os trabalhos exclusivos são pagos. Há duas formas de os ler — e
-          nenhuma delas obriga à outra.
-        </p>
-      </div>
-
       <div className="grid gap-px bg-slate-100 sm:grid-cols-2">
         <div className="flex flex-col bg-white p-5">
           <p className="text-[11px] font-bold uppercase tracking-wider text-patriota-pure">
