@@ -60,10 +60,10 @@ export function CheckoutReturn({ active }: { active: boolean }) {
           actualize esta página daqui a um minuto. Se continuar assim,
           escreva-nos para{" "}
           <a
-            href="mailto:redaccao@opatriota.pt"
+            href="mailto:geral@opatriota.pt"
             className="font-semibold text-patriota-medium hover:underline"
           >
-            redaccao@opatriota.pt
+            geral@opatriota.pt
           </a>
           .
         </>

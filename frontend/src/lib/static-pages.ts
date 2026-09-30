@@ -81,12 +81,13 @@ const SITE_URL = "www.opatriota.pt";
  * confirmou que ainda não existe, não que falta perguntar — ver a
  * secção "Sobre o número de registo" na página do Registo ERC.
  *
- * Um único e-mail, geral@opatriota.pt, a pedido do cliente — via as
- * páginas legais tinham endereços diferentes consoante a secção
- * (redaccao@, privacidade@), e isso é exactamente o que ele apontou
- * como confuso. As páginas fora do Legal (Redacção, Publicidade,
- * Imprensa, Correcções) mantêm os seus próprios endereços — são canais
- * genuinamente distintos, não a ficha de identificação da entidade.
+ * Um único e-mail, geral@opatriota.pt, em toda a página — a pedido do
+ * cliente, depois de ver o site com endereços diferentes consoante a
+ * secção (redaccao@, privacidade@, correcoes@, publicidade@, imprensa@,
+ * colaboracoes@, acessibilidade@, direito.resposta@). Esses endereços
+ * nunca chegaram a ser caixas reais; geral@opatriota.pt é o único que
+ * existe de facto, por isso é o único usado em todo o site — não só
+ * nas páginas legais.
  */
 function identificacaoBlocks(): Block[] {
   return [
@@ -583,7 +584,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
         heading: "Contactos para reclamações",
         blocks: [
           p(
-            "Reclamações relativas a conteúdos podem ser dirigidas à redacção em correcoes@opatriota.pt, nos termos da Política de Correcções. Em caso de discordância com a resposta da redacção, o leitor pode recorrer à ERC — www.erc.pt.",
+            "Reclamações relativas a conteúdos podem ser dirigidas à redacção em geral@opatriota.pt, nos termos da Política de Correcções. Em caso de discordância com a resposta da redacção, o leitor pode recorrer à ERC — www.erc.pt.",
           ),
         ],
       },
@@ -739,7 +740,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
         heading: "Contribuir",
         blocks: [
           p(
-            "Procuramos colaboradores ocasionais para opinião, análise e investigação. Envie a sua proposta para colaboracoes@opatriota.pt com um CV breve e dois exemplos de trabalhos.",
+            "Procuramos colaboradores ocasionais para opinião, análise e investigação. Envie a sua proposta para geral@opatriota.pt com um CV breve e dois exemplos de trabalhos.",
           ),
         ],
       },
@@ -767,7 +768,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
         heading: "Como reportar",
         blocks: [
           p(
-            "Se identificou um erro, envie um e-mail para correcoes@opatriota.pt com o link do artigo e a indicação do que considera incorrecto. Procuraremos responder em 48 horas úteis.",
+            "Se identificou um erro, envie um e-mail para geral@opatriota.pt com o link do artigo e a indicação do que considera incorrecto. Procuraremos responder em 48 horas úteis.",
           ),
         ],
       },
@@ -823,7 +824,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
         heading: "Acessibilidade",
         blocks: [
           p(
-            "Trabalhamos para que o Site seja acessível a leitores com deficiência. Reporte qualquer barreira encontrada em acessibilidade@opatriota.pt.",
+            "Trabalhamos para que o Site seja acessível a leitores com deficiência. Reporte qualquer barreira encontrada em geral@opatriota.pt.",
           ),
         ],
       },
@@ -842,11 +843,9 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
       {
         heading: "Canais",
         blocks: [
-          ul([
-            "Sugestões e denúncias: redaccao@opatriota.pt",
-            "Correcções: correcoes@opatriota.pt",
-            "Direito de resposta: direito.resposta@opatriota.pt",
-          ]),
+          p(
+            "Sugestões de pauta, denúncias, correcções e direitos de resposta: geral@opatriota.pt.",
+          ),
         ],
       },
       {
@@ -882,7 +881,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
       {
         heading: "Contacto comercial",
         blocks: [
-          p("Para tabela de preços, datas de disponibilidade e propostas de campanha, contacte: publicidade@opatriota.pt"),
+          p("Para tabela de preços, datas de disponibilidade e propostas de campanha, contacte: geral@opatriota.pt"),
         ],
       },
     ],
@@ -946,7 +945,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
         heading: "Citação",
         blocks: [
           p(
-            `Citações de até 50 palavras, com indicação da fonte e link para o artigo original, são autorizadas. Acima desse limite, contacte previamente redaccao@opatriota.pt.`,
+            `Citações de até 50 palavras, com indicação da fonte e link para o artigo original, são autorizadas. Acima desse limite, contacte previamente geral@opatriota.pt.`,
           ),
         ],
       },
@@ -962,7 +961,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
         heading: "Entrevistas",
         blocks: [
           p(
-            "Pedidos de entrevista à direcção devem ser enviados para imprensa@opatriota.pt com contexto, prazo e meio de publicação.",
+            "Pedidos de entrevista à direcção devem ser enviados para geral@opatriota.pt com contexto, prazo e meio de publicação.",
           ),
         ],
       },
