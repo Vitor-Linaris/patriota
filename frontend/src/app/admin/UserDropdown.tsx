@@ -51,7 +51,6 @@ export function UserDropdown({
 
   return (
     <div className="flex items-center gap-3 text-xs">
-      <span className="text-gray-400">Sessão como</span>
       <span
         className={`rounded-full px-2.5 py-1 font-bold ${ROLE_PILL[roleLabel] ?? "bg-gray-100 text-gray-600"}`}
       >
