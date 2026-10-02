@@ -802,10 +802,14 @@ function ArticleEditor({
                     type="button"
                     onClick={() => set({ exclusive: !form.exclusive })}
                     aria-pressed={form.exclusive}
-                    className={`relative h-5 w-10 rounded-full transition-colors ${form.exclusive ? "bg-[#FFCC66]" : "bg-gray-200"}`}
+                    className={`relative h-5 w-10 shrink-0 cursor-pointer rounded-full transition-colors ${form.exclusive ? "bg-[#FFCC66]" : "bg-gray-200"}`}
                   >
+                    {/* left-0 is what pins the knob to the track's edge:
+                        without it an absolutely positioned child of a
+                        <button> starts from the button's centred content
+                        box, and the translate pushes it out of the track. */}
                     <span
-                      className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${form.exclusive ? "translate-x-5" : "translate-x-0.5"}`}
+                      className={`absolute left-0 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${form.exclusive ? "translate-x-[22px]" : "translate-x-0.5"}`}
                     />
                   </button>
                 </div>
