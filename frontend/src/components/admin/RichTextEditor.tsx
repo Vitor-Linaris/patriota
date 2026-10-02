@@ -9,6 +9,20 @@ import TextAlign from "@tiptap/extension-text-align";
 // Note: StarterKit v3+ already includes Link and Underline. We
 // configure them through StarterKit options below — registering them
 // separately triggers a "Duplicate extension names" warning.
+import {
+  LuAlignCenter,
+  LuAlignLeft,
+  LuAlignRight,
+  LuImagePlus,
+  LuImages,
+  LuLink,
+  LuList,
+  LuListOrdered,
+  LuMinus,
+  LuQuote,
+  LuRedo2,
+  LuUndo2,
+} from "react-icons/lu";
 import { uploadMediaFileAction } from "@/app/admin/media/actions";
 import { validateImageUpload } from "@/lib/upload-limits";
 import { adminMediaUrl } from "@/lib/media-preview";
@@ -349,27 +363,27 @@ function Toolbar({
         active={editor.isActive("bulletList")}
         onClick={() => editor.chain().focus().toggleBulletList().run()}
       >
-        ⁃
+        <LuList className="h-4 w-4" aria-hidden />
       </Btn>
       <Btn
         title="Lista numerada"
         active={editor.isActive("orderedList")}
         onClick={() => editor.chain().focus().toggleOrderedList().run()}
       >
-        1.
+        <LuListOrdered className="h-4 w-4" aria-hidden />
       </Btn>
       <Btn
         title="Citação"
         active={editor.isActive("blockquote")}
         onClick={() => editor.chain().focus().toggleBlockquote().run()}
       >
-        ❝
+        <LuQuote className="h-4 w-4" aria-hidden />
       </Btn>
       <Btn
         title="Linha horizontal"
         onClick={() => editor.chain().focus().setHorizontalRule().run()}
       >
-        ─
+        <LuMinus className="h-4 w-4" aria-hidden />
       </Btn>
       {sep}
       <Btn
@@ -377,31 +391,31 @@ function Toolbar({
         active={editor.isActive({ textAlign: "left" })}
         onClick={() => editor.chain().focus().setTextAlign("left").run()}
       >
-        ⫷
+        <LuAlignLeft className="h-4 w-4" aria-hidden />
       </Btn>
       <Btn
         title="Centrar"
         active={editor.isActive({ textAlign: "center" })}
         onClick={() => editor.chain().focus().setTextAlign("center").run()}
       >
-        ☰
+        <LuAlignCenter className="h-4 w-4" aria-hidden />
       </Btn>
       <Btn
         title="Alinhar à direita"
         active={editor.isActive({ textAlign: "right" })}
         onClick={() => editor.chain().focus().setTextAlign("right").run()}
       >
-        ⫸
+        <LuAlignRight className="h-4 w-4" aria-hidden />
       </Btn>
       {sep}
       <Btn title="Inserir/editar link" active={editor.isActive("link")} onClick={onLink}>
-        🔗
+        <LuLink className="h-4 w-4" aria-hidden />
       </Btn>
       <Btn title="Carregar imagem" disabled={uploading} onClick={onUpload}>
-        {uploading ? "…" : "⬆🖼"}
+        {uploading ? "…" : <LuImagePlus className="h-4 w-4" aria-hidden />}
       </Btn>
       <Btn title="Imagem da biblioteca" onClick={onLibrary}>
-        🖼
+        <LuImages className="h-4 w-4" aria-hidden />
       </Btn>
       {sep}
       <Btn
@@ -409,14 +423,14 @@ function Toolbar({
         disabled={!editor.can().undo()}
         onClick={() => editor.chain().focus().undo().run()}
       >
-        ↶
+        <LuUndo2 className="h-4 w-4" aria-hidden />
       </Btn>
       <Btn
         title="Refazer"
         disabled={!editor.can().redo()}
         onClick={() => editor.chain().focus().redo().run()}
       >
-        ↷
+        <LuRedo2 className="h-4 w-4" aria-hidden />
       </Btn>
     </div>
   );

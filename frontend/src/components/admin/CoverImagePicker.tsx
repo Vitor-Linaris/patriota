@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import { LuImagePlus, LuImages } from "react-icons/lu";
 import { uploadMediaFileAction } from "@/app/admin/media/actions";
 import { imageVariant } from "@/lib/images";
 import { adminMediaUrl } from "@/lib/media-preview";
@@ -143,15 +144,17 @@ export function CoverImagePicker({
           type="button"
           disabled={pending}
           onClick={() => inputRef.current?.click()}
-          className="flex-1 rounded-lg border border-[#0F2C6B]/20 px-3 py-2 text-xs font-bold text-[#0F2C6B] transition-colors hover:bg-[#0F2C6B]/5 disabled:opacity-50"
+          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-[#0F2C6B]/20 px-3 py-2 text-xs font-bold text-[#0F2C6B] transition-colors hover:bg-[#0F2C6B]/5 disabled:opacity-50"
         >
+          <LuImagePlus className="h-3.5 w-3.5 shrink-0" aria-hidden />
           Carregar do PC
         </button>
         <button
           type="button"
           onClick={() => setLibraryOpen(true)}
-          className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-600 transition-colors hover:bg-gray-50"
+          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-600 transition-colors hover:bg-gray-50"
         >
+          <LuImages className="h-3.5 w-3.5 shrink-0" aria-hidden />
           Da biblioteca
         </button>
       </div>
