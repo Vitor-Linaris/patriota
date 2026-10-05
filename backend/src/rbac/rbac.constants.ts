@@ -6,7 +6,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   SUPER_ADMIN: 'Super Admin',
   EDITOR_CHEFE: 'Editor-Chefe',
   EDITOR: 'Editor',
-  JORNALISTA: 'Jornalista',
+  JORNALISTA: 'Colunista',
   REVISOR: 'Revisor',
   MODERADOR: 'Moderador',
   ANALISTA: 'Analista',

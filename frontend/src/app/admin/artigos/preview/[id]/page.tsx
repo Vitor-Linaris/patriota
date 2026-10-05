@@ -306,7 +306,7 @@ export default async function ArticlePreviewPage({
                 initials={authorInitials}
                 name={article.author?.name ?? "Redação"}
                 role="O Patriota Notícias"
-                bio="Jornalista da equipa editorial do O Patriota."
+                bio="Colunista da equipa editorial do O Patriota."
               />
             </div>
           </article>

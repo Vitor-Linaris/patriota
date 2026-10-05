@@ -1169,7 +1169,7 @@ export default function AdminSettingsClient({
 
               <Field
                 label="Frequência de publicação"
-                hint="As opções do menu no perfil de cada jornalista. Obrigatório escolher uma, por isso a lista nunca pode ficar vazia."
+                hint="As opções do menu no perfil de cada colunista. Obrigatório escolher uma, por isso a lista nunca pode ficar vazia."
               >
                 <ul className="flex flex-col gap-2">
                   {cadencias.map((c, i) => (

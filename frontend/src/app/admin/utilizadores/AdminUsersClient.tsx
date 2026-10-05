@@ -57,7 +57,7 @@ const ROLE_OPTIONS: {
   },
   {
     id: "jornalista",
-    label: "Jornalista",
+    label: "Colunista",
     color: "bg-green-100 text-green-700 border-green-200",
     desc: "Criação de conteúdo",
   },

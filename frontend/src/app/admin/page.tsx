@@ -128,7 +128,7 @@ function roleShort(role: string): string {
     case "EDITOR":
       return "Editor";
     case "JORNALISTA":
-      return "Jornalista";
+      return "Colunista";
     case "REVISOR":
       return "Revisor";
     case "MODERADOR":
