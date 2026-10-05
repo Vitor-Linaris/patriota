@@ -81,7 +81,7 @@ describe('AuthService', () => {
         email: 'real@example.pt',
         password: stored,
         isActive: false, // rejected after the comparison, not before it
-        role: 'JORNALISTA',
+        role: 'COLUNISTA',
       });
       await expect(
         service.login('real@example.pt', 'correct horse'),

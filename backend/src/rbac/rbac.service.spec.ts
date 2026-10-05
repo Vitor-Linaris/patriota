@@ -169,6 +169,6 @@ describe('RbacService — onModuleInit does not undo revocations', () => {
       (c) => c[0].data.role,
     );
     expect(seeded).toContain('EDITOR_CHEFE');
-    expect(seeded).toContain('JORNALISTA');
+    expect(seeded).toContain('COLUNISTA');
   });
 });

@@ -26,7 +26,7 @@ describe('Users (e2e)', () => {
   });
 
   it('GET /admin/users requires utilizadores.ver', async () => {
-    const jorn = await makeUser(app, { role: 'JORNALISTA' });
+    const jorn = await makeUser(app, { role: 'COLUNISTA' });
     await request(app.getHttpServer())
       .get('/admin/users')
       .set(bearer(jorn))
@@ -41,7 +41,7 @@ describe('Users (e2e)', () => {
       .send({
         email: 'invited@e2e.test',
         name: 'Convidada',
-        role: 'JORNALISTA',
+        role: 'COLUNISTA',
       })
       .expect(201);
     expect(invited.body.temporaryPassword).toBeDefined();
@@ -87,7 +87,7 @@ describe('Users (e2e)', () => {
 
   it('PATCH /admin/users/:id/role with permission updates role', async () => {
     const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
-    const target = await makeUser(app, { role: 'JORNALISTA' });
+    const target = await makeUser(app, { role: 'COLUNISTA' });
     const res = await request(app.getHttpServer())
       .patch(`/admin/users/${target.id}/role`)
       .set(bearer(admin))
@@ -111,7 +111,7 @@ describe('Users (e2e)', () => {
     await request(app.getHttpServer())
       .patch(`/admin/users/${admin.id}/role`)
       .set(bearer(chefe))
-      .send({ role: 'JORNALISTA' })
+      .send({ role: 'COLUNISTA' })
       .expect(403);
   });
 
@@ -127,7 +127,7 @@ describe('Users (e2e)', () => {
 
   it('POST /admin/users/:id/reset-password returns a new temp password', async () => {
     const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
-    const target = await makeUser(app, { role: 'JORNALISTA' });
+    const target = await makeUser(app, { role: 'COLUNISTA' });
     const res = await request(app.getHttpServer())
       .post(`/admin/users/${target.id}/reset-password`)
       .set(bearer(admin))
@@ -139,7 +139,7 @@ describe('Users (e2e)', () => {
   it('the new temp password actually authenticates against /auth/login', async () => {
     const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
     const target = await makeUser(app, {
-      role: 'JORNALISTA',
+      role: 'COLUNISTA',
       password: 'OldPassw0rd!',
     });
     const reset = await request(app.getHttpServer())
@@ -172,9 +172,9 @@ describe('Users (e2e)', () => {
       .expect(403);
   });
 
-  it('JORNALISTA cannot reset anyone (lacks utilizadores.resetar_password)', async () => {
-    const j = await makeUser(app, { role: 'JORNALISTA' });
-    const other = await makeUser(app, { role: 'JORNALISTA' });
+  it('COLUNISTA cannot reset anyone (lacks utilizadores.resetar_password)', async () => {
+    const j = await makeUser(app, { role: 'COLUNISTA' });
+    const other = await makeUser(app, { role: 'COLUNISTA' });
     await request(app.getHttpServer())
       .post(`/admin/users/${other.id}/reset-password`)
       .set(bearer(j))
@@ -183,7 +183,7 @@ describe('Users (e2e)', () => {
 
   it('DELETE /admin/users/:id removes a user without content', async () => {
     const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
-    const target = await makeUser(app, { role: 'JORNALISTA' });
+    const target = await makeUser(app, { role: 'COLUNISTA' });
     await request(app.getHttpServer())
       .delete(`/admin/users/${target.id}`)
       .set(bearer(admin))
@@ -220,7 +220,7 @@ describe('Users (e2e)', () => {
       .expect(200);
     expect(res.body.assignableRoles).toEqual(
       expect.arrayContaining([
-        'EDITOR_CHEFE', 'EDITOR', 'JORNALISTA', 'REVISOR', 'MODERADOR', 'ANALISTA',
+        'EDITOR_CHEFE', 'EDITOR', 'COLUNISTA', 'REVISOR', 'MODERADOR', 'ANALISTA',
       ]),
     );
     expect(res.body.assignableRoles).not.toContain('SUPER_ADMIN');

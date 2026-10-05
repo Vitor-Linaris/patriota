@@ -17,7 +17,7 @@ interface UserApi {
     | "SUPER_ADMIN"
     | "EDITOR_CHEFE"
     | "EDITOR"
-    | "JORNALISTA"
+    | "COLUNISTA"
     | "REVISOR"
     | "MODERADOR"
     | "ANALISTA";
@@ -32,7 +32,7 @@ const ROLE_API_TO_UI: Record<UserApi["role"], AdminUser["role"]> = {
   SUPER_ADMIN: "super_admin",
   EDITOR_CHEFE: "editor_chefe",
   EDITOR: "editor",
-  JORNALISTA: "jornalista",
+  COLUNISTA: "colunista",
   REVISOR: "revisor",
   MODERADOR: "moderador",
   ANALISTA: "analista",

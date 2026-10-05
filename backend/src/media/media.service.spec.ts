@@ -94,10 +94,10 @@ describe('MediaService', () => {
     );
   });
 
-  /** The owner of the fixtures below. A JORNALISTA, so the tests
+  /** The owner of the fixtures below. A COLUNISTA, so the tests
    *  exercise the ownership check rather than skipping it the way a
    *  SUPER_ADMIN would. */
-  const OWNER = { id: 'u1', role: 'JORNALISTA' as const };
+  const OWNER = { id: 'u1', role: 'COLUNISTA' as const };
 
   describe('remove()', () => {
     it('throws NotFoundException when media does not exist', async () => {

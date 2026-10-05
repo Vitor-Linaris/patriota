@@ -22,7 +22,7 @@ interface MeProfile {
   /**
    * The choices for the cadence dropdown, sent with the profile rather
    * than fetched separately — the settings endpoints need
-   * `configuracoes.aceder`, which a JORNALISTA does not have, and every
+   * `configuracoes.aceder`, which a COLUNISTA does not have, and every
    * staff account edits this screen. See UsersService.getOwn.
    */
   cadenceOptions: string[];
@@ -32,7 +32,7 @@ const ROLE_LABEL: Record<string, string> = {
   SUPER_ADMIN: "Super Admin",
   EDITOR_CHEFE: "Editor-Chefe",
   EDITOR: "Editor",
-  JORNALISTA: "Jornalista",
+  COLUNISTA: "Colunista",
   REVISOR: "Revisor",
   MODERADOR: "Moderador",
   ANALISTA: "Analista",

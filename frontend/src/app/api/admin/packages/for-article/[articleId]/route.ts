@@ -9,7 +9,7 @@ import { apiBaseUrl } from "@/lib/api-base";
  * A proxy for the same reason as the others in this folder: the editor is
  * a client component and cannot read the httpOnly session cookie.
  *
- * A 403 here is ordinary — a JORNALISTA has pacotes.ver, but a REVISOR
+ * A 403 here is ordinary — a COLUNISTA has pacotes.ver, but a REVISOR
  * does not — and the editor treats it as "no pacote field", not an error.
  */
 export async function GET(

@@ -64,7 +64,7 @@ describe('StaffNotificationsService', () => {
       expect(where.role.in).toEqual(
         expect.arrayContaining(['SUPER_ADMIN', 'EDITOR_CHEFE', 'EDITOR']),
       );
-      expect(where.role.in).not.toContain('JORNALISTA');
+      expect(where.role.in).not.toContain('COLUNISTA');
       expect(where.role.in).not.toContain('REVISOR');
     });
 

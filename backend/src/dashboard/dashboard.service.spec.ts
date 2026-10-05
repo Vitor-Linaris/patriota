@@ -8,7 +8,7 @@ import { RbacService } from '../rbac/rbac.service';
  * /admin/stats carried no @RequirePermissions at all, and a route with
  * no metadata is not visibly open: RolesGuard passes silently when it
  * finds nothing to check. Every authenticated account — a freelancer
- * with a JORNALISTA login included — read how many unpublished pieces
+ * with a COLUNISTA login included — read how many unpublished pieces
  * the newsroom was sitting on and how many staff accounts existed, both
  * of which the sibling routes gate explicitly.
  */
@@ -42,7 +42,7 @@ describe('DashboardService', () => {
     service = moduleRef.get(DashboardService);
   });
 
-  const jornalista = { id: 'u1', role: 'JORNALISTA' as const };
+  const jornalista = { id: 'u1', role: 'COLUNISTA' as const };
 
   it('withholds the staff head count from a role without utilizadores.ver', async () => {
     const out = await service.getStats(jornalista);

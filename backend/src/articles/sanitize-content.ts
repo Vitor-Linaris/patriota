@@ -8,7 +8,7 @@ import sanitizeHtml from 'sanitize-html';
  * stood between the two. The DTO accepted `@IsString()` and no more, so
  * the Tiptap editor was the only thing shaping the HTML — and Tiptap runs
  * in the browser, which makes it a convenience, not a control. Anyone
- * holding `artigos.criar` (JORNALISTA, the lowest editorial role) could
+ * holding `artigos.criar` (COLUNISTA, the lowest editorial role) could
  * POST a `<script>` straight to the API. It would then run for every
  * reader once published, and — worse, because it needs no publishing
  * right at all — for whichever editor opened the preview to review it.

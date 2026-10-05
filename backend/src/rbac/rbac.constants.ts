@@ -6,7 +6,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   SUPER_ADMIN: 'Super Admin',
   EDITOR_CHEFE: 'Editor-Chefe',
   EDITOR: 'Editor',
-  JORNALISTA: 'Jornalista',
+  COLUNISTA: 'Colunista',
   REVISOR: 'Revisor',
   MODERADOR: 'Moderador',
   ANALISTA: 'Analista',
@@ -16,7 +16,7 @@ export const ROLE_ORDER: Role[] = [
   'SUPER_ADMIN',
   'EDITOR_CHEFE',
   'EDITOR',
-  'JORNALISTA',
+  'COLUNISTA',
   'REVISOR',
   'MODERADOR',
   'ANALISTA',
@@ -258,7 +258,7 @@ export const DEFAULT_PLAN_PERMISSIONS: Record<ReaderPlan, string[]> = {
  *     this guard, an EDITOR_CHEFE that gained utilizadores.atribuir_roles
  *     could escalate themselves.
  *   • EDITOR_CHEFE can promote peers and everyone below.
- *   • EDITOR can only promote down to JORNALISTA (and only if they ever
+ *   • EDITOR can only promote down to COLUNISTA (and only if they ever
  *     get utilizadores.criar — currently they don't, so this is dormant
  *     defence in depth).
  *   • Everyone else cannot assign roles.
@@ -272,7 +272,7 @@ export const ASSIGNABLE_ROLES: Record<Role, Role[]> = {
     'SUPER_ADMIN',
     'EDITOR_CHEFE',
     'EDITOR',
-    'JORNALISTA',
+    'COLUNISTA',
     'REVISOR',
     'MODERADOR',
     'ANALISTA',
@@ -280,13 +280,13 @@ export const ASSIGNABLE_ROLES: Record<Role, Role[]> = {
   EDITOR_CHEFE: [
     'EDITOR_CHEFE',
     'EDITOR',
-    'JORNALISTA',
+    'COLUNISTA',
     'REVISOR',
     'MODERADOR',
     'ANALISTA',
   ],
-  EDITOR: ['JORNALISTA'],
-  JORNALISTA: [],
+  EDITOR: ['COLUNISTA'],
+  COLUNISTA: [],
   REVISOR: [],
   MODERADOR: [],
   ANALISTA: [],
@@ -340,7 +340,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, string[]> = {
     // NOT pacotes.eliminar / oferecer / revogar_compra / ver_compras:
     // those either destroy a paid-for record or give away money.
   ],
-  JORNALISTA: [
+  COLUNISTA: [
     'artigos.ler',
     'artigos.criar',
     'artigos.editar_proprios',

@@ -143,7 +143,7 @@ export interface AuthorProfile {
   id: string;
   name: string | null;
   bio: string | null;
-  /** Raw Role enum value ("JORNALISTA", "EDITOR", …) — the caller maps
+  /** Raw Role enum value ("COLUNISTA", "EDITOR", …) — the caller maps
    *  it to a Portuguese label, same as every admin screen already does. */
   role: string;
   /** One of the options in Configurações › Redacção, or null if never set. */

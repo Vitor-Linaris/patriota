@@ -77,9 +77,9 @@ describe('Articles (e2e)', () => {
     expect(fetched.body.title).toBe('Governo aprova novo orçamento');
   });
 
-  it('JORNALISTA can only edit own articles (editar_proprios)', async () => {
-    const author = await makeUser(app, { role: 'JORNALISTA' });
-    const other = await makeUser(app, { role: 'JORNALISTA' });
+  it('COLUNISTA can only edit own articles (editar_proprios)', async () => {
+    const author = await makeUser(app, { role: 'COLUNISTA' });
+    const other = await makeUser(app, { role: 'COLUNISTA' });
 
     const created = await request(app.getHttpServer())
       .post('/admin/articles')
@@ -102,8 +102,8 @@ describe('Articles (e2e)', () => {
       .expect(403);
   });
 
-  it('JORNALISTA POST /publish falls back to submitForReview (no auto-publish)', async () => {
-    const author = await makeUser(app, { role: 'JORNALISTA' });
+  it('COLUNISTA POST /publish falls back to submitForReview (no auto-publish)', async () => {
+    const author = await makeUser(app, { role: 'COLUNISTA' });
     const created = await request(app.getHttpServer())
       .post('/admin/articles')
       .set(bearer(author))
@@ -117,7 +117,7 @@ describe('Articles (e2e)', () => {
   });
 
   it('Full review flow: submit → reject (with reason) → re-submit → approve → public', async () => {
-    const author = await makeUser(app, { role: 'JORNALISTA' });
+    const author = await makeUser(app, { role: 'COLUNISTA' });
     const chief = await makeUser(app, { role: 'EDITOR_CHEFE' });
 
     // 1. Author creates draft
@@ -262,7 +262,7 @@ describe('Articles (e2e)', () => {
   });
 
   it('Cannot reject articles not in EM_REVISAO', async () => {
-    const author = await makeUser(app, { role: 'JORNALISTA' });
+    const author = await makeUser(app, { role: 'COLUNISTA' });
     const chief = await makeUser(app, { role: 'EDITOR_CHEFE' });
     const created = await request(app.getHttpServer())
       .post('/admin/articles')
@@ -759,7 +759,7 @@ describe('Articles (e2e)', () => {
       // The journalist must be able to edit it at all — editar_todos is
       // not theirs, so make them the author.
       const prisma = app.get(PrismaService);
-      const journalist = await makeUser(app, { role: 'JORNALISTA' });
+      const journalist = await makeUser(app, { role: 'COLUNISTA' });
       await prisma.article.update({
         where: { id: article.id },
         data: { authorId: journalist.id },
@@ -912,7 +912,7 @@ describe('Articles (e2e)', () => {
 
   /**
    * The bug this closes: `status` inside a plain create/update body used
-   * to skip `artigos.publicar` entirely. A JORNALISTA — `artigos.criar`
+   * to skip `artigos.publicar` entirely. A COLUNISTA — `artigos.criar`
    * and `editar_proprios`, never `publicar` — could self-publish by
    * adding one field to the request the UI never sends, no review, no
    * approval. Neither route checked it; only the dedicated
@@ -920,7 +920,7 @@ describe('Articles (e2e)', () => {
    */
   describe('publishing or scheduling through a plain PATCH/POST needs artigos.publicar', () => {
     it('refuses PATCH …/:id with status: PUBLICADO from someone who cannot publish', async () => {
-      const jornalista = await makeUser(app, { role: 'JORNALISTA' });
+      const jornalista = await makeUser(app, { role: 'COLUNISTA' });
       const draft = await request(app.getHttpServer())
         .post('/admin/articles')
         .set(bearer(jornalista))
@@ -943,7 +943,7 @@ describe('Articles (e2e)', () => {
     });
 
     it('refuses PATCH …/:id with status: AGENDADO too — a near-future schedule is a delayed self-publish', async () => {
-      const jornalista = await makeUser(app, { role: 'JORNALISTA' });
+      const jornalista = await makeUser(app, { role: 'COLUNISTA' });
       const draft = await request(app.getHttpServer())
         .post('/admin/articles')
         .set(bearer(jornalista))
@@ -958,7 +958,7 @@ describe('Articles (e2e)', () => {
     });
 
     it('refuses POST /admin/articles with status: PUBLICADO in the body', async () => {
-      const jornalista = await makeUser(app, { role: 'JORNALISTA' });
+      const jornalista = await makeUser(app, { role: 'COLUNISTA' });
 
       const res = await request(app.getHttpServer())
         .post('/admin/articles')
@@ -1018,7 +1018,7 @@ describe('Articles (e2e)', () => {
       // them" — the two are different permissions on purpose, and this
       // is the path that most resembles the real exploit: editing your
       // own piece and adding one field.
-      const jornalista = await makeUser(app, { role: 'JORNALISTA' });
+      const jornalista = await makeUser(app, { role: 'COLUNISTA' });
       const draft = await request(app.getHttpServer())
         .post('/admin/articles')
         .set(bearer(jornalista))

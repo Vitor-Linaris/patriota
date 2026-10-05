@@ -7,7 +7,7 @@ const FRIENDLY_TO_DB: Record<string, string> = {
   super_admin: "SUPER_ADMIN",
   editor_chefe: "EDITOR_CHEFE",
   editor: "EDITOR",
-  jornalista: "JORNALISTA",
+  colunista: "COLUNISTA",
   revisor: "REVISOR",
   moderador: "MODERADOR",
   analista: "ANALISTA",

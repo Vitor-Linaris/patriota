@@ -12,7 +12,7 @@ const ROLE_LABEL: Record<string, string> = {
   SUPER_ADMIN: "Direcção",
   EDITOR_CHEFE: "Editor-Chefe",
   EDITOR: "Editor",
-  JORNALISTA: "Jornalista",
+  COLUNISTA: "Colunista",
   REVISOR: "Revisor",
   MODERADOR: "Moderador",
   ANALISTA: "Analista",

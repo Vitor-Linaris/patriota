@@ -37,7 +37,7 @@ export class AuthController {
   async me(@CurrentUser() user: AuthUser) {
     const permissions = await this.rbac.getPermissionsForRole(user.role);
     // Roles this user is allowed to assign to others — drives the UI's
-    // role pickers so a JORNALISTA never sees a SUPER_ADMIN option.
+    // role pickers so a COLUNISTA never sees a SUPER_ADMIN option.
     const assignableRoles = ASSIGNABLE_ROLES[user.role] ?? [];
     return { ...user, permissions, assignableRoles };
   }

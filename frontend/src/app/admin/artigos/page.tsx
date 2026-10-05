@@ -241,7 +241,7 @@ export default async function AdminArticlesPage({
     : [];
   // Reading the field needs pacotes.ver (already true if the list came
   // back); CHANGING it writes PackageArticle and needs pacotes.editar. A
-  // JORNALISTA has the first and not the second, so they see which pacote
+  // COLUNISTA has the first and not the second, so they see which pacote
   // their piece belongs to without being able to move it — one switch on
   // /admin/permissions changes that, with no code involved.
   const canEditPackages =

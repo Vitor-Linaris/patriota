@@ -198,7 +198,7 @@ export class ArticlesService {
    * for the opposite case: seeing everyone's work without being able to
    * touch it (REVISOR reviewing what was submitted, ANALISTA reading
    * numbers across the corpus). Without either, artigos.ler only ever
-   * meant "read what I'm shown", and what a JORNALISTA with just
+   * meant "read what I'm shown", and what a COLUNISTA with just
    * editar_proprios was shown used to be literally everyone's drafts —
    * every colleague's unpublished work, visible to every other colleague,
    * for no reason tied to their job.
@@ -232,7 +232,7 @@ export class ArticlesService {
    * Until now neither checked this. `POST /admin/articles` with
    * `status: "PUBLICADO"` in the body, or `PATCH .../:id` with the same
    * field, skipped every consequence `publish()` exists to apply —
-   * `artigos.publicar` was never asked for, so a JORNALISTA holding only
+   * `artigos.publicar` was never asked for, so a COLUNISTA holding only
    * `artigos.criar`/`editar_proprios` could self-publish by sending one
    * extra field, no review, no approval. AGENDADO is included for the
    * same reason: a scheduledAt one minute out is a delayed self-publish,
