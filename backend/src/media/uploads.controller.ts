@@ -7,10 +7,9 @@ import {
   Res,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { createReadStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
-import { join, normalize, resolve, sep } from 'node:path';
+import type { Readable } from 'node:stream';
 import { MediaAccessService } from './media-access.service';
+import { StorageService } from '../storage/storage.service';
 import { Public } from '../auth/public.decorator';
 import { JwtService } from '@nestjs/jwt';
 import {
@@ -39,13 +38,11 @@ const MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
  */
 @Controller('uploads')
 export class UploadsController {
-  private readonly uploadsDir =
-    process.env.UPLOADS_DIR ?? '/usr/src/app/uploads';
-
   constructor(
     private readonly access: MediaAccessService,
     private readonly auth: AuthService,
     private readonly jwt: JwtService,
+    private readonly storage: StorageService,
   ) {}
 
   @Public()
@@ -59,8 +56,10 @@ export class UploadsController {
       ? pathParam.join('/')
       : pathParam;
 
-    const absolute = this.safeResolve(relative);
-    if (!absolute) throw new NotFoundException();
+    // `..` cannot escape the uploads root: Express normalises most of
+    // this, but the path is about to become a file name or an object key
+    // and the check is cheap.
+    if (!StorageService.isSafeRelative(relative)) throw new NotFoundException();
 
     const publicly = await this.mayServe(relative, req);
     if (publicly === null) {
@@ -71,22 +70,7 @@ export class UploadsController {
       throw new NotFoundException();
     }
 
-    await this.send(absolute, req, res, publicly);
-  }
-
-  /**
-   * Resolves a request path inside the uploads directory, or null.
-   *
-   * `..` cannot escape: the resolved path is compared against the
-   * directory it must sit under. Express normalises most of this, but
-   * this route now reads from the filesystem by hand and the check is
-   * cheap.
-   */
-  private safeResolve(relative: string): string | null {
-    if (!relative || relative.includes('\0')) return null;
-    const root = resolve(this.uploadsDir);
-    const target = resolve(join(root, normalize(relative)));
-    return target === root || target.startsWith(root + sep) ? target : null;
+    await this.send(relative, req, res, publicly);
   }
 
   /**
@@ -189,19 +173,13 @@ export class UploadsController {
    * for free; doing them by hand is the cost of the access check.
    */
   private async send(
-    absolute: string,
+    relative: string,
     req: Request,
     res: Response,
     publicly: boolean,
   ): Promise<void> {
-    let size: number;
-    try {
-      const info = await stat(absolute);
-      if (!info.isFile()) throw new NotFoundException();
-      size = info.size;
-    } catch {
-      throw new NotFoundException();
-    }
+    const size = await this.storage.head(relative);
+    if (size === null) throw new NotFoundException();
 
     // A public file: the name carries 8 random bytes and the contents
     // never change under it, so anybody may hold on to it as long as
@@ -217,7 +195,7 @@ export class UploadsController {
         ? `public, max-age=${MAX_AGE_SECONDS}, immutable`
         : 'private, no-store',
     );
-    res.setHeader('Content-Type', contentTypeFor(absolute));
+    res.setHeader('Content-Type', contentTypeFor(relative));
     res.setHeader('Accept-Ranges', 'bytes');
 
     const range = parseRange(req.headers.range, size);
@@ -233,13 +211,23 @@ export class UploadsController {
       res.status(206);
       res.setHeader('Content-Range', `bytes ${range.start}-${range.end}/${size}`);
       res.setHeader('Content-Length', length);
-      createReadStream(absolute, { start: range.start, end: range.end }).pipe(res);
+      pipe(await this.storage.read(relative, range), res);
       return;
     }
 
     res.setHeader('Content-Length', size);
-    createReadStream(absolute).pipe(res);
+    pipe(await this.storage.read(relative), res);
   }
+}
+
+/**
+ * A storage read that fails part-way — a dropped connection to R2, a
+ * file removed mid-read — ends the response instead of leaving it
+ * hanging with half a body and a Content-Length that promised more.
+ */
+function pipe(body: Readable, res: Response): void {
+  body.on('error', () => res.destroy());
+  body.pipe(res);
 }
 
 /** Content type from the extension. Only what this project writes. */

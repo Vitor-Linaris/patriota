@@ -9,10 +9,9 @@ import {
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import sharp from 'sharp';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { SettingsService } from '../settings/settings.service';
 import {
@@ -86,6 +85,7 @@ export class UsersService {
     private readonly settings: SettingsService,
     private readonly staffNotifications: StaffNotificationsService,
     private readonly rbac: RbacService,
+    private readonly storage: StorageService,
   ) {}
 
   async list(query: ListUsersQueryDto): Promise<PageResult<unknown>> {
@@ -561,21 +561,12 @@ export class UsersService {
       );
     }
 
-    const uploadsDir =
-      process.env.UPLOADS_DIR ?? '/usr/src/app/uploads';
-    const publicBase =
-      process.env.UPLOADS_PUBLIC_BASE_URL ?? 'http://localhost:8585/uploads';
-    const dir = join(uploadsDir, 'avatars');
-    await mkdir(dir, { recursive: true });
-
-    // Filename combines the user id and a short random suffix so
-    // (a) we don't accumulate orphan files when a user replaces
-    // their photo, and (b) a stale CDN cache is invalidated by the
-    // changed URL. The user prefix makes ownership inspectable on
-    // disk.
+    // Filename combines the user id and a short random suffix so a
+    // stale CDN cache is invalidated by the changed URL. The user prefix
+    // makes ownership inspectable, and is what
+    // MediaAccessService.userIdFromAvatarPath reads back.
     const suffix = randomBytes(4).toString('hex');
-    const filename = `${userId}-${suffix}.webp`;
-    const outPath = join(dir, filename);
+    const rel = `avatars/${userId}-${suffix}.webp`;
 
     let buf: Buffer;
     try {
@@ -594,9 +585,13 @@ export class UsersService {
         `Imagem inválida: ${(e as Error).message}`,
       );
     }
-    await writeFile(outPath, buf);
+    await this.storage.put(rel, buf, 'image/webp');
 
-    const avatarUrl = `${publicBase}/avatars/${filename}`;
+    const previous = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { avatarUrl: true },
+    });
+    const avatarUrl = this.storage.urlFor(rel);
     await this.prisma.user.update({
       where: { id: userId },
       data: { avatarUrl },
@@ -604,6 +599,35 @@ export class UsersService {
     this.logger.log(
       `Avatar uploaded for user ${userId} → ${(buf.length / 1024).toFixed(1)}KB`,
     );
+
+    // The photo it replaces. Until now every change left the old file
+    // behind for ever — never shown again, never reachable to delete.
+    // Only ever an avatar of ours: the column also accepts a pasted
+    // address (updateOwn), which is not ours to remove.
+    const oldRel = previous?.avatarUrl
+      ? this.storage.relativeFromUrl(previous.avatarUrl)
+      : null;
+    if (oldRel?.startsWith('avatars/') && oldRel !== rel) {
+      await this.storage.delete([oldRel]);
+    }
+
+    // An avatar is public exactly when its owner has a published article
+    // (MediaAccessService.avatarIsPublic). Somebody who already has one
+    // gets the new photo published at once; everybody else's is picked
+    // up by the media sweep when their first article goes out.
+    const hasPublished = await this.prisma.article.findFirst({
+      where: { authorId: userId, status: 'PUBLICADO' },
+      select: { id: true },
+    });
+    if (hasPublished) {
+      try {
+        await this.storage.publish([rel]);
+      } catch (e) {
+        this.logger.error(
+          `Could not publish avatar ${rel}: ${(e as Error).message}`,
+        );
+      }
+    }
     return { avatarUrl };
   }
 

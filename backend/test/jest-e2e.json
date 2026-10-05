@@ -6,5 +6,8 @@
   "globalSetup": "<rootDir>/global-setup.ts",
   "transform": {
     "^.+\\.(t|j)s$": ["ts-jest", { "tsconfig": "<rootDir>/../tsconfig.test.json" }]
-  }
+  },
+  "transformIgnorePatterns": [
+    "node_modules/(?!(dayjs|deepmerge|dom-serializer|domelementtype|domhandler|domutils|entities|escape-string-regexp|htmlparser2|is-plain-object|launder|nanoid|parse-srcset|picocolors|postcss|sanitize-html|source-map-js)/)"
+  ]
 }

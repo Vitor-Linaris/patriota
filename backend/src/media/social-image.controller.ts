@@ -1,10 +1,9 @@
 import { Controller, Get, NotFoundException, Param, Res } from '@nestjs/common';
 import type { Response } from 'express';
-import { readFile } from 'node:fs/promises';
-import { join, resolve, sep } from 'node:path';
 import sharp from 'sharp';
 import { MediaAccessService } from './media-access.service';
 import { Public } from '../auth/public.decorator';
+import { StorageService } from '../storage/storage.service';
 
 /** Same 30 days the uploads route sends. The bytes never change. */
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
@@ -37,10 +36,10 @@ const MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
  */
 @Controller('social-image')
 export class SocialImageController {
-  private readonly uploadsDir =
-    process.env.UPLOADS_DIR ?? '/usr/src/app/uploads';
-
-  constructor(private readonly access: MediaAccessService) {}
+  constructor(
+    private readonly access: MediaAccessService,
+    private readonly storage: StorageService,
+  ) {}
 
   /**
    * The public address of an article cover as a JPEG, or null when the
@@ -94,12 +93,9 @@ export class SocialImageController {
       if (!healed) throw new NotFoundException();
     }
 
-    const absolute = this.safeResolve(relative);
-    if (!absolute) throw new NotFoundException();
-
     let jpeg: Buffer;
     try {
-      jpeg = await toInstagramJpeg(await readFile(absolute));
+      jpeg = await toInstagramJpeg(await this.storage.readBuffer(relative));
     } catch {
       throw new NotFoundException();
     }
@@ -111,13 +107,6 @@ export class SocialImageController {
     res.setHeader('Content-Type', 'image/jpeg');
     res.setHeader('Content-Length', jpeg.length);
     res.end(jpeg);
-  }
-
-  /** Belt and braces behind the regexes above — see UploadsController. */
-  private safeResolve(relative: string): string | null {
-    const root = resolve(this.uploadsDir);
-    const target = resolve(join(root, relative));
-    return target.startsWith(root + sep) ? target : null;
   }
 }
 

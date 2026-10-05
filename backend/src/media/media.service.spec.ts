@@ -9,6 +9,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { VideoService } from './video.service';
 import { MediaAccessService } from './media-access.service';
+import { StorageService } from '../storage/storage.service';
+
+const BASE = 'http://api/uploads/';
 
 describe('MediaService', () => {
   let service: MediaService;
@@ -22,7 +25,14 @@ describe('MediaService', () => {
     };
     article: { findMany: jest.Mock };
     ad: { findMany: jest.Mock };
+    package: { findMany: jest.Mock };
   };
+  let storage: {
+    relativeFromUrl: (u: string) => string | null;
+    delete: jest.Mock;
+    publish: jest.Mock;
+  };
+  let access: { invalidate: jest.Mock; publishKeys: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -35,6 +45,16 @@ describe('MediaService', () => {
       },
       article: { findMany: jest.fn().mockResolvedValue([]) },
       ad: { findMany: jest.fn().mockResolvedValue([]) },
+      package: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    storage = {
+      relativeFromUrl: (u) => (u.startsWith(BASE) ? u.slice(BASE.length) : null),
+      delete: jest.fn().mockResolvedValue(undefined),
+      publish: jest.fn().mockResolvedValue(undefined),
+    };
+    access = {
+      invalidate: jest.fn(),
+      publishKeys: jest.fn().mockResolvedValue(0),
     };
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -51,12 +71,9 @@ describe('MediaService', () => {
             grabPoster: jest.fn().mockResolvedValue(null),
           },
         },
-        // Another double: the real one talks to Redis, and nothing
-        // here publishes anything.
-        {
-          provide: MediaAccessService,
-          useValue: { invalidate: jest.fn() },
-        },
+        // Another double: the real one talks to Redis.
+        { provide: MediaAccessService, useValue: access },
+        { provide: StorageService, useValue: storage },
       ],
     }).compile();
     service = moduleRef.get(MediaService);
@@ -165,6 +182,99 @@ describe('MediaService', () => {
       await expect(
         service.remove('m1', { id: 'boss', role: 'SUPER_ADMIN' }),
       ).resolves.toEqual({ ok: true });
+    });
+
+    it("deletes a video's poster along with the video", async () => {
+      // The poster used to be left behind: a file no row pointed at,
+      // invisible and impossible to delete from anywhere.
+      prisma.media.findUnique.mockResolvedValue({
+        id: 'm1',
+        url: `${BASE}2026/09/abc1234567def890-video.mp4`,
+        urlMedium: null,
+        urlSmall: null,
+        posterUrl: `${BASE}2026/09/abc1234567def890-poster.webp`,
+        name: 'clip',
+        uploadedById: OWNER.id,
+      });
+
+      await service.remove('m1', OWNER);
+
+      expect(storage.delete).toHaveBeenCalledWith([
+        '2026/09/abc1234567def890-video.mp4',
+        '2026/09/abc1234567def890-poster.webp',
+      ]);
+    });
+
+    it('never tries to delete a pasted external address', async () => {
+      prisma.media.findUnique.mockResolvedValue({
+        id: 'm1',
+        url: 'https://cdn/p/a-large.webp',
+        urlMedium: null,
+        urlSmall: null,
+        posterUrl: null,
+        name: 'a.jpg',
+        uploadedById: OWNER.id,
+      });
+
+      await service.remove('m1', OWNER);
+
+      expect(storage.delete).toHaveBeenCalledWith([]);
+    });
+  });
+
+  describe('promoteForPublication()', () => {
+    it('publishes every key the text mentions', async () => {
+      await service.promoteForPublication(
+        `${BASE}2026/09/abc1234567def890-large.webp`,
+        `<p><img src="${BASE}2026/09/fff1234567def890-medium.webp"></p>`,
+      );
+      expect(access.publishKeys).toHaveBeenCalledWith([
+        '2026/09/abc1234567def890',
+        '2026/09/fff1234567def890',
+      ]);
+    });
+
+    it('never fails the publish that called it', async () => {
+      access.publishKeys.mockRejectedValueOnce(new Error('database down'));
+      await expect(
+        service.promoteForPublication(`${BASE}2026/09/abc1234567def890-large.webp`),
+      ).resolves.toBe(0);
+    });
+  });
+
+  describe('sweepPublished()', () => {
+    it('publishes what live articles, ads and pacotes use, and their authors’ avatars', async () => {
+      prisma.article.findMany.mockResolvedValue([
+        {
+          coverImageUrl: `${BASE}2026/09/aaa1234567def890-large.webp`,
+          content: `<img src="${BASE}2026/09/bbb1234567def890-small.webp">`,
+          author: { avatarUrl: `${BASE}avatars/cku1-a2d6968d.webp` },
+        },
+      ]);
+      prisma.ad.findMany.mockResolvedValue([
+        { imageUrl: `${BASE}2026/09/ccc1234567def890-large.webp` },
+      ]);
+      prisma.package.findMany.mockResolvedValue([
+        { coverImageUrl: `${BASE}2026/09/ddd1234567def890-large.webp` },
+      ]);
+
+      await service.sweepPublished(new Date('2026-09-27T12:00:00Z'));
+
+      expect(access.publishKeys).toHaveBeenCalledWith([
+        '2026/09/aaa1234567def890',
+        '2026/09/bbb1234567def890',
+        '2026/09/ccc1234567def890',
+        '2026/09/ddd1234567def890',
+      ]);
+      expect(storage.publish).toHaveBeenCalledWith(['avatars/cku1-a2d6968d.webp']);
+      // Only articles touched in the last day — bounded, not a scan of
+      // the whole archive every ten minutes.
+      expect(prisma.article.findMany.mock.calls[0]![0]).toMatchObject({
+        where: {
+          status: 'PUBLICADO',
+          updatedAt: { gte: new Date('2026-09-26T12:00:00Z') },
+        },
+      });
     });
   });
 });

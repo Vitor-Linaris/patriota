@@ -7,6 +7,7 @@ import { ActivityLogService } from '../activity-log/activity-log.service';
 import { SettingsService } from '../settings/settings.service';
 import { StaffNotificationsService } from '../staff-notifications/staff-notifications.service';
 import { RbacService } from '../rbac/rbac.service';
+import { StorageService } from '../storage/storage.service';
 
 function makePrismaMock() {
   return {
@@ -55,6 +56,7 @@ describe('UsersService', () => {
           provide: RbacService,
           useValue: { getPermissionsForRole: jest.fn().mockResolvedValue([]) },
         },
+        { provide: StorageService, useValue: {} },
       ],
     }).compile();
     service = moduleRef.get(UsersService);

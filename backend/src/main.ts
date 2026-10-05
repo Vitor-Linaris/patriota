@@ -1,7 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { existsSync, mkdirSync } from 'node:fs';
 import { AppModule } from './app.module';
 import { PrismaService } from './prisma/prisma.service';
 import { bootstrapInitialAdmin } from './bootstrap-admin';
@@ -54,25 +53,12 @@ async function bootstrap() {
   const corsOrigin = resolveCorsOrigin();
   app.enableCors({ origin: corsOrigin, credentials: true });
 
-  // Serve uploaded media (sharp output) from the named docker volume.
-  // The Dockerfile creates this dir at build time; we double-check at
-  // runtime in case the container is started from a stale image.
-  const uploadsDir = process.env.UPLOADS_DIR ?? '/usr/src/app/uploads';
-  if (!existsSync(uploadsDir)) {
-    mkdirSync(uploadsDir, { recursive: true });
-  }
-  // NOT useStaticAssets any more. /uploads is served by
-  // UploadsController, which decides per file whether the caller may
-  // have it: everything published is served to anyone, and material
-  // that has not run yet only to its owner. The static handler had no
-  // way to make that distinction — it served whatever it was pointed
-  // at, to whoever asked.
-  //
-  // The URLs and the caching headers are identical, so nothing that
-  // already points at a file notices the change.
-  //
-  // The directory is still created above: the upload pipeline writes
-  // into it, and a container started from a stale image may not have it.
+  // NOT useStaticAssets. /uploads is served by UploadsController, which
+  // decides per file whether the caller may have it: everything
+  // published is served to anyone, and material that has not run yet
+  // only to its owner. Where the files live — the local uploads
+  // directory or R2 — is StorageService's business (STORAGE_DRIVER);
+  // the local driver creates the directory itself.
 
   // First-deploy admin bootstrap — only fires on a truly empty DB.
   // See src/bootstrap-admin.ts for the triple-guard logic. Runs
