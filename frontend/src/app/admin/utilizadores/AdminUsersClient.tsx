@@ -16,7 +16,7 @@ export type RoleId =
   | "super_admin"
   | "editor_chefe"
   | "editor"
-  | "jornalista"
+  | "colunista"
   | "revisor"
   | "moderador"
   | "analista";
@@ -56,7 +56,7 @@ const ROLE_OPTIONS: {
     desc: "Edição e publicação",
   },
   {
-    id: "jornalista",
+    id: "colunista",
     label: "Colunista",
     color: "bg-green-100 text-green-700 border-green-200",
     desc: "Criação de conteúdo",
@@ -115,7 +115,7 @@ const UI_TO_API_ROLE = {
   super_admin: "SUPER_ADMIN",
   editor_chefe: "EDITOR_CHEFE",
   editor: "EDITOR",
-  jornalista: "JORNALISTA",
+  colunista: "COLUNISTA",
   revisor: "REVISOR",
   moderador: "MODERADOR",
   analista: "ANALISTA",
@@ -173,7 +173,7 @@ export default function AdminUsersClient({
   const [newEmail, setNewEmail] = useState("");
   const [newName, setNewName] = useState("");
   const [newRole, setNewRole] = useState<RoleId>(
-    assignableRoles[0] ?? "jornalista",
+    assignableRoles[0] ?? "colunista",
   );
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [invitedPassword, setInvitedPassword] = useState<string | null>(null);

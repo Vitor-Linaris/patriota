@@ -52,7 +52,7 @@ describe('ActivityLog (e2e)', () => {
   });
 
   it('GET /admin/activity rejects roles without utilizadores.ver', async () => {
-    const jorn = await makeUser(app, { role: 'JORNALISTA' });
+    const jorn = await makeUser(app, { role: 'COLUNISTA' });
     await request(app.getHttpServer())
       .get('/admin/activity')
       .set(bearer(jorn))

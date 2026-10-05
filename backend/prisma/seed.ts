@@ -49,7 +49,7 @@ const ROLE_ORDER = [
   'SUPER_ADMIN',
   'EDITOR_CHEFE',
   'EDITOR',
-  'JORNALISTA',
+  'COLUNISTA',
   'REVISOR',
   'MODERADOR',
   'ANALISTA',
@@ -79,7 +79,7 @@ const DEFAULTS: Record<(typeof ROLE_ORDER)[number], string[]> = {
     'media.carregar', 'media.editar_metadados',
     'analytics.basicas',
   ],
-  JORNALISTA: [
+  COLUNISTA: [
     'artigos.ler', 'artigos.criar', 'artigos.editar_proprios',
     'categorias.ver',
     'media.carregar',
@@ -327,9 +327,9 @@ async function main() {
     { email: 'editor.chefe@opatriota.pt', name: 'Rui Cardoso', role: 'EDITOR_CHEFE' },
     { email: 'editor1@opatriota.pt', name: 'Paulo Ferreira', role: 'EDITOR' },
     { email: 'editor2@opatriota.pt', name: 'Marta Sousa', role: 'EDITOR' },
-    { email: 'jorn1@opatriota.pt', name: 'Ana Ferreira', role: 'JORNALISTA' },
-    { email: 'jorn2@opatriota.pt', name: 'Carlos Neves', role: 'JORNALISTA' },
-    { email: 'jorn3@opatriota.pt', name: 'Inês Rodrigues', role: 'JORNALISTA' },
+    { email: 'jorn1@opatriota.pt', name: 'Ana Ferreira', role: 'COLUNISTA' },
+    { email: 'jorn2@opatriota.pt', name: 'Carlos Neves', role: 'COLUNISTA' },
+    { email: 'jorn3@opatriota.pt', name: 'Inês Rodrigues', role: 'COLUNISTA' },
     { email: 'revisor@opatriota.pt', name: 'Sofia Pinto', role: 'REVISOR' },
     { email: 'moderador@opatriota.pt', name: 'Ana Lopes', role: 'MODERADOR' },
     { email: 'analista@opatriota.pt', name: 'Beatriz Faria', role: 'ANALISTA' },
@@ -354,7 +354,7 @@ async function main() {
   if (existingArticles < 30) {
     const categoryRows = await prisma.category.findMany();
     const authors = await prisma.user.findMany({
-      where: { role: { in: ['EDITOR', 'EDITOR_CHEFE', 'JORNALISTA'] } },
+      where: { role: { in: ['EDITOR', 'EDITOR_CHEFE', 'COLUNISTA'] } },
     });
 
     const TITLES: Record<string, string[]> = {
@@ -859,7 +859,7 @@ async function main() {
   ];
 
   const photoAuthors = await prisma.user.findMany({
-    where: { role: { in: ['EDITOR', 'EDITOR_CHEFE', 'JORNALISTA'] } },
+    where: { role: { in: ['EDITOR', 'EDITOR_CHEFE', 'COLUNISTA'] } },
   });
   for (const [i, a] of PHOTO_ARTICLES.entries()) {
     const cat = await prisma.category.findUnique({ where: { slug: a.category } });

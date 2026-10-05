@@ -28,8 +28,8 @@ describe('Readers admin (e2e)', () => {
   });
 
   describe('listing', () => {
-    it('a JORNALISTA cannot see the reader list', async () => {
-      const journalist = await makeUser(app, { role: 'JORNALISTA' });
+    it('a COLUNISTA cannot see the reader list', async () => {
+      const journalist = await makeUser(app, { role: 'COLUNISTA' });
       await request(app.getHttpServer())
         .get('/admin/readers')
         .set(bearer(journalist))

@@ -138,7 +138,7 @@ export class UsersService {
       SUPER_ADMIN: 0,
       EDITOR_CHEFE: 0,
       EDITOR: 0,
-      JORNALISTA: 0,
+      COLUNISTA: 0,
       REVISOR: 0,
       MODERADOR: 0,
       ANALISTA: 0,
@@ -397,7 +397,7 @@ export class UsersService {
    *
    * `cadenceOptions` rides along rather than living behind its own
    * endpoint, because every staff account edits this screen and the
-   * list is gated by `configuracoes.aceder` — which a JORNALISTA, a
+   * list is gated by `configuracoes.aceder` — which a COLUNISTA, a
    * MODERADOR and an ANALISTA all lack. A second route for it would
    * either need a permission none of them have, or no permission at
    * all, and a route with no decorator is how /admin/stats ended up

@@ -14,7 +14,7 @@ enum Role {
   SUPER_ADMIN
   EDITOR_CHEFE
   EDITOR
-  JORNALISTA
+  COLUNISTA
   REVISOR
   MODERADOR
   ANALISTA
@@ -336,7 +336,7 @@ model User {
   email             String   @unique
   name              String?
   password          String
-  role              Role     @default(JORNALISTA)
+  role              Role     @default(COLUNISTA)
   /// Bumped whenever the password changes — by the owner or by an admin
   /// reset. Staff tokens carry it as `tv` and JwtAuthGuard refuses a
   /// mismatch, which is how an 8h session gets revoked without
@@ -347,7 +347,7 @@ model User {
   tokenVersion      Int      @default(0)
   isActive          Boolean  @default(true)
   bio               String?
-  /// Com que frequência este jornalista publica, escolhida de uma lista
+  /// Com que frequência este colunista publica, escolhida de uma lista
   /// que a redacção controla em /admin/configuracoes › Redacção.
   ///
   /// Guardada como TEXTO e não como enum de propósito: quem manda na

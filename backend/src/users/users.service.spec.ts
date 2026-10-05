@@ -67,15 +67,15 @@ describe('UsersService', () => {
       prisma.user.create.mockResolvedValueOnce({
         id: 'u1',
         email: 'novo@x.pt',
-        role: 'JORNALISTA',
+        role: 'COLUNISTA',
       });
       const result = await service.invite(
-        { email: 'NOVO@x.pt', name: 'Novo', role: 'JORNALISTA' },
+        { email: 'NOVO@x.pt', name: 'Novo', role: 'COLUNISTA' },
         { id: 'admin', role: 'SUPER_ADMIN' },
       );
       const args = prisma.user.create.mock.calls[0][0];
       expect(args.data.email).toBe('novo@x.pt'); // lowercased
-      expect(args.data.role).toBe('JORNALISTA');
+      expect(args.data.role).toBe('COLUNISTA');
       expect(typeof args.data.password).toBe('string');
       expect(args.data.password.length).toBeGreaterThan(20); // bcrypt-ish
       expect(result.temporaryPassword).toBeDefined();
@@ -104,7 +104,7 @@ describe('UsersService', () => {
       ).resolves.toBeDefined();
     });
 
-    it('forbids EDITOR from creating an EDITOR (only JORNALISTA)', async () => {
+    it('forbids EDITOR from creating an EDITOR (only COLUNISTA)', async () => {
       await expect(
         service.invite(
           { email: 'x@y.pt', role: 'EDITOR' },
@@ -160,7 +160,7 @@ describe('UsersService', () => {
     it('records an activity entry when role changes', async () => {
       // findUnique now precedes update for the hierarchy check.
       prisma.user.findUnique.mockResolvedValueOnce({
-        role: 'JORNALISTA', email: 'a@b.pt',
+        role: 'COLUNISTA', email: 'a@b.pt',
       });
       prisma.user.update.mockResolvedValueOnce({
         id: 'u2',
@@ -239,7 +239,7 @@ describe('UsersService', () => {
 
     it('rotates the bcrypt hash, logs the action and returns the new temp password', async () => {
       prisma.user.findUnique.mockResolvedValueOnce({
-        id: 'u1', email: 'u@x.pt', role: 'JORNALISTA',
+        id: 'u1', email: 'u@x.pt', role: 'COLUNISTA',
       });
       prisma.user.update.mockResolvedValueOnce({});
       const res = await service.resetPassword('u1', {
@@ -279,7 +279,7 @@ describe('UsersService', () => {
 
     it('blocks delete when the user still owns articles', async () => {
       prisma.user.findUnique.mockResolvedValueOnce({
-        id: 'u1', email: 'u@x.pt', role: 'JORNALISTA',
+        id: 'u1', email: 'u@x.pt', role: 'COLUNISTA',
       });
       prisma.article.count.mockResolvedValueOnce(3);
       await expect(
@@ -289,7 +289,7 @@ describe('UsersService', () => {
 
     it('deletes when nothing blocks it and logs the action', async () => {
       prisma.user.findUnique.mockResolvedValueOnce({
-        id: 'u1', email: 'u@x.pt', role: 'JORNALISTA',
+        id: 'u1', email: 'u@x.pt', role: 'COLUNISTA',
       });
       prisma.article.count.mockResolvedValueOnce(0);
       prisma.user.delete.mockResolvedValueOnce({});
@@ -310,7 +310,7 @@ describe('UsersService', () => {
       // userId null and actorLabel intact; deleting them here would undo
       // that. There is no second audit table to fall back on.
       prisma.user.findUnique.mockResolvedValueOnce({
-        id: 'u1', email: 'u@x.pt', role: 'JORNALISTA',
+        id: 'u1', email: 'u@x.pt', role: 'COLUNISTA',
       });
       prisma.article.count.mockResolvedValueOnce(0);
       prisma.user.delete.mockResolvedValueOnce({});
@@ -477,7 +477,7 @@ describe('UsersService', () => {
 
     it('still lets an EDITOR_CHEFE act on a lower role', async () => {
       prisma.user.findUnique.mockResolvedValueOnce({
-        id: 'jorn-id', email: 'j@x.pt', role: 'JORNALISTA',
+        id: 'jorn-id', email: 'j@x.pt', role: 'COLUNISTA',
       });
       prisma.user.update.mockResolvedValueOnce({});
       await expect(

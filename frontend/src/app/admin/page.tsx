@@ -94,7 +94,7 @@ const ROLE_BADGE: Record<string, string> = {
   SUPER_ADMIN: "bg-purple-100 text-purple-700",
   EDITOR_CHEFE: "bg-purple-100 text-purple-700",
   EDITOR: "bg-blue-100 text-blue-700",
-  JORNALISTA: "bg-green-100 text-green-700",
+  COLUNISTA: "bg-green-100 text-green-700",
   REVISOR: "bg-amber-100 text-amber-700",
   MODERADOR: "bg-orange-100 text-orange-700",
   ANALISTA: "bg-gray-100 text-gray-700",
@@ -127,7 +127,7 @@ function roleShort(role: string): string {
       return "Editor-Chefe";
     case "EDITOR":
       return "Editor";
-    case "JORNALISTA":
+    case "COLUNISTA":
       return "Colunista";
     case "REVISOR":
       return "Revisor";

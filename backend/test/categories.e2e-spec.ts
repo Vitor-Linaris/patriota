@@ -124,7 +124,7 @@ describe('Categories (e2e)', () => {
 
   it('roles without categorias.eliminar cannot delete', async () => {
     const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
-    const jorn = await makeUser(app, { role: 'JORNALISTA' });
+    const jorn = await makeUser(app, { role: 'COLUNISTA' });
 
     const created = await request(app.getHttpServer())
       .post('/admin/categories')
@@ -368,7 +368,7 @@ describe('Categories (e2e)', () => {
 
       it('requires categorias.editar', async () => {
         const admin = await makeUser(app, { role: 'SUPER_ADMIN' });
-        const jorn = await makeUser(app, { role: 'JORNALISTA' });
+        const jorn = await makeUser(app, { role: 'COLUNISTA' });
         const { a } = await threeRoots(admin);
 
         await reorder(jorn, { id: a.id, parentId: null, index: 0 }).expect(403);

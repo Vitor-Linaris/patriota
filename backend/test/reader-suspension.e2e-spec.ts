@@ -56,9 +56,9 @@ describe('Reader suspension (e2e)', () => {
 
   // ── who may ban ────────────────────────────────────────────────────
 
-  it('a JORNALISTA cannot ban anybody', async () => {
+  it('a COLUNISTA cannot ban anybody', async () => {
     const reader = await makeReader(app);
-    const journalist = await makeUser(app, { role: 'JORNALISTA' });
+    const journalist = await makeUser(app, { role: 'COLUNISTA' });
 
     await request(app.getHttpServer())
       .post(`/admin/readers/${reader.id}/suspend`)

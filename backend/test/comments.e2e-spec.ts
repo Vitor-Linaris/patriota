@@ -124,10 +124,10 @@ describe('Comments (e2e)', () => {
     expect(anon.body.items[0].body).toBe('Comentário para aprovar');
   });
 
-  it('a JORNALISTA cannot moderate', async () => {
+  it('a COLUNISTA cannot moderate', async () => {
     const reader = await makeReader(app);
     const created = await post(reader, 'Comentário protegido').expect(201);
-    const journalist = await makeUser(app, { role: 'JORNALISTA' });
+    const journalist = await makeUser(app, { role: 'COLUNISTA' });
 
     await request(app.getHttpServer())
       .post(`/admin/comments/${created.body.id}/approve`)

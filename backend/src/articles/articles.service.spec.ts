@@ -164,7 +164,7 @@ describe('ArticlesService', () => {
         id: 'a1', authorId: 'u1', status: 'RASCUNHO',
       });
       await expect(
-        service.publish('a1', { id: 'u2', role: 'JORNALISTA' }),
+        service.publish('a1', { id: 'u2', role: 'COLUNISTA' }),
       ).rejects.toThrow(ForbiddenException);
     });
 
@@ -188,7 +188,7 @@ describe('ArticlesService', () => {
         id: 'a1', status: 'EM_REVISAO',
       });
 
-      await service.publish('a1', { id: 'u1', role: 'JORNALISTA' });
+      await service.publish('a1', { id: 'u1', role: 'COLUNISTA' });
 
       const updateArgs = prisma.article.update.mock.calls[0][0];
       expect(updateArgs.data.status).toBe('EM_REVISAO');
@@ -208,7 +208,7 @@ describe('ArticlesService', () => {
       });
       prisma.article.update.mockResolvedValueOnce({ id: 'a1', status: 'EM_REVISAO' });
 
-      await service.submitForReview('a1', { id: 'u1', role: 'JORNALISTA' });
+      await service.submitForReview('a1', { id: 'u1', role: 'COLUNISTA' });
 
       const args = prisma.article.update.mock.calls[0][0];
       expect(args.data.status).toBe('EM_REVISAO');
@@ -226,7 +226,7 @@ describe('ArticlesService', () => {
         id: 'a1', authorId: 'u1', status: 'PUBLICADO',
       });
       await expect(
-        service.submitForReview('a1', { id: 'u1', role: 'JORNALISTA' }),
+        service.submitForReview('a1', { id: 'u1', role: 'COLUNISTA' }),
       ).rejects.toThrow(ForbiddenException);
     });
 
@@ -241,7 +241,7 @@ describe('ArticlesService', () => {
       const when = '2026-06-01T10:00:00.000Z';
       await service.submitForReview(
         'a1',
-        { id: 'u1', role: 'JORNALISTA' },
+        { id: 'u1', role: 'COLUNISTA' },
         { scheduledAt: when },
       );
       const args = prisma.article.update.mock.calls[0][0];
@@ -282,7 +282,7 @@ describe('ArticlesService', () => {
         id: 'a1', authorId: 'u1', status: 'EM_REVISAO',
       });
       await expect(
-        service.reject('a1', { id: 'u3', role: 'JORNALISTA' }),
+        service.reject('a1', { id: 'u3', role: 'COLUNISTA' }),
       ).rejects.toThrow(ForbiddenException);
     });
 
@@ -305,7 +305,7 @@ describe('ArticlesService', () => {
       });
       prisma.article.update.mockResolvedValueOnce({ id: 'a1' });
       await expect(
-        service.update('a1', { title: 'New' }, { id: 'u1', role: 'JORNALISTA' }),
+        service.update('a1', { title: 'New' }, { id: 'u1', role: 'COLUNISTA' }),
       ).resolves.toBeDefined();
     });
 
@@ -315,7 +315,7 @@ describe('ArticlesService', () => {
         id: 'a1', authorId: 'OTHER', status: 'RASCUNHO',
       });
       await expect(
-        service.update('a1', { title: 'New' }, { id: 'u1', role: 'JORNALISTA' }),
+        service.update('a1', { title: 'New' }, { id: 'u1', role: 'COLUNISTA' }),
       ).rejects.toThrow(ForbiddenException);
     });
 
@@ -678,7 +678,7 @@ describe('ArticlesService', () => {
       prisma.article.findMany.mockResolvedValueOnce([]);
       prisma.article.count.mockResolvedValueOnce(0);
 
-      await service.list({} as never, { id: 'u1', role: 'JORNALISTA' });
+      await service.list({} as never, { id: 'u1', role: 'COLUNISTA' });
 
       expect(prisma.article.findMany.mock.calls[0][0].where).toMatchObject({
         authorId: 'u1',
@@ -728,7 +728,7 @@ describe('ArticlesService', () => {
       prisma.article.groupBy.mockResolvedValueOnce([]);
       prisma.article.aggregate.mockResolvedValueOnce({ _sum: { views: null } });
 
-      await service.getStats({ id: 'u1', role: 'JORNALISTA' });
+      await service.getStats({ id: 'u1', role: 'COLUNISTA' });
 
       expect(prisma.article.groupBy.mock.calls[0][0].where).toEqual({
         authorId: 'u1',
@@ -838,7 +838,7 @@ describe('ArticlesService', () => {
       id: 'u1',
       name: 'Ana Ferreira',
       bio: 'Cobre política e economia há três anos.',
-      role: 'JORNALISTA',
+      role: 'COLUNISTA',
       publishingCadence: 'Uma vez por semana',
       avatarUrl: null,
     };

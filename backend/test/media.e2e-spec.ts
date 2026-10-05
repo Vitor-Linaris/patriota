@@ -659,7 +659,7 @@ describe('Media uploads (e2e)', () => {
     it('each person sees only what they uploaded', async () => {
       // The whole point. Until now `list()` had no user filter at all
       // and everybody saw everybody's.
-      const ana = await makeUser(app, { role: 'JORNALISTA' });
+      const ana = await makeUser(app, { role: 'COLUNISTA' });
       const bruno = await makeUser(app, { role: 'EDITOR' });
       await uploadAs(ana, 'da-ana.png');
       await uploadAs(bruno, 'do-bruno.png');
@@ -676,7 +676,7 @@ describe('Media uploads (e2e)', () => {
     it('the search only searches your own library', async () => {
       // A filter that reached past the scope would be a way to confirm
       // what other people have, one filename at a time.
-      const ana = await makeUser(app, { role: 'JORNALISTA' });
+      const ana = await makeUser(app, { role: 'COLUNISTA' });
       const bruno = await makeUser(app, { role: 'EDITOR' });
       await uploadAs(bruno, 'segredo.png');
 
@@ -688,7 +688,7 @@ describe('Media uploads (e2e)', () => {
       // Without this, files belonging to staff who have left would be
       // unreachable for ever and no one could answer "where did that
       // photo go".
-      const ana = await makeUser(app, { role: 'JORNALISTA', name: 'Ana' });
+      const ana = await makeUser(app, { role: 'COLUNISTA', name: 'Ana' });
       const boss = await makeUser(app, { role: 'SUPER_ADMIN' });
       await uploadAs(ana, 'da-ana.png');
 
@@ -711,7 +711,7 @@ describe('Media uploads (e2e)', () => {
     it('never leaks the owner password hash', async () => {
       // The relation is selected explicitly. An `include` on User would
       // bring the whole row, hash and all.
-      const ana = await makeUser(app, { role: 'JORNALISTA' });
+      const ana = await makeUser(app, { role: 'COLUNISTA' });
       await uploadAs(ana, 'da-ana.png');
 
       const res = await listAs(ana).expect(200);
@@ -724,7 +724,7 @@ describe('Media uploads (e2e)', () => {
       // article has to read as in-use, or its owner deletes it and
       // breaks a page they cannot even see.
       // Ana is an EDITOR_CHEFE here only because the delete assertion at
-      // the end needs `media.eliminar`; a JORNALISTA would be stopped by
+      // the end needs `media.eliminar`; a COLUNISTA would be stopped by
       // the permission guard at 403 and never reach the in-use check
       // this test is about.
       const ana = await makeUser(app, { role: 'EDITOR_CHEFE' });
@@ -1251,7 +1251,7 @@ describe('Media uploads (e2e)', () => {
     it('lets a SUPER_ADMIN delete what is not theirs', async () => {
       // Somebody has to be able to clear out the files of staff who
       // have left, or they are permanent.
-      const owner = await makeUser(app, { role: 'JORNALISTA' });
+      const owner = await makeUser(app, { role: 'COLUNISTA' });
       const boss = await makeUser(app, { role: 'SUPER_ADMIN' });
       const { id, paths } = await upload(owner);
 
