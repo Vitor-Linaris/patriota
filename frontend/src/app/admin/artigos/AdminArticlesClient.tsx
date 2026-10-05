@@ -301,7 +301,6 @@ function ArticleEditor({
 }) {
   const [form, setForm] = useState<EditorState>(initial);
   const [tagInput, setTagInput] = useState("");
-  const [seoOpen, setSeoOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   // Local draft of the date/time inputs so the user can fiddle before
   // committing. Pre-fill from form.scheduledAt when re-opening.
@@ -437,12 +436,6 @@ function ArticleEditor({
           </div>
         </div>
         <div className="relative flex shrink-0 items-center gap-2">
-          <button
-            onClick={() => setSeoOpen(!seoOpen)}
-            className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-500 transition-colors hover:bg-gray-50"
-          >
-            SEO
-          </button>
           <button
             type="button"
             onClick={() => setScheduleOpen((v) => !v)}
@@ -699,7 +692,8 @@ function ArticleEditor({
             </div>
           </div>
 
-          {seoOpen && (
+          {/* Always visible: it used to hide behind the "SEO" button in
+              the header, which nobody found. */}
             <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
               <div className="mb-4 flex items-center gap-2">
                 <p className="text-xs font-black uppercase tracking-wider text-gray-500">
@@ -757,7 +751,6 @@ function ArticleEditor({
                 </div>
               </div>
             </div>
-          )}
         </div>
 
         {/* SIDEBAR */}
