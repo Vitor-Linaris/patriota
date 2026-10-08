@@ -20,12 +20,15 @@ export function LatestNews({ items, hasMore = false }: Props) {
           <li key={item.id}>
             <Link
               href={`/artigo/${item.slug}`}
-              // Phones: photo on top, text below (see ArticleCardImage).
-              // sm: and up: thumbnail beside the text, as before.
-              className="group flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white transition-all duration-300 hover:-translate-y-0.5 hover:border-patriota-medium hover:shadow-[0_6px_20px_-8px_rgba(15,44,107,0.18)] sm:flex-row sm:gap-4 sm:p-4"
+              // Phones: photo on top, text below. sm: and up: photo as a
+              // column down the left side (see ArticleCardImage).
+              className="group flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white transition-all duration-300 hover:-translate-y-0.5 hover:border-patriota-medium hover:shadow-[0_6px_20px_-8px_rgba(15,44,107,0.18)] sm:flex-row"
             >
-              <ArticleCardImage url={item.coverImageUrl} thumb="sm:h-20 sm:w-28" />
-              <div className="min-w-0 flex-1 p-4 sm:p-0">
+              <ArticleCardImage
+                url={item.coverImageUrl}
+                side="sm:w-56 sm:min-h-[168px] lg:w-72"
+              />
+              <div className="flex min-w-0 flex-1 flex-col justify-center p-4 sm:p-5">
                 <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
                   <CategoryBadge
                     name={item.category.name}
@@ -36,11 +39,11 @@ export function LatestNews({ items, hasMore = false }: Props) {
                   <span aria-hidden>·</span>
                   <span>{item.readMinutes} min leitura</span>
                 </div>
-                <h3 className="mt-2 text-[17px] font-bold sm:text-[15px] leading-snug text-slate-900 transition-colors duration-200 group-hover:text-patriota-medium">
+                <h3 className="mt-2 text-[17px] font-bold leading-snug text-slate-900 transition-colors duration-200 group-hover:text-patriota-medium lg:text-[18px]">
                   {item.title}
                 </h3>
                 {item.summary && (
-                  <p className="mt-1 line-clamp-2 text-[13px] text-slate-600">
+                  <p className="mt-1.5 line-clamp-2 text-[13px] leading-relaxed text-slate-600 lg:line-clamp-3">
                     {item.summary}
                   </p>
                 )}

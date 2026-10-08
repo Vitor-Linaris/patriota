@@ -32,19 +32,21 @@ export function ArticleRow({
   return (
     <Link
       href={`/artigo/${article.slug}`}
-      // Phones: photo on top, text below (see ArticleCardImage).
-      className="group flex flex-col overflow-hidden rounded-[12px] border border-slate-200 bg-white transition hover:border-patriota-pure/40 hover:shadow-sm sm:flex-row sm:gap-4 sm:p-4"
+      // Phones: photo on top, text below. sm: and up: photo as a column
+      // down the left side (see ArticleCardImage).
+      className="group flex flex-col overflow-hidden rounded-[12px] border border-slate-200 bg-white transition hover:border-patriota-pure/40 hover:shadow-sm sm:flex-row"
     >
       {/* No placeholder here when there is no photo — this list never
           had one, and the text simply starts at the left. */}
       {article.coverImageUrl && (
         <ArticleCardImage
           url={article.coverImageUrl}
-          thumb="sm:h-[76px] sm:w-[120px]"
+          side="sm:w-48 sm:min-h-[140px] lg:w-56"
+          sizes="(min-width: 640px) 224px, 100vw"
         />
       )}
 
-      <div className="min-w-0 flex-1 p-4 sm:p-0">
+      <div className="flex min-w-0 flex-1 flex-col justify-center p-4 sm:p-5">
         <p
           className="text-[11px] font-bold uppercase tracking-wider"
           style={{ color: article.category.color }}

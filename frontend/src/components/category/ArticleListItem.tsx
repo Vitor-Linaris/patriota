@@ -17,18 +17,23 @@ export interface ArticleListItemData {
 /**
  * One row of a category or listing page.
  *
- * Phones: the photo first, full width, then the number and the text
- * (ArticleCardImage). From `sm:` up: number, text, and the thumbnail on
- * the right, as before.
+ * Phones: the photo first, full width, then the number and the text.
+ * From `sm:` up: the photo as a column down the left side of the card,
+ * as tall as the card (ArticleCardImage), then the number and the text.
  */
 export function ArticleListItem({ item }: { item: ArticleListItemData }) {
   return (
     <a
       href={item.slug ? `/artigo/${item.slug}` : "#"}
-      className="group flex flex-col overflow-hidden rounded-[12px] border border-[#f3f4f6] bg-white shadow-[0px_1px_3px_0px_rgba(0,0,0,0.05)] transition-all duration-300 hover:-translate-y-0.5 hover:border-patriota-medium hover:shadow-[0_6px_20px_-8px_rgba(15,44,107,0.18)] sm:flex-row sm:gap-5 sm:p-5"
+      className="group flex flex-col overflow-hidden rounded-[12px] border border-[#f3f4f6] bg-white shadow-[0px_1px_3px_0px_rgba(0,0,0,0.05)] transition-all duration-300 hover:-translate-y-0.5 hover:border-patriota-medium hover:shadow-[0_6px_20px_-8px_rgba(15,44,107,0.18)] sm:flex-row"
     >
-      <div className="flex min-w-0 flex-1 gap-4 p-4 sm:gap-5 sm:p-0">
-        <span className="w-6 shrink-0 text-[20px] font-black leading-none text-patriota-accent">
+      <ArticleCardImage
+        url={item.coverImageUrl}
+        side="sm:w-56 sm:min-h-[176px] lg:w-72"
+        placeholder="brand"
+      />
+      <div className="flex min-w-0 flex-1 items-center gap-4 p-4 sm:p-5">
+        <span className="w-6 shrink-0 self-start text-[20px] font-black leading-none text-patriota-accent">
           {item.number}
         </span>
         <div className="min-w-0 flex-1">
@@ -43,10 +48,10 @@ export function ArticleListItem({ item }: { item: ArticleListItemData }) {
               {item.readMinutes} min leitura
             </span>
           </div>
-          <h3 className="mt-2 text-[17px] font-bold leading-[23px] text-[#101828] transition-colors duration-200 group-hover:text-patriota-medium sm:text-[16px] sm:leading-[22px]">
+          <h3 className="mt-2 text-[17px] font-bold leading-[23px] text-[#101828] transition-colors duration-200 group-hover:text-patriota-medium lg:text-[18px] lg:leading-[25px]">
             {item.title}
           </h3>
-          <p className="mt-1 line-clamp-2 text-[14px] leading-[20px] text-[#6a7282]">
+          <p className="mt-1.5 line-clamp-2 text-[14px] leading-[20px] text-[#6a7282] lg:line-clamp-3">
             {item.excerpt}
           </p>
           <div className="mt-3 flex items-center gap-2 text-[12px]">
@@ -59,14 +64,6 @@ export function ArticleListItem({ item }: { item: ArticleListItemData }) {
           </div>
         </div>
       </div>
-      {/* Last in the markup (right-hand thumbnail from sm: up), first on
-          screen on phones. */}
-      <ArticleCardImage
-        url={item.coverImageUrl}
-        thumb="sm:h-20 sm:w-28"
-        className="order-first sm:order-none"
-        placeholder="brand"
-      />
     </a>
   );
 }

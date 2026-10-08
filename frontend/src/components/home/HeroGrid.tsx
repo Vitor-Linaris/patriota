@@ -107,16 +107,27 @@ export function HeroGrid({ featured, side }: Props) {
           (flex-1), so the column ends where the hero ends instead of
           leaving a gap under the third card. The gap between cards
           stays fixed; only the cards grow or shrink with the hero.
-          Content is centred vertically inside the taller card. */}
+
+          The photo is a column down the left of each card, as tall as
+          the card (see ArticleCardImage) — it was an 80×64 thumbnail.
+          lg:min-h-0 so three cards can always shrink to the hero's
+          height; below lg they stack under it and keep a minimum. */}
       <div className="col-span-1 flex flex-col gap-4 lg:col-span-4">
         {side.slice(0, 3).map((card) => (
           <Link
             key={card.id}
             href={`/artigo/${card.slug}`}
-            // Phones: photo on top, text below (see ArticleCardImage).
-            className="group flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white transition-all duration-300 hover:-translate-y-0.5 hover:border-patriota-medium hover:shadow-[0_6px_20px_-8px_rgba(15,44,107,0.18)] sm:flex-row sm:gap-4 sm:p-4 lg:flex-1 lg:items-center"
+            // Phones: photo on top, text below.
+            className="group flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white transition-all duration-300 hover:-translate-y-0.5 hover:border-patriota-medium hover:shadow-[0_6px_20px_-8px_rgba(15,44,107,0.18)] sm:flex-row lg:flex-1"
           >
-            <div className="min-w-0 flex-1 p-4 sm:p-0">
+            <ArticleCardImage
+              url={card.coverImageUrl}
+              side="sm:w-56 sm:min-h-[140px] lg:min-h-0 lg:w-40 xl:w-44"
+              sizes="(min-width: 1024px) 176px, (min-width: 640px) 224px, 100vw"
+            />
+            <div className="flex min-w-0 flex-1 flex-col justify-center p-4">
+              {/* Same weight as before on desktop; bigger next to a
+                  full-width photo on a phone. */}
               <div className="mb-2 flex items-center gap-2 text-[11px] text-slate-500">
                 <CategoryBadge
                   name={card.category.name}
@@ -126,15 +137,10 @@ export function HeroGrid({ featured, side }: Props) {
                 <span aria-hidden>·</span>
                 <span>{timeAgo(card.publishedAt)}</span>
               </div>
-              <h3 className="text-[17px] font-bold leading-snug text-slate-900 transition-colors duration-200 group-hover:text-patriota-medium sm:text-[14px]">
+              <h3 className="line-clamp-3 text-[17px] font-bold leading-snug text-slate-900 transition-colors duration-200 group-hover:text-patriota-medium lg:text-[15px]">
                 {card.title}
               </h3>
             </div>
-            <ArticleCardImage
-              url={card.coverImageUrl}
-              thumb="sm:h-16 sm:w-20"
-              className="order-first sm:order-none"
-            />
           </Link>
         ))}
         {side.length === 0 && (

@@ -113,13 +113,13 @@ export default async function SearchPage({
                   <li key={item.id}>
                     <Link
                       href={`/artigo/${item.slug}`}
-                      className="group flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white transition-all duration-300 hover:-translate-y-0.5 hover:border-patriota-medium hover:shadow-[0_6px_20px_-8px_rgba(15,44,107,0.18)] sm:flex-row sm:gap-4 sm:p-4"
+                      className="group flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white transition-all duration-300 hover:-translate-y-0.5 hover:border-patriota-medium hover:shadow-[0_6px_20px_-8px_rgba(15,44,107,0.18)] sm:flex-row"
                     >
                       <ArticleCardImage
                         url={item.coverImageUrl}
-                        thumb="sm:h-20 sm:w-28"
+                        side="sm:w-56 sm:min-h-[160px] lg:w-64"
                       />
-                      <div className="min-w-0 flex-1 p-4 sm:p-0">
+                      <div className="flex min-w-0 flex-1 flex-col justify-center p-4 sm:p-5">
                         <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
                           <CategoryBadge
                             name={item.category.name}
@@ -130,7 +130,7 @@ export default async function SearchPage({
                           <span aria-hidden>·</span>
                           <span>{item.readMinutes} min leitura</span>
                         </div>
-                        <h3 className="mt-2 text-[16px] font-bold leading-snug text-slate-900 transition-colors duration-200 group-hover:text-patriota-medium">
+                        <h3 className="mt-2 text-[17px] font-bold leading-snug text-slate-900 transition-colors duration-200 group-hover:text-patriota-medium">
                           {item.title}
                         </h3>
                         {item.summary && (
