@@ -76,7 +76,7 @@ export default async function CategoryPage({
       getAncestors(slug),
     ]);
   const featured = rawArticles[0] ?? null;
-  const listItems = rawArticles.slice(1).map((a, i) => toListItem(a, i + 1));
+  const listItems = rawArticles.slice(1).map((a) => toListItem(a));
   const hasMore = total > shown;
   const allHref = `/categoria/${slug}/todos${sortQuery(sort) ? `?${sortQuery(sort)}` : ""}`;
 

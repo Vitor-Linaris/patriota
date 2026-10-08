@@ -79,7 +79,6 @@ export default async function CategoryAllPage({
   // A page past the end is a dead link, not an empty listing.
   if (page > totalPages) notFound();
 
-  const offset = (page - 1) * LISTING_PAGE_SIZE;
   const base = `/categoria/${slug}/todos`;
   const hrefFor = (p: number, s: SortKey = sort) => {
     const qs = new URLSearchParams(sortQuery(s));
@@ -135,9 +134,9 @@ export default async function CategoryAllPage({
                     Ainda não existem artigos publicados nesta rubrica.
                   </li>
                 ) : (
-                  items.map((a, i) => (
+                  items.map((a) => (
                     <li key={a.id}>
-                      <ArticleListItem item={toListItem(a, offset + i + 1)} />
+                      <ArticleListItem item={toListItem(a)} />
                     </li>
                   ))
                 )}

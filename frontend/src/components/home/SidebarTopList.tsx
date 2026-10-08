@@ -91,7 +91,7 @@ export function SidebarTopList({
                 <p className="text-[10px] font-bold uppercase tracking-wider text-orange-600">
                   {m.category.name}
                 </p>
-                <h4 className="mt-1 text-[13px] font-bold leading-snug text-slate-900">
+                <h4 className="mt-1 line-clamp-2 wrap-anywhere text-[13px] font-bold leading-snug text-slate-900">
                   <a
                     href={`/artigo/${m.slug}`}
                     className="transition-colors hover:text-patriota-medium"

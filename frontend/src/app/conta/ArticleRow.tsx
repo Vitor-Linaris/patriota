@@ -53,11 +53,11 @@ export function ArticleRow({
         >
           {article.category.name}
         </p>
-        <h2 className="mt-1 text-[16px] font-bold leading-snug text-slate-900 transition-colors group-hover:text-patriota-pure">
+        <h2 className="mt-1 line-clamp-2 wrap-anywhere text-[16px] font-bold leading-snug text-slate-900 transition-colors group-hover:text-patriota-pure">
           {article.title}
         </h2>
         {article.summary && (
-          <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-slate-500">
+          <p className="mt-1 line-clamp-2 wrap-anywhere text-[13px] leading-relaxed text-slate-500">
             {article.summary}
           </p>
         )}

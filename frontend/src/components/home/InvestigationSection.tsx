@@ -45,11 +45,11 @@ export function InvestigationSection({ items }: Props) {
               >
                 {c.category.name}
               </span>
-              <h3 className="text-[18px] font-black leading-snug text-slate-900 transition-colors duration-200 group-hover:text-patriota-medium">
+              <h3 className="line-clamp-3 wrap-anywhere text-[18px] font-black leading-snug text-slate-900 transition-colors duration-200 group-hover:text-patriota-medium">
                 {c.title}
               </h3>
               {c.summary && (
-                <p className="text-[13px] leading-relaxed text-slate-600">
+                <p className="line-clamp-3 wrap-anywhere text-[13px] leading-relaxed text-slate-600">
                   {c.summary}
                 </p>
               )}

@@ -69,7 +69,7 @@ export async function Sidebar({
                     <p className="text-[11px] text-slate-500">
                       {o.category.name}
                     </p>
-                    <h4 className="mt-2 text-[13px] font-bold leading-snug text-slate-900">
+                    <h4 className="mt-2 line-clamp-2 wrap-anywhere text-[13px] font-bold leading-snug text-slate-900">
                       {o.title}
                     </h4>
                   </div>

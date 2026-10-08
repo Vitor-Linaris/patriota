@@ -175,7 +175,7 @@ export default async function AuthorPage({
                           <p className="text-[11px] font-bold uppercase tracking-wider text-orange-600">
                             {a.category.name}
                           </p>
-                          <h3 className="mt-1 text-[16px] font-bold leading-snug text-slate-900 transition-colors duration-200 group-hover:text-patriota-medium">
+                          <h3 className="mt-1 line-clamp-2 wrap-anywhere text-[16px] font-bold leading-snug text-slate-900 transition-colors duration-200 group-hover:text-patriota-medium">
                             {a.title}
                           </h3>
                           <p className="mt-2 text-[12px] text-slate-500">

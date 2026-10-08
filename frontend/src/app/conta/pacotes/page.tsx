@@ -117,7 +117,7 @@ export default async function PacotesPage({
                     <span className="min-w-0 flex-1">
                       <Link
                         href={`/artigo/${a.slug}`}
-                        className="block text-[14px] font-bold leading-snug text-slate-900 hover:underline"
+                        className="line-clamp-2 wrap-anywhere text-[14px] font-bold leading-snug text-slate-900 hover:underline"
                       >
                         {a.title}
                       </Link>

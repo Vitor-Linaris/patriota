@@ -23,13 +23,9 @@ export function initialsOf(name: string | null | undefined): string {
     .join("");
 }
 
-/** One article as a row of ArticleListItem. `number` is its position on screen. */
-export function toListItem(
-  a: ArticleSummary,
-  number: number,
-): ArticleListItemData {
+/** One article as a row of ArticleListItem. */
+export function toListItem(a: ArticleSummary): ArticleListItemData {
   return {
-    number,
     category: a.category.name.toUpperCase(),
     time: timeAgo(a.publishedAt),
     readMinutes: a.readMinutes,

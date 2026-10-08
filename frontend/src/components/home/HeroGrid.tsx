@@ -77,12 +77,15 @@ export function HeroGrid({ featured, side }: Props) {
             <span aria-hidden>·</span>
             <span>{featured?.readMinutes ?? 4} min leitura</span>
           </div>
-          <h1 className="text-xl font-black leading-tight transition-colors duration-300 group-hover:text-patriota-accent sm:text-2xl lg:text-[30px] lg:leading-[36px]">
+          {/* Cut with "…" so a 200-character title or a long summary
+              cannot climb out of the top of the photo (on lg+ the text
+              sits over it, anchored to the bottom). */}
+          <h1 className="line-clamp-3 wrap-anywhere text-xl font-black leading-tight transition-colors duration-300 group-hover:text-patriota-accent sm:text-2xl lg:text-[30px] lg:leading-[36px]">
             {featured?.title ??
               "Nenhum artigo publicado ainda. Crie um no painel admin."}
           </h1>
           {featured?.summary && (
-            <p className="max-w-2xl text-[13px] leading-relaxed text-white/75 sm:text-[14px]">
+            <p className="line-clamp-3 max-w-2xl wrap-anywhere text-[13px] leading-relaxed text-white/75 sm:text-[14px] lg:line-clamp-2">
               {featured.summary}
             </p>
           )}
@@ -128,7 +131,7 @@ export function HeroGrid({ featured, side }: Props) {
             <div className="flex min-w-0 flex-1 flex-col justify-center p-4">
               {/* Same weight as before on desktop; bigger next to a
                   full-width photo on a phone. */}
-              <div className="mb-2 flex items-center gap-2 text-[11px] text-slate-500">
+              <div className="mb-2 flex min-w-0 items-center gap-2 whitespace-nowrap text-[11px] text-slate-500">
                 <CategoryBadge
                   name={card.category.name}
                   color={card.category.color}
@@ -137,7 +140,10 @@ export function HeroGrid({ featured, side }: Props) {
                 <span aria-hidden>·</span>
                 <span>{timeAgo(card.publishedAt)}</span>
               </div>
-              <h3 className="line-clamp-3 text-[17px] font-bold leading-snug text-slate-900 transition-colors duration-200 group-hover:text-patriota-medium lg:text-[15px]">
+              {/* These cards share the hero's height, which at 1024px
+                  leaves about 100px each — room for two lines, not three.
+                  From xl up the hero is tall enough for three. */}
+              <h3 className="line-clamp-3 wrap-anywhere text-[17px] font-bold leading-snug text-slate-900 transition-colors duration-200 group-hover:text-patriota-medium lg:line-clamp-2 lg:text-[15px] xl:line-clamp-3">
                 {card.title}
               </h3>
             </div>

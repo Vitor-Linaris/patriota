@@ -54,7 +54,6 @@ export default async function LatestNewsPage({
   // empty listing.
   if (page > totalPages) notFound();
 
-  const offset = (page - 1) * LISTING_PAGE_SIZE;
 
   return (
     <div className="flex flex-1 flex-col bg-white text-slate-900">
@@ -87,9 +86,9 @@ export default async function LatestNewsPage({
                     Ainda não existem artigos publicados.
                   </li>
                 ) : (
-                  items.map((a, i) => (
+                  items.map((a) => (
                     <li key={a.id}>
-                      <ArticleListItem item={toListItem(a, offset + i + 1)} />
+                      <ArticleListItem item={toListItem(a)} />
                     </li>
                   ))
                 )}

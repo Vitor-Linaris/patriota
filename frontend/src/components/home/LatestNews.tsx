@@ -39,11 +39,11 @@ export function LatestNews({ items, hasMore = false }: Props) {
                   <span aria-hidden>·</span>
                   <span>{item.readMinutes} min leitura</span>
                 </div>
-                <h3 className="mt-2 text-[17px] font-bold leading-snug text-slate-900 transition-colors duration-200 group-hover:text-patriota-medium lg:text-[18px]">
+                <h3 className="mt-2 line-clamp-3 wrap-anywhere text-[17px] font-bold leading-snug text-slate-900 transition-colors duration-200 group-hover:text-patriota-medium sm:line-clamp-2 lg:text-[18px]">
                   {item.title}
                 </h3>
                 {item.summary && (
-                  <p className="mt-1.5 line-clamp-2 text-[13px] leading-relaxed text-slate-600 lg:line-clamp-3">
+                  <p className="mt-1.5 line-clamp-2 wrap-anywhere text-[13px] leading-relaxed text-slate-600 lg:line-clamp-3">
                     {item.summary}
                   </p>
                 )}

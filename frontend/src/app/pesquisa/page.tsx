@@ -130,11 +130,11 @@ export default async function SearchPage({
                           <span aria-hidden>·</span>
                           <span>{item.readMinutes} min leitura</span>
                         </div>
-                        <h3 className="mt-2 text-[17px] font-bold leading-snug text-slate-900 transition-colors duration-200 group-hover:text-patriota-medium">
+                        <h3 className="mt-2 line-clamp-3 wrap-anywhere text-[17px] font-bold leading-snug text-slate-900 transition-colors duration-200 group-hover:text-patriota-medium sm:line-clamp-2">
                           {item.title}
                         </h3>
                         {item.summary && (
-                          <p className="mt-1 line-clamp-2 text-[13px] text-slate-600">
+                          <p className="mt-1 line-clamp-2 wrap-anywhere text-[13px] text-slate-600">
                             {item.summary}
                           </p>
                         )}
