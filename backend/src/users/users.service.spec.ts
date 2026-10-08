@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
+import sharp from 'sharp';
 import { UsersService } from './users.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
@@ -8,6 +9,8 @@ import { SettingsService } from '../settings/settings.service';
 import { StaffNotificationsService } from '../staff-notifications/staff-notifications.service';
 import { RbacService } from '../rbac/rbac.service';
 import { StorageService } from '../storage/storage.service';
+
+const UPLOADS = 'http://api/uploads/';
 
 function makePrismaMock() {
   return {
@@ -21,6 +24,7 @@ function makePrismaMock() {
     },
     article: {
       count: jest.fn(),
+      findFirst: jest.fn(),
     },
     activityLog: {
       deleteMany: jest.fn(),
@@ -33,9 +37,24 @@ describe('UsersService', () => {
   let prisma: ReturnType<typeof makePrismaMock>;
   let activity: { record: jest.Mock };
   let settings: { cadences: jest.Mock };
+  let storage: {
+    relativeFromUrl: (u: string) => string | null;
+    urlFor: (rel: string) => string;
+    put: jest.Mock;
+    delete: jest.Mock;
+    publish: jest.Mock;
+  };
 
   beforeEach(async () => {
     prisma = makePrismaMock();
+    storage = {
+      relativeFromUrl: (u) =>
+        u.startsWith(UPLOADS) ? u.slice(UPLOADS.length) : null,
+      urlFor: (rel) => `${UPLOADS}${rel}`,
+      put: jest.fn().mockResolvedValue(undefined),
+      delete: jest.fn().mockResolvedValue(undefined),
+      publish: jest.fn().mockResolvedValue(undefined),
+    };
     activity = { record: jest.fn() };
     settings = {
       cadences: jest.fn().mockResolvedValue(['Uma vez por semana']),
@@ -56,7 +75,7 @@ describe('UsersService', () => {
           provide: RbacService,
           useValue: { getPermissionsForRole: jest.fn().mockResolvedValue([]) },
         },
-        { provide: StorageService, useValue: {} },
+        { provide: StorageService, useValue: storage },
       ],
     }).compile();
     service = moduleRef.get(UsersService);
@@ -417,6 +436,89 @@ describe('UsersService', () => {
       expect(prisma.user.update).toHaveBeenCalled();
       // The validation only runs when the cadence itself is being set.
       expect(settings.cadences).not.toHaveBeenCalled();
+    });
+
+    /*
+     * O avatarUrl colado à mão era o primeiro passo para apagar a foto
+     * de outra pessoa: guardava-se o endereço dela como "meu", e o
+     * upload seguinte apagava-o como avatar anterior.
+     */
+    it("refuses somebody else's avatar as one's own", async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({ avatarUrl: null });
+
+      await expect(
+        service.updateOwn('u1', {
+          avatarUrl: `${UPLOADS}avatars/victim-0a1b2c3d.webp`,
+        }),
+      ).rejects.toThrow(/foto de perfil/i);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('accepts an empty value, an outside address, or one’s own avatar', async () => {
+      prisma.user.update.mockResolvedValue({ id: 'u1' });
+
+      await service.updateOwn('u1', { avatarUrl: '' });
+      await service.updateOwn('u1', { avatarUrl: 'https://example.com/a.jpg' });
+      await service.updateOwn('u1', {
+        avatarUrl: `${UPLOADS}avatars/u1-0a1b2c3d.webp`,
+      });
+
+      expect(prisma.user.update).toHaveBeenCalledTimes(3);
+    });
+
+    it('accepts resending the value already saved', async () => {
+      // Guardar o perfil reenvia o avatarUrl que lá está, mesmo que seja
+      // de um formato antigo que o nome do ficheiro não identifica.
+      const current = `${UPLOADS}avatars/legado.webp`;
+      prisma.user.findUnique.mockResolvedValueOnce({ avatarUrl: current });
+      prisma.user.update.mockResolvedValueOnce({ id: 'u1' });
+
+      await service.updateOwn('u1', { avatarUrl: current });
+
+      expect(prisma.user.update).toHaveBeenCalled();
+    });
+  });
+
+  describe('uploadAvatar()', () => {
+    let png: Buffer;
+    beforeAll(async () => {
+      png = await sharp({
+        create: { width: 2, height: 2, channels: 3, background: '#000' },
+      })
+        .png()
+        .toBuffer();
+    });
+    const file = () => ({
+      buffer: png,
+      originalname: 'eu.png',
+      mimetype: 'image/png',
+      size: png.length,
+    });
+
+    it('deletes the previous avatar when it is this person’s', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        avatarUrl: `${UPLOADS}avatars/u1-0a1b2c3d.webp`,
+      });
+      prisma.user.update.mockResolvedValueOnce({ id: 'u1' });
+      prisma.article.findFirst.mockResolvedValueOnce(null);
+
+      await service.uploadAvatar('u1', file());
+
+      expect(storage.delete).toHaveBeenCalledWith(['avatars/u1-0a1b2c3d.webp']);
+    });
+
+    it('never deletes an avatar that belongs to somebody else', async () => {
+      // A coluna já guardada antes desta correcção, ou escrita por outro
+      // caminho: o dono está no nome do ficheiro, e não é quem pede.
+      prisma.user.findUnique.mockResolvedValueOnce({
+        avatarUrl: `${UPLOADS}avatars/victim-0a1b2c3d.webp`,
+      });
+      prisma.user.update.mockResolvedValueOnce({ id: 'u1' });
+      prisma.article.findFirst.mockResolvedValueOnce(null);
+
+      await service.uploadAvatar('u1', file());
+
+      expect(storage.delete).not.toHaveBeenCalled();
     });
   });
 

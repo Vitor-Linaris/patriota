@@ -333,6 +333,15 @@ export class MediaService {
     if (!/^https?:\/\//i.test(input.url)) {
       throw new BadRequestException('URL inválido (http(s) requerido).');
     }
+    // Os nossos ficheiros só entram pelo upload. Colar aqui o endereço de
+    // um ficheiro alheio criava uma linha "minha" a apontar para ele, e
+    // eliminá-la apagava o ficheiro do outro — a verificação de dono em
+    // remove() olha para a linha, não para o ficheiro.
+    if (this.storage.relativeFromUrl(input.url) !== null) {
+      throw new BadRequestException(
+        'Este endereço já é um ficheiro da biblioteca. Use-o a partir da biblioteca.',
+      );
+    }
     const fallbackName =
       input.url.split('/').pop()?.split('?')[0] ?? 'imagem.jpg';
     const created = await this.prisma.media.create({
@@ -648,7 +657,10 @@ export class MediaService {
       //
       // The poster too — a video's still is never referenced on its own,
       // and leaving it was a file nobody could see or delete.
-      await this.unlinkVariants([...variants, media.posterUrl]);
+      await this.unlinkVariants(media.storageKey, [
+        ...variants,
+        media.posterUrl,
+      ]);
       void this.activity.record({
         userId: actor.id,
         action: 'deleted',
@@ -968,7 +980,7 @@ export class MediaService {
     }
 
     await this.prisma.media.delete({ where: { id: media.id } });
-    await this.unlinkVariants([...variants, media.posterUrl]);
+    await this.unlinkVariants(media.storageKey, [...variants, media.posterUrl]);
     if (media.storageKey) await this.access.invalidate(media.storageKey);
 
     void this.activity.record({
@@ -994,11 +1006,20 @@ export class MediaService {
    * URLs that are not ours — the paste-a-link path stores whatever
    * address it was given — are skipped rather than guessed at. So is a
    * path that climbs out of the uploads root (StorageService.relativeFromUrl).
+   *
+   * E só os ficheiros desta linha: tudo o que um upload escreve chama-se
+   * `<storageKey>-<variante>`. Uma linha sem storageKey não carregou
+   * nada, e um URL guardado que aponte para outro ficheiro nosso não é
+   * desta linha para apagar, por muito que a linha seja de quem pede.
    */
-  private async unlinkVariants(urls: (string | null)[]): Promise<void> {
+  private async unlinkVariants(
+    storageKey: string | null,
+    urls: (string | null)[],
+  ): Promise<void> {
+    if (!storageKey) return;
     const rels = urls
       .map((u) => (u ? this.storage.relativeFromUrl(u) : null))
-      .filter((r): r is string => r !== null);
+      .filter((r): r is string => r !== null && r.startsWith(`${storageKey}-`));
     await this.storage.delete(rels);
   }
 
