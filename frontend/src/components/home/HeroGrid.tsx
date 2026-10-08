@@ -1,7 +1,7 @@
 import Link from "next/link";
 import {
   timeAgo,
-  type ArticleSummary,
+  type ArticleSummary,
 } from "@/lib/public-api";
 import { imageVariant } from "@/lib/images";
 import { CategoryBadge } from "../CategoryBadge";
@@ -99,13 +99,20 @@ export function HeroGrid({ featured, side }: Props) {
       {/* Side stack of up to 3 small cards. Card lifts a notch on
           hover with a soft shadow; thumbnail zooms; title shifts to
           brand colour. No arrow indicator — the whole row is the
-          link and the colour shift is enough cue. */}
+          link and the colour shift is enough cue.
+
+          On lg+ the stack is as tall as the big card beside it (the
+          grid row stretches it) and the cards share that height
+          (flex-1), so the column ends where the hero ends instead of
+          leaving a gap under the third card. The gap between cards
+          stays fixed; only the cards grow or shrink with the hero.
+          Content is centred vertically inside the taller card. */}
       <div className="col-span-1 flex flex-col gap-4 lg:col-span-4">
         {side.slice(0, 3).map((card) => (
           <Link
             key={card.id}
             href={`/artigo/${card.slug}`}
-            className="group flex gap-4 rounded-xl border border-slate-200 bg-white p-4 transition-all duration-300 hover:-translate-y-0.5 hover:border-patriota-medium hover:shadow-[0_6px_20px_-8px_rgba(15,44,107,0.18)]"
+            className="group flex gap-4 rounded-xl border border-slate-200 bg-white p-4 transition-all duration-300 hover:-translate-y-0.5 hover:border-patriota-medium hover:shadow-[0_6px_20px_-8px_rgba(15,44,107,0.18)] lg:flex-1 lg:items-center"
           >
             <div className="min-w-0 flex-1">
               <div className="mb-2 flex items-center gap-2 text-[11px] text-slate-500">

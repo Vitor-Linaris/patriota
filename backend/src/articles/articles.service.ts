@@ -1084,19 +1084,27 @@ export class ArticlesService {
   }
 
   async getHomepageBundle() {
+    const SIDE = 3;
+    const LATEST = 8;
+    const INVESTIGATION = 2;
     const articles = await this.prisma.article.findMany({
       where: { status: 'PUBLICADO' },
       orderBy: { publishedAt: 'desc' },
-      take: 12,
+      take: 1 + SIDE + LATEST + INVESTIGATION,
       select: PUBLIC_ARTICLE_SELECT,
     });
     const [featured, ...rest] = articles;
+    const latestEnd = SIDE + LATEST;
     return {
       featured: featured ?? null,
       // Hero side stack: 3 small cards next to the big featured.
-      side: rest.slice(0, 3),
-      latest: rest.slice(3, 7),
-      investigation: rest.slice(7, 9),
+      side: rest.slice(0, SIDE),
+      latest: rest.slice(SIDE, latestEnd),
+      // Something published beyond what the homepage shows up to the end
+      // of "Últimas Notícias" — that is when its "Ver mais" has somewhere
+      // to go (/ultimas-noticias lists everything, newest first).
+      hasMoreLatest: rest.length > latestEnd,
+      investigation: rest.slice(latestEnd, latestEnd + INVESTIGATION),
     };
   }
 }

@@ -295,6 +295,33 @@ describe('Articles (e2e)', () => {
     expect(Array.isArray(res.body.latest)).toBe(true);
   });
 
+  it('GET /public/homepage shows 8 latest and says when there are more', async () => {
+    const editor = await makeUser(app, { role: 'EDITOR_CHEFE' });
+    const publish = async (i: number) => {
+      const a = await request(app.getHttpServer())
+        .post('/admin/articles')
+        .set(bearer(editor))
+        .send({ title: `Recente ${i}`, categoryId, content: '<p>x</p>' });
+      await request(app.getHttpServer())
+        .post(`/admin/articles/${a.body.id}/publish`)
+        .set(bearer(editor));
+    };
+
+    // Featured + 3 side + 8 latest: exactly what the homepage shows.
+    for (let i = 0; i < 12; i++) await publish(i);
+    let res = await request(app.getHttpServer())
+      .get('/public/homepage')
+      .expect(200);
+    expect(res.body.latest).toHaveLength(8);
+    expect(res.body.hasMoreLatest).toBe(false);
+
+    // One more and "Ver mais" has somewhere to go.
+    await publish(12);
+    res = await request(app.getHttpServer()).get('/public/homepage').expect(200);
+    expect(res.body.latest).toHaveLength(8);
+    expect(res.body.hasMoreLatest).toBe(true);
+  });
+
   it('GET /public/articles?sort=views orders by views desc', async () => {
     const editor = await makeUser(app, { role: 'EDITOR_CHEFE' });
     const prisma = app.get(PrismaService);

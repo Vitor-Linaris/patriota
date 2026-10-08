@@ -1,14 +1,17 @@
 import Link from "next/link";
 import { SectionHeading } from "./SectionHeading";
+import { SeeMoreLink } from "../SeeMoreLink";
 import { CategoryBadge } from "../CategoryBadge";
 import { timeAgo, type ArticleSummary } from "@/lib/public-api";
 import { imageVariant } from "@/lib/images";
 
 interface Props {
   items: ArticleSummary[];
+  /** There is more than these — show "Ver mais" to /ultimas-noticias. */
+  hasMore?: boolean;
 }
 
-export function LatestNews({ items }: Props) {
+export function LatestNews({ items, hasMore = false }: Props) {
   return (
     <section>
       <SectionHeading>Últimas Notícias</SectionHeading>
@@ -61,6 +64,7 @@ export function LatestNews({ items }: Props) {
           <li className="text-sm text-slate-400">Sem artigos publicados.</li>
         )}
       </ul>
+      {hasMore && <SeeMoreLink href="/ultimas-noticias" />}
     </section>
   );
 }

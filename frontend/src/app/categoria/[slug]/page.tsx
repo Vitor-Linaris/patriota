@@ -1,5 +1,4 @@
-import { notFound } from "next/navigation";
-import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
 import { Container } from "@/components/Container";
 import { TopBar } from "@/components/home/TopBar";
 import { BreakingNews } from "@/components/home/BreakingNews";
@@ -10,14 +9,20 @@ import { SiteFooter } from "@/components/home/SiteFooter";
 import { CategoryHero } from "@/components/category/CategoryHero";
 import { FeaturedArticle } from "@/components/category/FeaturedArticle";
 import { ArticleListItem } from "@/components/category/ArticleListItem";
-import { Pagination } from "@/components/category/Pagination";
 import { CategorySidebar } from "@/components/category/CategorySidebar";
 import { SectionMarker } from "@/components/category/SectionMarker";
+import {
+  SortTabs,
+  parseSort,
+  sortQuery,
+} from "@/components/category/SortTabs";
+import { SeeMoreLink } from "@/components/SeeMoreLink";
 import {
   getAllCategories,
   getAncestors,
   getCategoryBySlug,
 } from "@/lib/categories";
+import { PREVIEW_COUNT, initialsOf, toListItem } from "@/lib/article-list";
 import {
   getAdsByPage,
   listBreaking,
@@ -34,16 +39,11 @@ export async function generateStaticParams() {
   return cats.map((c) => ({ slug: c.slug }));
 }
 
-type SortKey = "publishedAt" | "views" | "comments";
-
-const FILTERS: { key: SortKey; label: string }[] = [
-  { key: "publishedAt", label: "Mais Recentes" },
-  { key: "views", label: "Mais Lidas" },
-  { key: "comments", label: "Mais Comentadas" },
-];
-
-const PAGE_SIZE = 10;
-
+/**
+ * The section's front page: one featured article and the next eight.
+ * Beyond that, "Ver mais" leads to /categoria/<slug>/todos — the full,
+ * paginated list.
+ */
 export default async function CategoryPage({
   params,
   searchParams,
@@ -56,44 +56,29 @@ export default async function CategoryPage({
   const category = await getCategoryBySlug(slug);
   if (!category) notFound();
 
-  // 1-based, clamp to a sane lower bound.
-  const page = Math.max(1, Number(pageParam) || 1);
-  const sort: SortKey = FILTERS.some((f) => f.key === sortParam)
-    ? (sortParam as SortKey)
-    : "publishedAt";
+  const sort = parseSort(sortParam);
 
+  // This page used to paginate itself (?page=2…). Those links — shared,
+  // bookmarked, indexed — now belong to the full listing.
+  if (pageParam && pageParam !== "1") {
+    const qs = new URLSearchParams(sortQuery(sort));
+    qs.set("page", pageParam);
+    redirect(`/categoria/${slug}/todos?${qs.toString()}`);
+  }
+
+  // The featured one plus the eight under it.
+  const shown = 1 + PREVIEW_COUNT;
   const [{ items: rawArticles, total }, breaking, ads, trail] =
     await Promise.all([
-      listPublicArticles({ category: slug, page, pageSize: PAGE_SIZE, sort }),
+      listPublicArticles({ category: slug, page: 1, pageSize: shown, sort }),
       listBreaking(4),
       getAdsByPage("Categoria"),
       getAncestors(slug),
     ]);
-  // Only treat the first article as "featured" on page 1 — otherwise
-  // page 2+ would have a confusing oversized card from the middle of
-  // the list.
-  const featuredOnly = page === 1 && rawArticles.length > 0;
-  const featured = featuredOnly ? rawArticles[0] : null;
-  const rest = featuredOnly ? rawArticles.slice(1) : rawArticles;
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const listItems = rest.map((a, i) => ({
-    number: i + 1,
-    category: a.category.name.toUpperCase(),
-    time: timeAgo(a.publishedAt),
-    readMinutes: a.readMinutes,
-    title: a.title,
-    excerpt: a.summary,
-    authorInitials: (a.author.name ?? "??")
-      .split(" ")
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((n) => n[0]?.toUpperCase() ?? "")
-      .join(""),
-    authorName: a.author.name ?? "Redação",
-    date: timeAgo(a.publishedAt),
-    slug: a.slug,
-    coverImageUrl: a.coverImageUrl,
-  }));
+  const featured = rawArticles[0] ?? null;
+  const listItems = rawArticles.slice(1).map((a, i) => toListItem(a, i + 1));
+  const hasMore = total > shown;
+  const allHref = `/categoria/${slug}/todos${sortQuery(sort) ? `?${sortQuery(sort)}` : ""}`;
 
   return (
     <div className="flex flex-1 flex-col bg-white text-slate-900">
@@ -134,12 +119,7 @@ export default async function CategoryPage({
                       title={featured.title}
                       excerpt={featured.summary}
                       author={{
-                        initials: (featured.author.name ?? "??")
-                          .split(" ")
-                          .filter(Boolean)
-                          .slice(0, 2)
-                          .map((n) => n[0]?.toUpperCase() ?? "")
-                          .join(""),
+                        initials: initialsOf(featured.author.name),
                         name: featured.author.name ?? "Redação",
                       }}
                       publishedAt={timeAgo(featured.publishedAt)}
@@ -155,36 +135,13 @@ export default async function CategoryPage({
               {/* List header */}
               <div className="mt-10 flex flex-wrap items-center justify-between gap-4">
                 <SectionMarker title="Todos os artigos" />
-                <div
-                  role="tablist"
-                  aria-label="Ordenar artigos"
-                  className="inline-flex rounded-lg border border-slate-200 bg-white p-1 text-[13px]"
-                >
-                  {FILTERS.map((f) => {
-                    const isActive = f.key === sort;
-                    return (
-                      <Link
-                        key={f.key}
-                        href={
-                          f.key === "publishedAt"
-                            ? `/categoria/${slug}`
-                            : `/categoria/${slug}?sort=${f.key}`
-                        }
-                        scroll={false}
-                        role="tab"
-                        aria-selected={isActive}
-                        className={
-                          "rounded-md px-3 py-1.5 font-semibold transition " +
-                          (isActive
-                            ? "bg-patriota-dark text-white"
-                            : "text-slate-600 hover:text-slate-900")
-                        }
-                      >
-                        {f.label}
-                      </Link>
-                    );
-                  })}
-                </div>
+                <SortTabs
+                  active={sort}
+                  hrefFor={(key) => {
+                    const qs = sortQuery(key);
+                    return `/categoria/${slug}${qs ? `?${qs}` : ""}`;
+                  }}
+                />
               </div>
 
               {/* List */}
@@ -207,17 +164,9 @@ export default async function CategoryPage({
                 )}
               </ul>
 
-              <Pagination
-                current={page}
-                totalPages={totalPages}
-                hrefForPage={(p) => {
-                  const params = new URLSearchParams();
-                  if (sort !== "publishedAt") params.set("sort", sort);
-                  if (p !== 1) params.set("page", String(p));
-                  const qs = params.toString();
-                  return `/categoria/${slug}${qs ? `?${qs}` : ""}`;
-                }}
-              />
+              {hasMore && (
+                <SeeMoreLink href={allHref} label="Ver mais artigos" />
+              )}
             </div>
 
             {/* Sidebar */}

@@ -38,7 +38,7 @@ export default async function HomePage() {
 
           <div className="mt-10 grid grid-cols-1 gap-8 lg:grid-cols-12">
             <div className="col-span-1 flex flex-col gap-10 lg:col-span-8">
-              <LatestNews items={home.latest} />
+              <LatestNews items={home.latest} hasMore={home.hasMoreLatest} />
 
               {/* Inline mid-content banner (970×60). The "none" variant
                   drops the section padding so it sits flush in the
