@@ -88,7 +88,10 @@ export interface HomepageBundle {
    */
   featured: ArticleSummary | null;
   side: ArticleSummary[];
+  /** The 8 after the side stack — "Últimas Notícias". */
   latest: ArticleSummary[];
+  /** More published than the homepage shows: "Ver mais" has somewhere to go. */
+  hasMoreLatest?: boolean;
   investigation: ArticleSummary[];
 }
 

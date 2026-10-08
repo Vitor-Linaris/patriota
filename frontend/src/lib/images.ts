@@ -27,6 +27,17 @@ const LARGE_RE = /-large\.webp$/i;
  * the input doesn't match the upload naming convention (external
  * sources, legacy rows).
  */
+/**
+ * `srcSet` for one of our uploads in its two smaller widths, so a browser
+ * picks the 400px file for a thumbnail and the 800px one for a full-width
+ * phone card. Undefined for a pasted external address, which has no
+ * variants — the plain `src` covers that.
+ */
+export function coverSrcSet(url: string | null | undefined): string | undefined {
+  if (!url || !LARGE_RE.test(url)) return undefined;
+  return `${imageVariant(url, "small")} 400w, ${imageVariant(url, "medium")} 800w`;
+}
+
 export function imageVariant(
   url: string | null | undefined,
   variant: ImageVariant,

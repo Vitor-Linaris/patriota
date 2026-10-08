@@ -29,9 +29,9 @@ export async function Sidebar({
   // Pre-fetch all three lists server-side; the client widget just
   // toggles between them — no extra round-trip on tab change.
   const [mostRead, recent, mostCommented, opinion] = await Promise.all([
-    listMostRead(4),
-    listPublicArticles({ pageSize: 4 }).then((r) => r.items),
-    listMostCommented(4),
+    listMostRead(5),
+    listPublicArticles({ pageSize: 5 }).then((r) => r.items),
+    listMostCommented(5),
     listPublicArticles({ category: "opiniao", pageSize: 3 }),
   ]);
 
@@ -69,7 +69,7 @@ export async function Sidebar({
                     <p className="text-[11px] text-slate-500">
                       {o.category.name}
                     </p>
-                    <h4 className="mt-2 text-[13px] font-bold leading-snug text-slate-900">
+                    <h4 className="mt-2 line-clamp-2 wrap-anywhere text-[13px] font-bold leading-snug text-slate-900">
                       {o.title}
                     </h4>
                   </div>

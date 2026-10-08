@@ -133,16 +133,16 @@ export default async function PacotePage({
                       {pkg.owned || subscriberCovered ? (
                         <Link
                           href={`/artigo/${a.slug}`}
-                          className="mt-0.5 block text-[15px] font-bold leading-snug text-slate-900 hover:underline"
+                          className="mt-0.5 line-clamp-2 wrap-anywhere text-[15px] font-bold leading-snug text-slate-900 hover:underline"
                         >
                           {a.title}
                         </Link>
                       ) : (
-                        <span className="mt-0.5 block text-[15px] font-bold leading-snug text-slate-900">
+                        <span className="mt-0.5 line-clamp-2 wrap-anywhere text-[15px] font-bold leading-snug text-slate-900">
                           {a.title}
                         </span>
                       )}
-                      <span className="mt-1 block line-clamp-2 text-[13px] text-slate-600">
+                      <span className="mt-1 line-clamp-2 wrap-anywhere text-[13px] text-slate-600">
                         {a.summary}
                       </span>
                     </span>

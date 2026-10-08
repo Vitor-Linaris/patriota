@@ -95,7 +95,10 @@ export function BreakingNews({ items }: { items: BreakingItem[] }) {
                   }}
                   href={`/artigo/${item.slug}`}
                   onMouseEnter={pause}
-                  className={`shrink-0 transition-opacity duration-500 ${
+                  // One headline up to 200 characters would be wider than
+                  // the whole strip; cut it with "…" instead.
+                  title={item.title}
+                  className={`inline-block max-w-[75vw] shrink-0 truncate align-middle transition-opacity duration-500 sm:max-w-[560px] ${
                     isActive
                       ? "text-white opacity-100"
                       : "text-white/55 opacity-70 hover:text-white/80"

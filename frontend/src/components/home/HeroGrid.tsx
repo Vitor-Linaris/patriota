@@ -1,10 +1,11 @@
 import Link from "next/link";
 import {
   timeAgo,
-  type ArticleSummary,
+  type ArticleSummary,
 } from "@/lib/public-api";
 import { imageVariant } from "@/lib/images";
 import { CategoryBadge } from "../CategoryBadge";
+import { ArticleCardImage } from "../ArticleCardImage";
 
 interface Props {
   featured: ArticleSummary | null;
@@ -76,12 +77,15 @@ export function HeroGrid({ featured, side }: Props) {
             <span aria-hidden>·</span>
             <span>{featured?.readMinutes ?? 4} min leitura</span>
           </div>
-          <h1 className="text-xl font-black leading-tight transition-colors duration-300 group-hover:text-patriota-accent sm:text-2xl lg:text-[30px] lg:leading-[36px]">
+          {/* Cut with "…" so a 200-character title or a long summary
+              cannot climb out of the top of the photo (on lg+ the text
+              sits over it, anchored to the bottom). */}
+          <h1 className="line-clamp-3 wrap-anywhere text-xl font-black leading-tight transition-colors duration-300 group-hover:text-patriota-accent sm:text-2xl lg:text-[30px] lg:leading-[36px]">
             {featured?.title ??
               "Nenhum artigo publicado ainda. Crie um no painel admin."}
           </h1>
           {featured?.summary && (
-            <p className="max-w-2xl text-[13px] leading-relaxed text-white/75 sm:text-[14px]">
+            <p className="line-clamp-3 max-w-2xl wrap-anywhere text-[13px] leading-relaxed text-white/75 sm:text-[14px] lg:line-clamp-2">
               {featured.summary}
             </p>
           )}
@@ -99,16 +103,35 @@ export function HeroGrid({ featured, side }: Props) {
       {/* Side stack of up to 3 small cards. Card lifts a notch on
           hover with a soft shadow; thumbnail zooms; title shifts to
           brand colour. No arrow indicator — the whole row is the
-          link and the colour shift is enough cue. */}
+          link and the colour shift is enough cue.
+
+          On lg+ the stack is as tall as the big card beside it (the
+          grid row stretches it) and the cards share that height
+          (flex-1), so the column ends where the hero ends instead of
+          leaving a gap under the third card. The gap between cards
+          stays fixed; only the cards grow or shrink with the hero.
+
+          The photo is a column down the left of each card, as tall as
+          the card (see ArticleCardImage) — it was an 80×64 thumbnail.
+          lg:min-h-0 so three cards can always shrink to the hero's
+          height; below lg they stack under it and keep a minimum. */}
       <div className="col-span-1 flex flex-col gap-4 lg:col-span-4">
         {side.slice(0, 3).map((card) => (
           <Link
             key={card.id}
             href={`/artigo/${card.slug}`}
-            className="group flex gap-4 rounded-xl border border-slate-200 bg-white p-4 transition-all duration-300 hover:-translate-y-0.5 hover:border-patriota-medium hover:shadow-[0_6px_20px_-8px_rgba(15,44,107,0.18)]"
+            // Phones: photo on top, text below.
+            className="group flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white transition-all duration-300 hover:-translate-y-0.5 hover:border-patriota-medium hover:shadow-[0_6px_20px_-8px_rgba(15,44,107,0.18)] sm:flex-row lg:flex-1"
           >
-            <div className="min-w-0 flex-1">
-              <div className="mb-2 flex items-center gap-2 text-[11px] text-slate-500">
+            <ArticleCardImage
+              url={card.coverImageUrl}
+              side="sm:w-56 sm:min-h-[140px] lg:min-h-0 lg:w-40 xl:w-44"
+              sizes="(min-width: 1024px) 176px, (min-width: 640px) 224px, 100vw"
+            />
+            <div className="flex min-w-0 flex-1 flex-col justify-center p-4">
+              {/* Same weight as before on desktop; bigger next to a
+                  full-width photo on a phone. */}
+              <div className="mb-2 flex min-w-0 items-center gap-2 whitespace-nowrap text-[11px] text-slate-500">
                 <CategoryBadge
                   name={card.category.name}
                   color={card.category.color}
@@ -117,25 +140,13 @@ export function HeroGrid({ featured, side }: Props) {
                 <span aria-hidden>·</span>
                 <span>{timeAgo(card.publishedAt)}</span>
               </div>
-              <h3 className="text-[14px] font-bold leading-snug text-slate-900 transition-colors duration-200 group-hover:text-patriota-medium">
+              {/* These cards share the hero's height, which at 1024px
+                  leaves about 100px each — room for two lines, not three.
+                  From xl up the hero is tall enough for three. */}
+              <h3 className="line-clamp-3 wrap-anywhere text-[17px] font-bold leading-snug text-slate-900 transition-colors duration-200 group-hover:text-patriota-medium lg:line-clamp-2 lg:text-[15px] xl:line-clamp-3">
                 {card.title}
               </h3>
             </div>
-            {card.coverImageUrl ? (
-              <div className="hidden h-16 w-20 shrink-0 overflow-hidden rounded-md sm:block">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={
-                    imageVariant(card.coverImageUrl, "small") ??
-                    card.coverImageUrl
-                  }
-                  alt=""
-                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-110"
-                />
-              </div>
-            ) : (
-              <div className="hidden h-16 w-20 shrink-0 rounded-md bg-gradient-to-br from-slate-200 to-slate-300 sm:block" />
-            )}
           </Link>
         ))}
         {side.length === 0 && (

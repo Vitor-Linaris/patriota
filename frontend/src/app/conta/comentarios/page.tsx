@@ -131,7 +131,7 @@ export default async function MeusComentariosPage({
 
                 <Link
                   href={`/artigo/${c.article.slug}#comentarios`}
-                  className="mt-1 block text-[15px] font-bold leading-snug text-slate-900 transition hover:text-patriota-pure"
+                  className="mt-1 line-clamp-2 wrap-anywhere text-[15px] font-bold leading-snug text-slate-900 transition hover:text-patriota-pure"
                 >
                   {c.article.title}
                 </Link>

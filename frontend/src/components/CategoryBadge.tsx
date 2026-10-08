@@ -27,7 +27,11 @@ export function CategoryBadge({
       : "px-2 py-1 text-[10px]";
   return (
     <span
-      className={`rounded font-bold uppercase tracking-wider text-white ${sizing} ${className}`}
+      // A category name may be up to 60 characters; on one line, cut
+      // with "…" rather than pushing the card's meta row apart. The full
+      // name stays available on hover.
+      title={name}
+      className={`inline-block min-w-0 max-w-[14rem] shrink truncate whitespace-nowrap align-middle rounded font-bold uppercase tracking-wider text-white ${sizing} ${className}`}
       // Falls back to the neutral slate the old map used when a payload
       // predates the colour field.
       style={{ backgroundColor: color || "#475569" }}

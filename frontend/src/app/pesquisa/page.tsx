@@ -13,7 +13,7 @@ import {
   listPublicArticles,
   timeAgo,
 } from "@/lib/public-api";
-import { imageVariant } from "@/lib/images";
+import { ArticleCardImage } from "@/components/ArticleCardImage";
 
 export const metadata: Metadata = {
   title: "Pesquisa — O Patriota Notícias",
@@ -113,24 +113,13 @@ export default async function SearchPage({
                   <li key={item.id}>
                     <Link
                       href={`/artigo/${item.slug}`}
-                      className="group flex gap-4 rounded-xl border border-slate-200 bg-white p-4 transition-all duration-300 hover:-translate-y-0.5 hover:border-patriota-medium hover:shadow-[0_6px_20px_-8px_rgba(15,44,107,0.18)]"
+                      className="group flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white transition-all duration-300 hover:-translate-y-0.5 hover:border-patriota-medium hover:shadow-[0_6px_20px_-8px_rgba(15,44,107,0.18)] sm:flex-row"
                     >
-                      {item.coverImageUrl ? (
-                        <div className="hidden h-20 w-28 shrink-0 overflow-hidden rounded-md sm:block">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={
-                              imageVariant(item.coverImageUrl, "medium") ??
-                              item.coverImageUrl
-                            }
-                            alt=""
-                            className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-110"
-                          />
-                        </div>
-                      ) : (
-                        <div className="hidden h-20 w-28 shrink-0 rounded-md bg-gradient-to-br from-slate-200 to-slate-300 sm:block" />
-                      )}
-                      <div className="min-w-0 flex-1">
+                      <ArticleCardImage
+                        url={item.coverImageUrl}
+                        side="sm:w-56 sm:min-h-[160px] lg:w-64"
+                      />
+                      <div className="flex min-w-0 flex-1 flex-col justify-center p-4 sm:p-5">
                         <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
                           <CategoryBadge
                             name={item.category.name}
@@ -141,11 +130,11 @@ export default async function SearchPage({
                           <span aria-hidden>·</span>
                           <span>{item.readMinutes} min leitura</span>
                         </div>
-                        <h3 className="mt-2 text-[16px] font-bold leading-snug text-slate-900 transition-colors duration-200 group-hover:text-patriota-medium">
+                        <h3 className="mt-2 line-clamp-3 wrap-anywhere text-[17px] font-bold leading-snug text-slate-900 transition-colors duration-200 group-hover:text-patriota-medium sm:line-clamp-2">
                           {item.title}
                         </h3>
                         {item.summary && (
-                          <p className="mt-1 line-clamp-2 text-[13px] text-slate-600">
+                          <p className="mt-1 line-clamp-2 wrap-anywhere text-[13px] text-slate-600">
                             {item.summary}
                           </p>
                         )}

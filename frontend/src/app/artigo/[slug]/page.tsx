@@ -217,7 +217,7 @@ export default async function ArticlePage({
               </div>
 
               {/* Headline */}
-              <h1 className="mt-4 text-[32px] font-black leading-[1.15] text-slate-900 md:text-[42px] md:leading-[1.1]">
+              <h1 className="mt-4 wrap-anywhere text-[32px] font-black leading-[1.15] text-slate-900 md:text-[42px] md:leading-[1.1]">
                 {article.title}
               </h1>
 
@@ -448,11 +448,11 @@ export default async function ArticlePage({
                             <p className="text-[11px] font-bold uppercase tracking-wider text-orange-600">
                               {r.category.name}
                             </p>
-                            <h3 className="mt-1 text-[16px] font-bold leading-snug text-slate-900 transition-colors duration-200 group-hover:text-patriota-medium">
+                            <h3 className="mt-1 line-clamp-2 wrap-anywhere text-[16px] font-bold leading-snug text-slate-900 transition-colors duration-200 group-hover:text-patriota-medium">
                               {r.title}
                             </h3>
                             {r.summary && (
-                              <p className="mt-2 line-clamp-2 text-[13px] text-slate-600">
+                              <p className="mt-2 line-clamp-2 wrap-anywhere text-[13px] text-slate-600">
                                 {r.summary}
                               </p>
                             )}

@@ -60,14 +60,14 @@ export function FeaturedArticle({
               {readMinutes} min leitura
             </span>
           </div>
-          <h3 className="mt-3 max-w-[700px] text-[20px] font-black leading-[27.5px]">
+          <h3 className="mt-3 line-clamp-3 max-w-[700px] wrap-anywhere text-[20px] font-black leading-[27.5px]">
             {title}
           </h3>
         </div>
       </div>
       {/* Footer with excerpt + author */}
       <div className="px-6 py-6">
-        <p className="text-[16px] leading-[26px] text-[#4a5565]">{excerpt}</p>
+        <p className="line-clamp-3 wrap-anywhere text-[16px] leading-[26px] text-[#4a5565]">{excerpt}</p>
         <div className="mt-5 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <span className="flex h-7 w-7 items-center justify-center rounded-full bg-patriota-pure text-[12px] font-bold text-patriota-accent">
