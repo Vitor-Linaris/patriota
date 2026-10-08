@@ -1,5 +1,8 @@
 import {
+  HttpException,
+  HttpStatus,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -7,6 +10,7 @@ import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import type { Role } from '../rbac/rbac.constants';
+import { LoginAttemptsService } from './login-attempts.service';
 
 /** Same cost every stored staff password uses (users.service.ts). */
 const BCRYPT_ROUNDS = 12;
@@ -70,17 +74,52 @@ export interface AuthUser {
   avatarUrl: string | null;
 }
 
+/**
+ * O e-mail como aparece nos registos: o suficiente para reconhecer a
+ * conta visada, sem deixar a lista de endereços da redacção inteira nos
+ * logs. `ana.dias@opatriota.pt` → `an***@opatriota.pt`.
+ */
+export function maskEmail(email: string): string {
+  const [local, domain] = email.trim().toLowerCase().split('@');
+  if (!domain) return '***';
+  return `${local.slice(0, 2)}***@${domain}`;
+}
+
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly attempts: LoginAttemptsService,
   ) {}
 
-  async login(email: string, password: string): Promise<{
+  /**
+   * @param ip quem pediu, só para os registos. Ver clientIpOf().
+   */
+  async login(
+    email: string,
+    password: string,
+    ip?: string,
+  ): Promise<{
     accessToken: string;
     user: AuthUser;
   }> {
+    const from = ip ? ` a partir de ${ip}` : '';
+
+    // Antes de tudo, e sem bcrypt: uma conta bloqueada recusa igual exista
+    // ou não, por isso responder mais depressa aqui não revela nada.
+    if (await this.attempts.isLocked(email)) {
+      this.logger.warn(
+        `Login recusado (conta bloqueada) para ${maskEmail(email)}${from}`,
+      );
+      throw new HttpException(
+        'Demasiadas tentativas falhadas. Tente novamente daqui a 15 minutos.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
     const user = await this.prisma.user.findUnique({
       where: { email: email.toLowerCase() },
     });
@@ -89,8 +128,15 @@ export class AuthService {
     const valid = await bcrypt.compare(password, hash);
 
     if (!user || !user.isActive || !valid) {
+      await this.attempts.recordFailure(email);
+      // Sem a palavra-passe, e sem dizer qual das três condições falhou —
+      // isso é o que o atacante quer saber, não quem lê os registos.
+      this.logger.warn(`Login falhado para ${maskEmail(email)}${from}`);
       throw new UnauthorizedException('Credenciais inválidas.');
     }
+
+    await this.attempts.reset(email);
+    this.logger.log(`Login de ${maskEmail(email)} (${user.id})${from}`);
 
     const payload: JwtPayload = {
       sub: user.id,

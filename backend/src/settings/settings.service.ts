@@ -15,6 +15,10 @@ export const VALID_SECTIONS = [
 
 export type SectionName = (typeof VALID_SECTIONS)[number];
 
+/** Limites aceites para `seguranca.maxLoginAttempts`. */
+export const MIN_LOGIN_ATTEMPTS = 3;
+export const MAX_LOGIN_ATTEMPTS = 20;
+
 const DEFAULTS: Record<SectionName, Record<string, unknown>> = {
   geral: {
     siteName: 'O Patriota Notícias',
@@ -74,14 +78,14 @@ const DEFAULTS: Record<SectionName, Record<string, unknown>> = {
     weeklyDigest: true,
     digestDay: 'segunda',
   },
+  /**
+   * Só o que é aplicado. 2FA, timeout de sessão, whitelist de IPs,
+   * reCAPTCHA e o interruptor do log de auditoria viviam aqui e nada os
+   * lia — prometiam protecções que não existiam. `maxLoginAttempts` é
+   * lido por LoginAttemptsService.
+   */
   seguranca: {
-    twoFactor: false,
-    sessionTimeout: '480',
     maxLoginAttempts: '5',
-    ipWhitelist: '',
-    auditLog: true,
-    recaptcha: true,
-    recaptchaKey: '',
   },
   /**
    * Choices the newsroom offers its own staff, rather than site policy.
@@ -203,6 +207,21 @@ export class SettingsService {
         );
       }
       data = { ...data, cadencias: clean };
+    }
+    if (section === 'seguranca') {
+      // Lido pelo bloqueio de login. Fora destes limites, ou o bloqueio
+      // dispara a cada gralha (1) ou deixa de travar adivinhação (100).
+      const n = Number(data.maxLoginAttempts);
+      if (
+        !Number.isInteger(n) ||
+        n < MIN_LOGIN_ATTEMPTS ||
+        n > MAX_LOGIN_ATTEMPTS
+      ) {
+        throw new BadRequestException(
+          `Tentativas de login: um número inteiro entre ${MIN_LOGIN_ATTEMPTS} e ${MAX_LOGIN_ATTEMPTS}.`,
+        );
+      }
+      data = { maxLoginAttempts: String(n) };
     }
     const result = await this.prisma.setting.upsert({
       where: { section },

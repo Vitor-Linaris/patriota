@@ -5,10 +5,13 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Req,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
+import type { Request } from 'express';
+import { clientIpOf } from '../common/bff-throttler.guard';
 import { AuthService, type AuthUser } from './auth.service';
 import { RbacService } from '../rbac/rbac.service';
 import { ASSIGNABLE_ROLES } from '../rbac/rbac.constants';
@@ -29,8 +32,8 @@ export class AuthController {
   @Throttle({ default: { ttl: 60_000, limit: 5 } })
   @HttpCode(HttpStatus.OK)
   @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
-  login(@Body() dto: LoginDto) {
-    return this.auth.login(dto.email, dto.password);
+  login(@Body() dto: LoginDto, @Req() req: Request) {
+    return this.auth.login(dto.email, dto.password, clientIpOf(req));
   }
 
   @Get('me')

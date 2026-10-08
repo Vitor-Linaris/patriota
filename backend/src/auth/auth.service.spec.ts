@@ -1,8 +1,9 @@
 import { Test } from '@nestjs/testing';
-import { UnauthorizedException } from '@nestjs/common';
+import { HttpException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
-import { AuthService } from './auth.service';
+import { AuthService, maskEmail } from './auth.service';
+import { LoginAttemptsService } from './login-attempts.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 // bcryptjs exports non-configurable properties, so jest.spyOn cannot wrap
@@ -18,14 +19,25 @@ const compareMock = bcrypt.compare as unknown as jest.Mock;
 describe('AuthService', () => {
   let service: AuthService;
   let prisma: { user: { findUnique: jest.Mock } };
+  let attempts: {
+    isLocked: jest.Mock;
+    recordFailure: jest.Mock;
+    reset: jest.Mock;
+  };
 
   beforeEach(async () => {
     prisma = { user: { findUnique: jest.fn() } };
+    attempts = {
+      isLocked: jest.fn().mockResolvedValue(false),
+      recordFailure: jest.fn().mockResolvedValue(undefined),
+      reset: jest.fn().mockResolvedValue(undefined),
+    };
     const moduleRef = await Test.createTestingModule({
       providers: [
         AuthService,
         { provide: PrismaService, useValue: prisma },
         { provide: JwtService, useValue: { signAsync: jest.fn() } },
+        { provide: LoginAttemptsService, useValue: attempts },
       ],
     }).compile();
     service = moduleRef.get(AuthService);
@@ -90,6 +102,51 @@ describe('AuthService', () => {
       expect(compareMock.mock.calls[0][1]).toBe(stored);
     });
   });
+
+  describe('login() lockout', () => {
+    it('refuses a locked account with 429, before any password check', async () => {
+      attempts.isLocked.mockResolvedValueOnce(true);
+
+      const err = await service
+        .login('ana@x.pt', 'whatever')
+        .catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(HttpException);
+      expect((err as HttpException).getStatus()).toBe(429);
+      // Not even looked up: the same answer whether or not it exists.
+      expect(prisma.user.findUnique).not.toHaveBeenCalled();
+      expect(compareMock).not.toHaveBeenCalled();
+    });
+
+    it('counts a wrong password against the account', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce(null);
+      await expect(service.login('ana@x.pt', 'nope')).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(attempts.recordFailure).toHaveBeenCalledWith('ana@x.pt');
+      expect(attempts.reset).not.toHaveBeenCalled();
+    });
+
+    it('clears the count on a successful login', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce({
+        id: 'u1',
+        email: 'ana@x.pt',
+        password: await bcrypt.hash('certa', 4),
+        isActive: true,
+        role: 'COLUNISTA',
+        tokenVersion: 0,
+      });
+      await service.login('ana@x.pt', 'certa');
+      expect(attempts.reset).toHaveBeenCalledWith('ana@x.pt');
+      expect(attempts.recordFailure).not.toHaveBeenCalled();
+    });
+  });
+
+  it('masks e-mails for the logs', () => {
+    expect(maskEmail('Ana.Dias@opatriota.pt')).toBe('an***@opatriota.pt');
+    expect(maskEmail('sem-arroba')).toBe('***');
+  });
+
   describe('resolveSession()', () => {
     /**
      * A staff token lives 8 hours and had nothing in it to revoke. A

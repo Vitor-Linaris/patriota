@@ -48,31 +48,38 @@ export class BffThrottlerGuard extends ThrottlerGuard {
   private readonly logger = new Logger(BffThrottlerGuard.name);
   private warned = false;
 
-  protected async getTracker(raw: Record<string, unknown>): Promise<string> {
-    const req = raw as unknown as Request;
-    const secret = process.env.BFF_SHARED_SECRET;
-
-    if (!secret) {
-      if (!this.warned) {
-        this.warned = true;
-        this.logger.warn(
-          'BFF_SHARED_SECRET não está definido: os limites de pedidos contam ' +
-            'todo o tráfego vindo do Next como um único visitante. Defina-o ' +
-            'em ambos os serviços (ver .env.example).',
-        );
-      }
-      return req.ip ?? 'desconhecido';
+  protected getTracker(raw: Record<string, unknown>): Promise<string> {
+    if (!process.env.BFF_SHARED_SECRET && !this.warned) {
+      this.warned = true;
+      this.logger.warn(
+        'BFF_SHARED_SECRET não está definido: os limites de pedidos contam ' +
+          'todo o tráfego vindo do Next como um único visitante. Defina-o ' +
+          'em ambos os serviços (ver .env.example).',
+      );
     }
-
-    const claimed = req.headers[CLIENT_IP_HEADER];
-    if (
-      matches(req.headers[BFF_SECRET_HEADER], secret) &&
-      typeof claimed === 'string' &&
-      IP_SHAPE.test(claimed)
-    ) {
-      return claimed;
-    }
-
-    return req.ip ?? 'desconhecido';
+    return Promise.resolve(clientIpOf(raw as unknown as Request));
   }
+}
+
+/**
+ * Quem fez o pedido, pela mesma regra que os limites de pedidos usam: o
+ * endereço que o BFF jura (só com o segredo certo), ou a visão da própria
+ * API da ligação (`req.ip`, que respeita TRUSTED_PROXY_HOPS).
+ *
+ * Exportado para os registos de login dizerem o mesmo endereço que o
+ * limite contou — dois critérios diferentes fariam um ataque parecer vir
+ * de dois sítios.
+ */
+export function clientIpOf(req: Request): string {
+  const secret = process.env.BFF_SHARED_SECRET;
+  const claimed = req.headers[CLIENT_IP_HEADER];
+  if (
+    secret &&
+    matches(req.headers[BFF_SECRET_HEADER], secret) &&
+    typeof claimed === 'string' &&
+    IP_SHAPE.test(claimed)
+  ) {
+    return claimed;
+  }
+  return req.ip ?? 'desconhecido';
 }

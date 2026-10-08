@@ -61,10 +61,19 @@ const SECURITY_HEADERS = [
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   // Nothing here uses any of these, so nothing loses anything.
+  // `browsing-topics` is the current name of what `interest-cohort` was.
   {
     key: "Permissions-Policy",
-    value: "camera=(), microphone=(), geolocation=(), interest-cohort=()",
+    value:
+      "camera=(), microphone=(), geolocation=(), browsing-topics=(), interest-cohort=()",
   },
+  // HTTPS only, remembered for a year. Neither Caddy nor Nginx sends this
+  // by default. Ignored over plain http, so local development is
+  // unaffected. Deliberately without includeSubDomains/preload: those
+  // bind every *.opatriota.pt (mail, anything the client adds later) and
+  // are hard to undo — add them only once every subdomain is known to
+  // serve HTTPS.
+  { key: "Strict-Transport-Security", value: "max-age=31536000" },
 ];
 
 const nextConfig: NextConfig = {

@@ -692,6 +692,25 @@ api.opatriota.pt {
 
 Caddy obtém HTTPS automaticamente via Let's Encrypt.
 
+Com **Nginx** em vez de Caddy, encaminhar o endereço do visitante:
+
+```nginx
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto $scheme;
+```
+
+**`TRUSTED_PROXY_HOPS`** (nos dois `.env`) diz quantos proxies estão à
+frente de cada serviço, e é o que decide quem é "o visitante" nos limites
+de pedidos e no bloqueio do login:
+
+| Montagem | Valor |
+|---|---|
+| Caddy ou Nginx sozinho | `1` (omissão) |
+| Cloudflare com proxy activo + Caddy/Nginx | `2` |
+
+Se o site e a API tiverem cadeias diferentes (por exemplo, só o site atrás
+da Cloudflare), cada `.env` leva o valor da sua.
+
 ⚠ Para evoluir para produção real, **mover Postgres e Redis para serviços
 geridos** em vez de ficarem no mesmo servidor — backups, alta disponibilidade,
 encriptação em repouso.
