@@ -3,7 +3,7 @@ import { SectionHeading } from "./SectionHeading";
 import { SeeMoreLink } from "../SeeMoreLink";
 import { CategoryBadge } from "../CategoryBadge";
 import { timeAgo, type ArticleSummary } from "@/lib/public-api";
-import { imageVariant } from "@/lib/images";
+import { ArticleCardImage } from "../ArticleCardImage";
 
 interface Props {
   items: ArticleSummary[];
@@ -20,24 +20,12 @@ export function LatestNews({ items, hasMore = false }: Props) {
           <li key={item.id}>
             <Link
               href={`/artigo/${item.slug}`}
-              className="group flex gap-4 rounded-xl border border-slate-200 bg-white p-4 transition-all duration-300 hover:-translate-y-0.5 hover:border-patriota-medium hover:shadow-[0_6px_20px_-8px_rgba(15,44,107,0.18)]"
+              // Phones: photo on top, text below (see ArticleCardImage).
+              // sm: and up: thumbnail beside the text, as before.
+              className="group flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white transition-all duration-300 hover:-translate-y-0.5 hover:border-patriota-medium hover:shadow-[0_6px_20px_-8px_rgba(15,44,107,0.18)] sm:flex-row sm:gap-4 sm:p-4"
             >
-              {item.coverImageUrl ? (
-                <div className="hidden h-20 w-28 shrink-0 overflow-hidden rounded-md sm:block">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={
-                      imageVariant(item.coverImageUrl, "medium") ??
-                      item.coverImageUrl
-                    }
-                    alt=""
-                    className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-110"
-                  />
-                </div>
-              ) : (
-                <div className="hidden h-20 w-28 shrink-0 rounded-md bg-gradient-to-br from-slate-200 to-slate-300 sm:block" />
-              )}
-              <div className="min-w-0 flex-1">
+              <ArticleCardImage url={item.coverImageUrl} thumb="sm:h-20 sm:w-28" />
+              <div className="min-w-0 flex-1 p-4 sm:p-0">
                 <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
                   <CategoryBadge
                     name={item.category.name}
@@ -48,7 +36,7 @@ export function LatestNews({ items, hasMore = false }: Props) {
                   <span aria-hidden>·</span>
                   <span>{item.readMinutes} min leitura</span>
                 </div>
-                <h3 className="mt-2 text-[15px] font-bold leading-snug text-slate-900 transition-colors duration-200 group-hover:text-patriota-medium">
+                <h3 className="mt-2 text-[17px] font-bold sm:text-[15px] leading-snug text-slate-900 transition-colors duration-200 group-hover:text-patriota-medium">
                   {item.title}
                 </h3>
                 {item.summary && (

@@ -34,7 +34,9 @@ export function SortTabs({
     <div
       role="tablist"
       aria-label="Ordenar artigos"
-      className="inline-flex rounded-lg border border-slate-200 bg-white p-1 text-[13px]"
+      // Phones: full width, three equal tabs on one line — they used to
+      // wrap to "Mais / Recentes".
+      className="flex w-full rounded-lg border border-slate-200 bg-white p-1 text-[12px] sm:inline-flex sm:w-auto sm:text-[13px]"
     >
       {FILTERS.map((f) => {
         const isActive = f.key === active;
@@ -46,7 +48,7 @@ export function SortTabs({
             role="tab"
             aria-selected={isActive}
             className={
-              "rounded-md px-3 py-1.5 font-semibold transition " +
+              "flex-1 whitespace-nowrap rounded-md px-2 py-1.5 text-center font-semibold transition sm:flex-none sm:px-3 " +
               (isActive
                 ? "bg-patriota-dark text-white"
                 : "text-slate-600 hover:text-slate-900")

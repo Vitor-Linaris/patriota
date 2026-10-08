@@ -5,6 +5,7 @@ import {
 } from "@/lib/public-api";
 import { imageVariant } from "@/lib/images";
 import { CategoryBadge } from "../CategoryBadge";
+import { ArticleCardImage } from "../ArticleCardImage";
 
 interface Props {
   featured: ArticleSummary | null;
@@ -112,9 +113,10 @@ export function HeroGrid({ featured, side }: Props) {
           <Link
             key={card.id}
             href={`/artigo/${card.slug}`}
-            className="group flex gap-4 rounded-xl border border-slate-200 bg-white p-4 transition-all duration-300 hover:-translate-y-0.5 hover:border-patriota-medium hover:shadow-[0_6px_20px_-8px_rgba(15,44,107,0.18)] lg:flex-1 lg:items-center"
+            // Phones: photo on top, text below (see ArticleCardImage).
+            className="group flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white transition-all duration-300 hover:-translate-y-0.5 hover:border-patriota-medium hover:shadow-[0_6px_20px_-8px_rgba(15,44,107,0.18)] sm:flex-row sm:gap-4 sm:p-4 lg:flex-1 lg:items-center"
           >
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 p-4 sm:p-0">
               <div className="mb-2 flex items-center gap-2 text-[11px] text-slate-500">
                 <CategoryBadge
                   name={card.category.name}
@@ -124,25 +126,15 @@ export function HeroGrid({ featured, side }: Props) {
                 <span aria-hidden>·</span>
                 <span>{timeAgo(card.publishedAt)}</span>
               </div>
-              <h3 className="text-[14px] font-bold leading-snug text-slate-900 transition-colors duration-200 group-hover:text-patriota-medium">
+              <h3 className="text-[17px] font-bold leading-snug text-slate-900 transition-colors duration-200 group-hover:text-patriota-medium sm:text-[14px]">
                 {card.title}
               </h3>
             </div>
-            {card.coverImageUrl ? (
-              <div className="hidden h-16 w-20 shrink-0 overflow-hidden rounded-md sm:block">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={
-                    imageVariant(card.coverImageUrl, "small") ??
-                    card.coverImageUrl
-                  }
-                  alt=""
-                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-110"
-                />
-              </div>
-            ) : (
-              <div className="hidden h-16 w-20 shrink-0 rounded-md bg-gradient-to-br from-slate-200 to-slate-300 sm:block" />
-            )}
+            <ArticleCardImage
+              url={card.coverImageUrl}
+              thumb="sm:h-16 sm:w-20"
+              className="order-first sm:order-none"
+            />
           </Link>
         ))}
         {side.length === 0 && (

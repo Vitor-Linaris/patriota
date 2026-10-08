@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { imageVariant } from "@/lib/images";
+import { ArticleCardImage } from "@/components/ArticleCardImage";
 
 export interface ReaderArticleCard {
   id: string;
@@ -32,20 +32,19 @@ export function ArticleRow({
   return (
     <Link
       href={`/artigo/${article.slug}`}
-      className="group flex gap-4 rounded-[12px] border border-slate-200 bg-white p-4 transition hover:border-patriota-pure/40 hover:shadow-sm"
+      // Phones: photo on top, text below (see ArticleCardImage).
+      className="group flex flex-col overflow-hidden rounded-[12px] border border-slate-200 bg-white transition hover:border-patriota-pure/40 hover:shadow-sm sm:flex-row sm:gap-4 sm:p-4"
     >
-      {article.coverImageUrl ? (
-        <div className="hidden h-[76px] w-[120px] shrink-0 overflow-hidden rounded-[8px] sm:block">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={imageVariant(article.coverImageUrl, "small") ?? article.coverImageUrl}
-            alt=""
-            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-          />
-        </div>
-      ) : null}
+      {/* No placeholder here when there is no photo — this list never
+          had one, and the text simply starts at the left. */}
+      {article.coverImageUrl && (
+        <ArticleCardImage
+          url={article.coverImageUrl}
+          thumb="sm:h-[76px] sm:w-[120px]"
+        />
+      )}
 
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 p-4 sm:p-0">
         <p
           className="text-[11px] font-bold uppercase tracking-wider"
           style={{ color: article.category.color }}
