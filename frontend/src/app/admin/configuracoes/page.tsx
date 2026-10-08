@@ -54,13 +54,7 @@ const DEFAULTS: SettingsBundle = {
     digestDay: "segunda",
   },
   seguranca: {
-    twoFactor: false,
-    sessionTimeout: "480",
     maxLoginAttempts: "5",
-    ipWhitelist: "",
-    auditLog: true,
-    recaptcha: true,
-    recaptchaKey: "",
   },
   redacao: {
     cadencias: [

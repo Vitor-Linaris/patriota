@@ -10,7 +10,7 @@ import { randomBytes } from 'node:crypto';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import sharp from 'sharp';
+import sharp, { type Metadata, type SharpOptions } from 'sharp';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
@@ -419,12 +419,12 @@ export class MediaService {
     // `animated` decides whether sharp reads every frame or only the
     // first. Reading only the first is what silently flattened every
     // animated GIF this project has ever been given.
-    const readOptions: sharp.SharpOptions = {
+    const readOptions: SharpOptions = {
       limitInputPixels: MAX_IMAGE_PIXELS,
       ...(animated ? { animated: true } : {}),
     };
 
-    let metadata: sharp.Metadata;
+    let metadata: Metadata;
     try {
       metadata = await sharp(file.buffer, readOptions).rotate().metadata();
     } catch (e) {

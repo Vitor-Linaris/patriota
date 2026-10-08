@@ -56,6 +56,32 @@ describe('SettingsService', () => {
    * and nothing to put in it — a screen nobody can save, discovered one
    * journalist at a time.
    */
+  describe('seguranca › tentativas de login', () => {
+    it('refuses a value the lockout cannot use', async () => {
+      for (const bad of ['1', '100', 'abc', '', '4.5']) {
+        await expect(
+          service.put('seguranca', { maxLoginAttempts: bad }),
+        ).rejects.toThrow(BadRequestException);
+      }
+      expect(prisma.setting.upsert).not.toHaveBeenCalled();
+    });
+
+    it('keeps only the setting that is enforced', async () => {
+      // The old screen also sent 2FA, IP whitelist, reCAPTCHA… that nothing
+      // read. A stale browser tab must not write them back.
+      await service.put('seguranca', {
+        maxLoginAttempts: '10',
+        twoFactor: true,
+        ipWhitelist: '1.2.3.4',
+      });
+      expect(prisma.setting.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          update: { data: { maxLoginAttempts: '10' } },
+        }),
+      );
+    });
+  });
+
   describe('redacao › cadências', () => {
     it('refuses to save an empty list', async () => {
       await expect(service.put('redacao', { cadencias: [] })).rejects.toThrow(

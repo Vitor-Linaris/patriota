@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { apiBaseUrl } from "@/lib/api-base";
+import { clientIpFrom } from "@/lib/forwarded-ip";
 
 /**
  * Counts unique daily visitors to the public surfaces of the site.
@@ -23,11 +24,13 @@ import { apiBaseUrl } from "@/lib/api-base";
 const BOT_RE = /bot|crawler|spider|preview|monitor|curl|wget|python-requests|headless/i;
 
 function getClientIp(req: NextRequest): string {
-  const xff = req.headers.get("x-forwarded-for");
-  if (xff) return xff.split(",")[0]!.trim();
-  const real = req.headers.get("x-real-ip");
-  if (real) return real.trim();
-  return "0.0.0.0";
+  // Same rule as the rate limits (lib/forwarded-ip.ts). Here a forged
+  // first entry only inflated the visit count, but one rule for "who is
+  // the visitor" is easier to keep right than two.
+  return (
+    clientIpFrom(req.headers.get("x-forwarded-for"), req.headers.get("x-real-ip")) ??
+    "0.0.0.0"
+  );
 }
 
 async function visitorHash(ip: string, ua: string): Promise<string> {

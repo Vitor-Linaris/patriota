@@ -105,9 +105,16 @@ export function VideoEmbed({ url }: { url: string }) {
   // link below is what still works when that happens.
   return (
     <figure className="mt-8">
+      {/* sandbox: any page an author pastes ends up here, on the public
+          article and in the editor's preview. Players need scripts and
+          their own origin (cookies, storage) and may open a link in a new
+          tab; what they may NOT do is navigate this page away
+          (allow-top-navigation is absent on purpose). */}
       <iframe
         src={url}
         title="Vídeo incorporado"
+        sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"
+        referrerPolicy="strict-origin-when-cross-origin"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
         allowFullScreen
         className="aspect-video w-full rounded-lg bg-slate-100"

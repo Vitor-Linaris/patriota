@@ -6,6 +6,7 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './roles.guard';
+import { LoginAttemptsService } from './login-attempts.service';
 import { RbacModule } from '../rbac/rbac.module';
 
 @Global()
@@ -36,6 +37,7 @@ import { RbacModule } from '../rbac/rbac.module';
   controllers: [AuthController],
   providers: [
     AuthService,
+    LoginAttemptsService,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],

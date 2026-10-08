@@ -82,13 +82,7 @@ export interface NewsletterSettings {
 }
 
 export interface SegurancaSettings {
-  twoFactor: boolean;
-  sessionTimeout: string;
   maxLoginAttempts: string;
-  ipWhitelist: string;
-  auditLog: boolean;
-  recaptcha: boolean;
-  recaptchaKey: string;
 }
 
 export interface RedacaoSettings {
@@ -370,18 +364,8 @@ export default function AdminSettingsClient({
   const [digestDay, setDigestDay] = useState(initial.newsletter.digestDay);
 
   // ── Segurança ──
-  const [twoFactor, setTwoFactor] = useState(initial.seguranca.twoFactor);
-  const [sessionTimeout, setSessionTimeout] = useState(
-    initial.seguranca.sessionTimeout,
-  );
   const [maxLoginAttempts, setMaxLoginAttempts] = useState(
     initial.seguranca.maxLoginAttempts,
-  );
-  const [ipWhitelist, setIpWhitelist] = useState(initial.seguranca.ipWhitelist);
-  const [auditLog, setAuditLog] = useState(initial.seguranca.auditLog);
-  const [recaptcha, setRecaptcha] = useState(initial.seguranca.recaptcha);
-  const [recaptchaKey, setRecaptchaKey] = useState(
-    initial.seguranca.recaptchaKey,
   );
 
   // ── Redacção ──
@@ -458,15 +442,7 @@ export default function AdminSettingsClient({
           digestDay,
         };
       case "seguranca":
-        return {
-          twoFactor,
-          sessionTimeout,
-          maxLoginAttempts,
-          ipWhitelist,
-          auditLog,
-          recaptcha,
-          recaptchaKey,
-        };
+        return { maxLoginAttempts };
       case "redacao":
         return { cadencias };
       case "publicacao_social":
@@ -1003,68 +979,38 @@ export default function AdminSettingsClient({
               <p className="mb-5 text-xs text-gray-400">
                 Protecção de contas e controlo de acesso.
               </p>
-              <div className="mb-5 flex items-start gap-3 rounded-xl border-l-4 border-amber-400 bg-amber-50 p-4">
-                <span className="text-lg text-amber-500">⚠</span>
-                <div className="text-sm text-amber-900">
-                  <p className="mb-1 font-bold uppercase tracking-wider text-amber-700">
-                    Estado das defesas
+              {/* Só fica aqui o que o código aplica de facto. 2FA, timeout
+                  de sessão, whitelist de IPs, reCAPTCHA, o interruptor do
+                  log de auditoria e os botões da "zona de perigo" eram
+                  gravados (ou clicados) e nada os lia — controlos que
+                  prometiam uma protecção que não existia. */}
+              <div className="mb-5 flex items-start gap-3 rounded-xl border-l-4 border-[#0F2C6B] bg-slate-50 p-4">
+                <span className="text-lg text-[#0F2C6B]">◆</span>
+                <div className="text-sm text-slate-700">
+                  <p className="mb-1 font-bold uppercase tracking-wider text-[#0F2C6B]">
+                    Defesas activas
                   </p>
                   <ul className="space-y-0.5 text-xs leading-relaxed">
                     <li>
-                      <strong>Activos</strong>: log de auditoria (todas as
-                      acções administrativas são registadas), limite de
-                      pedidos no login, contado por visitante, e revogação
-                      de sessões — mudar a palavra-passe termina as sessões
-                      abertas com a anterior.
+                      Log de auditoria: as acções administrativas ficam
+                      registadas, e os logins (com e sem sucesso) ficam nos
+                      registos do servidor.
                     </li>
                     <li>
-                      <strong>Por aplicar</strong>: 2FA, timeout de sessão
-                      configurável, <strong>tentativas de login</strong>,
-                      whitelist de IPs e reCAPTCHA. Os valores são guardados
-                      e nenhum deles é lido por código nenhum. O bloqueio
-                      por tentativas falhadas não existe: contra adivinhação
-                      de palavras-passe, o que protege hoje é o limite de
-                      pedidos.
+                      Limite de pedidos no login, contado por visitante, e
+                      bloqueio da conta após as tentativas falhadas abaixo
+                      (15 minutos).
+                    </li>
+                    <li>
+                      Revogação de sessões: mudar a palavra-passe termina as
+                      sessões abertas com a anterior.
                     </li>
                   </ul>
                 </div>
               </div>
               <Field
-                label="Autenticação em dois factores"
-                inert
-                hint="Obriga todos os administradores a usar 2FA."
-              >
-                <div className="flex items-center gap-3">
-                  <Toggle checked={twoFactor} onChange={() => setTwoFactor((v) => !v)} />
-                  <span
-                    className={`text-sm font-semibold ${twoFactor ? "text-green-600" : "text-amber-600"}`}
-                  >
-                    {twoFactor ? "Obrigatório para todos" : "Opcional"}
-                  </span>
-                </div>
-              </Field>
-              <Field
-                label="Timeout de sessão (min)"
-                inert
-                hint="Minutos de inactividade até encerrar a sessão automaticamente."
-              >
-                <div className="flex gap-2">
-                  {["30", "60", "120", "480"].map((v) => (
-                    <button
-                      key={v}
-                      type="button"
-                      onClick={() => setSessionTimeout(v)}
-                      className={`rounded-lg border px-4 py-2 text-sm font-bold transition-all ${sessionTimeout === v ? "border-[#0F2C6B] bg-[#0F2C6B] text-white" : "border-gray-200 text-gray-500 hover:border-gray-400"}`}
-                    >
-                      {v}m
-                    </button>
-                  ))}
-                </div>
-              </Field>
-              <Field
                 label="Tentativas de login"
-                inert
-                hint="Número máximo de tentativas falhadas antes de bloquear."
+                hint="Tentativas falhadas seguidas, na mesma conta, antes de bloquear o login dessa conta durante 15 minutos."
               >
                 <div className="flex gap-2">
                   {["3", "5", "10"].map((v) => (
@@ -1079,76 +1025,6 @@ export default function AdminSettingsClient({
                   ))}
                 </div>
               </Field>
-              <Field
-                label="Whitelist de IPs"
-                inert
-                hint="IPs autorizados para acesso ao admin (um por linha). Deixar vazio para não restringir."
-              >
-                <Textarea
-                  value={ipWhitelist}
-                  onChange={setIpWhitelist}
-                  placeholder={"194.xxx.xxx.xxx\n10.0.0.0/24"}
-                  rows={3}
-                />
-              </Field>
-              <Field label="Log de auditoria" hint="Regista todas as acções dos administradores.">
-                <div className="flex items-center gap-3">
-                  <Toggle checked={auditLog} onChange={() => setAuditLog((v) => !v)} />
-                  <span className="text-sm text-gray-600">
-                    {auditLog ? "Activo" : "Desactivado"}
-                  </span>
-                </div>
-              </Field>
-              <Field
-                label="reCAPTCHA"
-                inert
-                hint="Protecção contra bots nos formulários públicos."
-              >
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <Toggle checked={recaptcha} onChange={() => setRecaptcha((v) => !v)} />
-                    <span className="text-sm text-gray-600">
-                      {recaptcha ? "Activo" : "Desactivado"}
-                    </span>
-                  </div>
-                  {recaptcha && (
-                    <Input
-                      value={recaptchaKey}
-                      onChange={setRecaptchaKey}
-                      mono
-                      placeholder="Chave de site reCAPTCHA v3"
-                    />
-                  )}
-                </div>
-              </Field>
-              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4">
-                <p className="mb-1 text-sm font-bold text-red-700">
-                  Zona de perigo
-                </p>
-                <p className="mb-3 text-xs text-red-500">
-                  Acções irreversíveis. Use com cuidado.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    className="rounded-lg border border-red-300 px-4 py-2 text-xs font-semibold text-red-600 transition-colors hover:bg-red-100"
-                  >
-                    Invalidar todas as sessões
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-lg border border-red-300 px-4 py-2 text-xs font-semibold text-red-600 transition-colors hover:bg-red-100"
-                  >
-                    Limpar cache do site
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-lg border border-red-300 px-4 py-2 text-xs font-semibold text-red-600 transition-colors hover:bg-red-100"
-                  >
-                    Exportar log de auditoria
-                  </button>
-                </div>
-              </div>
               <SaveBar
                 onSave={handleSave}
                 saved={saved === "seguranca"}

@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import { clientIpFrom } from "./forwarded-ip";
 
 /** Must match backend/src/common/bff-throttler.guard.ts. */
 const CLIENT_IP_HEADER = "x-patriota-client-ip";
@@ -30,12 +31,9 @@ export async function clientIpHeaders(): Promise<Record<string, string>> {
 
   try {
     const h = await headers();
-    // The real edge proxy's own X-Forwarded-For. First entry is the
-    // client; the rest are hops, which is why this is not the whole
-    // header value.
-    const ip =
-      h.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-      h.get("x-real-ip")?.trim();
+    // The entry our own proxy wrote, not the first one — that one is
+    // whatever the client sent. See clientIpFrom.
+    const ip = clientIpFrom(h.get("x-forwarded-for"), h.get("x-real-ip"));
     if (!ip) return {};
     return { [CLIENT_IP_HEADER]: ip, [BFF_SECRET_HEADER]: secret };
   } catch {

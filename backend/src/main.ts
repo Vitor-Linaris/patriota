@@ -1,9 +1,11 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import { AppModule } from './app.module';
 import { PrismaService } from './prisma/prisma.service';
 import { bootstrapInitialAdmin } from './bootstrap-admin';
+import { trustedProxyHops } from './common/trusted-proxy';
 
 function resolveCorsOrigin(): string[] | false {
   const env = process.env.CORS_ORIGIN?.trim();
@@ -38,10 +40,19 @@ async function bootstrap() {
   // including the 5/min limit on POST /auth/login. Trusting one hop makes
   // Express read the client IP from X-Forwarded-For instead.
   //
-  // "1" (not `true`) on purpose: trusting the full chain would let a
-  // client spoof X-Forwarded-For and dodge every rate limit. Raise this
-  // only if a second reverse proxy is ever put in front.
-  app.set('trust proxy', 1);
+  // A number of hops (not `true`) on purpose: trusting the full chain
+  // would let a client spoof X-Forwarded-For and dodge every rate limit.
+  // TRUSTED_PROXY_HOPS says how many proxies sit in front of THIS service
+  // — 1 for Caddy or Nginx alone, 2 with Cloudflare in front of them.
+  app.set('trust proxy', trustedProxyHops());
+
+  // The API serves uploaded files (/uploads) with a type taken from the
+  // extension. nosniff makes the browser hold to that type instead of
+  // guessing from the bytes — a guess is how a file stops being an image.
+  app.use((_req: unknown, res: Response, next: () => void) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    next();
+  });
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
