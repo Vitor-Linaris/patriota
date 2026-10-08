@@ -94,6 +94,18 @@ describe('MediaService', () => {
     );
   });
 
+  it('refuses an address that is already one of our files', async () => {
+    // Colado, ficava uma linha deste utilizador a apontar para o ficheiro
+    // de outro — e eliminá-la apagava o ficheiro do outro.
+    await expect(
+      service.create(
+        { url: `${BASE}2026/09/abc1234567def890-medium.webp` },
+        'u1',
+      ),
+    ).rejects.toThrow(BadRequestException);
+    expect(prisma.media.create).not.toHaveBeenCalled();
+  });
+
   /** The owner of the fixtures below. A COLUNISTA, so the tests
    *  exercise the ownership check rather than skipping it the way a
    *  SUPER_ADMIN would. */
@@ -195,6 +207,7 @@ describe('MediaService', () => {
         posterUrl: `${BASE}2026/09/abc1234567def890-poster.webp`,
         name: 'clip',
         uploadedById: OWNER.id,
+        storageKey: '2026/09/abc1234567def890',
       });
 
       await service.remove('m1', OWNER);
@@ -214,11 +227,53 @@ describe('MediaService', () => {
         posterUrl: null,
         name: 'a.jpg',
         uploadedById: OWNER.id,
+        storageKey: null,
       });
 
       await service.remove('m1', OWNER);
 
-      expect(storage.delete).toHaveBeenCalledWith([]);
+      expect(storage.delete).not.toHaveBeenCalled();
+    });
+
+    it("never deletes somebody else's file through a row that points at it", async () => {
+      // Uma linha antiga (ou criada antes de create() recusar endereços
+      // nossos) cujo URL é o ficheiro de outra pessoa. A linha é de quem
+      // pede; o ficheiro não.
+      prisma.media.findUnique.mockResolvedValue({
+        id: 'm1',
+        url: `${BASE}2026/09/ffff0000ffff0000-medium.webp`,
+        urlMedium: null,
+        urlSmall: null,
+        posterUrl: null,
+        name: 'colada',
+        uploadedById: OWNER.id,
+        storageKey: null,
+      });
+
+      await service.remove('m1', OWNER);
+
+      expect(prisma.media.delete).toHaveBeenCalled();
+      expect(storage.delete).not.toHaveBeenCalled();
+    });
+
+    it('only deletes files named after the row’s own storageKey', async () => {
+      prisma.media.findUnique.mockResolvedValue({
+        id: 'm1',
+        url: `${BASE}2026/09/abc1234567def890-large.webp`,
+        urlMedium: `${BASE}2026/09/ffff0000ffff0000-medium.webp`,
+        urlSmall: `${BASE}2026/09/abc1234567def890-small.webp`,
+        posterUrl: null,
+        name: 'a',
+        uploadedById: OWNER.id,
+        storageKey: '2026/09/abc1234567def890',
+      });
+
+      await service.remove('m1', OWNER);
+
+      expect(storage.delete).toHaveBeenCalledWith([
+        '2026/09/abc1234567def890-large.webp',
+        '2026/09/abc1234567def890-small.webp',
+      ]);
     });
   });
 

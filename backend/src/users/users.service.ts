@@ -12,6 +12,7 @@ import { randomBytes } from 'crypto';
 import sharp from 'sharp';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
+import { MediaAccessService } from '../media/media-access.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { SettingsService } from '../settings/settings.service';
 import {
@@ -422,12 +423,36 @@ export class UsersService {
     return { ...u, cadenceOptions, permissions };
   }
 
+  /**
+   * Um avatarUrl escrito à mão pode ser vazio (remover a foto), um
+   * endereço externo, ou o que já lá está. Um ficheiro nosso só se for
+   * desta pessoa: senão passava a ser "o avatar anterior" que
+   * uploadAvatar apaga, e qualquer conta da redacção apagava a foto de
+   * outra.
+   */
+  private async assertAvatarIsOwn(userId: string, url: string): Promise<void> {
+    const rel = url ? this.storage.relativeFromUrl(url) : null;
+    if (rel === null) return;
+    if (MediaAccessService.userIdFromAvatarPath(rel) === userId) return;
+    const current = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { avatarUrl: true },
+    });
+    if (current?.avatarUrl === url) return;
+    throw new BadRequestException(
+      'Esse endereço não é a sua foto de perfil. Carregue a imagem em vez de colar o endereço.',
+    );
+  }
+
   async updateOwn(id: string, dto: UpdateOwnDto) {
     const data: Record<string, unknown> = {};
     if (dto.name !== undefined) data.name = dto.name;
     if (dto.bio !== undefined) data.bio = dto.bio;
     if (dto.phone !== undefined) data.phone = dto.phone;
-    if (dto.avatarUrl !== undefined) data.avatarUrl = dto.avatarUrl;
+    if (dto.avatarUrl !== undefined) {
+      await this.assertAvatarIsOwn(id, dto.avatarUrl);
+      data.avatarUrl = dto.avatarUrl;
+    }
     if (dto.publishingCadence !== undefined) {
       data.publishingCadence = dto.publishingCadence;
     }
@@ -602,12 +627,18 @@ export class UsersService {
 
     // The photo it replaces. Until now every change left the old file
     // behind for ever — never shown again, never reachable to delete.
-    // Only ever an avatar of ours: the column also accepts a pasted
-    // address (updateOwn), which is not ours to remove.
+    // Only ever this person's own avatar — the owner is in the filename.
+    // The column also accepts a pasted address (updateOwn), and checking
+    // just the `avatars/` prefix let anybody set somebody else's photo
+    // as their "previous" one and have it deleted here.
     const oldRel = previous?.avatarUrl
       ? this.storage.relativeFromUrl(previous.avatarUrl)
       : null;
-    if (oldRel?.startsWith('avatars/') && oldRel !== rel) {
+    if (
+      oldRel &&
+      oldRel !== rel &&
+      MediaAccessService.userIdFromAvatarPath(oldRel) === userId
+    ) {
       await this.storage.delete([oldRel]);
     }
 
